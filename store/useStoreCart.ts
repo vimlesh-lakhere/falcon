@@ -22,6 +22,10 @@ export interface CustomerUser {
   id?: string;
   name: string;
   phone: string;
+  email?: string;
+  avatarUrl?: string;
+  isVerified?: boolean;
+  authProvider?: "google" | "otp" | "phone";
   address?: CustomerAddress | null;
 }
 

@@ -219,39 +219,47 @@ export default function StoreCheckoutPage() {
           {customerUser ? (
             <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
-                  {customerUser.name.slice(0, 1).toUpperCase()}
-                </div>
+                {customerUser.avatarUrl ? (
+                  <img src={customerUser.avatarUrl} alt="" className="w-10 h-10 rounded-2xl shadow-xs" />
+                ) : (
+                  <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+                    {customerUser.name.slice(0, 1).toUpperCase()}
+                  </div>
+                )}
                 <div>
-                  <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">
-                    Verified Customer Account
+                  <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                    {customerUser.authProvider === "google" ? "Google Verified Customer" : "OTP Verified Customer"}
                   </span>
                   <h3 className="text-sm font-black text-gray-900 leading-tight">
                     Welcome back, {customerUser.name}!
                   </h3>
-                  <p className="text-[11px] text-gray-500 font-mono">+91 {customerUser.phone}</p>
+                  <p className="text-[11px] text-gray-500 font-mono">
+                    {customerUser.phone ? `+91 ${customerUser.phone}` : customerUser.email}
+                  </p>
                 </div>
               </div>
               <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Logged In
+                <CheckCircle2 className="w-3.5 h-3.5" /> Verified
               </span>
             </div>
           ) : (
             <div className="bg-gradient-to-r from-purple-50 via-pink-50 to-amber-50 border border-purple-200/80 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
               <div>
-                <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">
-                  Returning Customer?
+                <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-purple-600" />
+                  Express 1-Tap Checkout
                 </span>
                 <h4 className="text-xs sm:text-sm font-black text-gray-900">
-                  Sign in with your mobile number to auto-fill saved address
+                  Sign in & verify with Google or Mobile OTP to auto-fill saved address
                 </h4>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAuthModalOpen(true)}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors shrink-0"
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all shrink-0"
               >
-                Sign In Now
+                Verify & Sign In
               </button>
             </div>
           )}
