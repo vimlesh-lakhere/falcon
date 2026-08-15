@@ -1,4 +1,3 @@
-import { removeBackground } from "@imgly/background-removal";
 import { AiImageEnhancementResult } from "./types";
 
 export interface StudioEnhanceOptions {
@@ -44,7 +43,7 @@ export const aiImageEnhancer = {
 
     // 2. AI Neural Background Cutout (isolate product bottle)
     let processedImgSrc = originalUrl;
-    if (shouldRemoveBg) {
+    if (shouldRemoveBg && typeof window !== "undefined") {
       try {
         let blobInput: Blob;
         if (typeof imageFileOrUrl === "string") {
@@ -54,11 +53,18 @@ export const aiImageEnhancer = {
           blobInput = imageFileOrUrl;
         }
 
-        const transparentBlob = await removeBackground(blobInput, {
-          model: "isnet_fp16",
-        });
-
-        processedImgSrc = URL.createObjectURL(transparentBlob);
+        // Dynamically import ESM from CDN at runtime in browser (zero Webpack bundle size & no Terser/TS crash)
+        const loadBrowserModule = new Function("url", "return import(url)");
+        const imglyModule: any = await loadBrowserModule(
+          "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm"
+        );
+        const removeBgFn = imglyModule.removeBackground || imglyModule.default;
+        if (typeof removeBgFn === "function") {
+          const transparentBlob = await removeBgFn(blobInput, {
+            model: "isnet_fp16",
+          });
+          processedImgSrc = URL.createObjectURL(transparentBlob);
+        }
       } catch (bgError) {
         console.warn("AI Background Removal fallback:", bgError);
         processedImgSrc = originalUrl;

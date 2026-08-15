@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Receipt,
@@ -32,7 +32,7 @@ import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
-export default function SalesHistoryPage() {
+function SalesHistoryContent() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "online" ? "online" : "all";
 
@@ -578,5 +578,22 @@ export default function SalesHistoryPage() {
         </Modal>
       </div>
     </MainLayout>
+  );
+}
+
+export default function SalesHistoryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center bg-gray-50">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-medium text-gray-500">Loading sales records...</p>
+          </div>
+        </div>
+      }
+    >
+      <SalesHistoryContent />
+    </Suspense>
   );
 }

@@ -24,7 +24,15 @@ import { Product, Category, Supplier, Unit } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { AddProductSplitButton } from "@/components/products/AddProductSplitButton";
-import { FalconAiProductModal } from "@/components/products/FalconAiProductModal";
+import dynamic from "next/dynamic";
+
+const FalconAiProductModal = dynamic(
+  () =>
+    import("@/components/products/FalconAiProductModal").then(
+      (mod) => mod.FalconAiProductModal
+    ),
+  { ssr: false }
+);
 
 const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
