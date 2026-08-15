@@ -20,10 +20,14 @@ import { inventoryRepository } from "@/repositories/inventory.repo";
 import { productsRepository } from "@/repositories/products.repo";
 import { StockMovement, Product } from "@/types/database";
 import { formatDateTime } from "@/lib/utils";
+import { useAuthStore } from "@/store/useAuthStore";
 
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
 export default function InventoryPage() {
+  const currentStore = useAuthStore((state) => state.currentStore);
+  const activeShopId = currentStore?.id || FALLBACK_SHOP_ID;
+
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -41,9 +45,9 @@ export default function InventoryPage() {
     try {
       setLoading(true);
       const [movs, low, prods] = await Promise.all([
-        inventoryRepository.getMovements(SHOP_ID),
-        inventoryRepository.getLowStockProducts(SHOP_ID),
-        productsRepository.getAll(SHOP_ID, { isActive: true }),
+        inventoryRepository.getMovements(activeShopId),
+        inventoryRepository.getLowStockProducts(activeShopId),
+        productsRepository.getAll(activeShopId, { isActive: true }),
       ]);
       setMovements(movs);
       setLowStockProducts(low);
@@ -57,7 +61,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeShopId]);
 
   const handleAdjustSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +70,7 @@ export default function InventoryPage() {
     try {
       setIsSaving(true);
       await inventoryRepository.adjustStock({
-        shop_id: SHOP_ID,
+        shop_id: activeShopId,
         product_id: selectedProductId,
         quantity_delta: qtyDelta,
         movement_type: movementType,

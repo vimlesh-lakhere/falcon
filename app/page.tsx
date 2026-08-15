@@ -28,12 +28,29 @@ const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-00000000
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeOnlineOrders, setActiveOnlineOrders] = useState<any[]>([]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const data = await dashboardRepository.getMetrics(SHOP_ID);
+      const [data, salesRes] = await Promise.all([
+        dashboardRepository.getMetrics(SHOP_ID),
+        (async () => {
+          const { createClient } = await import("@/lib/supabase/client");
+          const supabase = createClient();
+          return supabase
+            .from("sales")
+            .select("*, customer:customers(*)")
+            .eq("shop_id", SHOP_ID)
+            .in("status", ["received", "pending", "confirmed", "packing", "out_for_delivery"])
+            .order("created_at", { ascending: false });
+        })(),
+      ]);
+
       setMetrics(data);
+      if (salesRes?.data) {
+        setActiveOnlineOrders(salesRes.data);
+      }
     } catch (err) {
       console.error("Failed to load dashboard metrics", err);
     } finally {
@@ -51,6 +68,41 @@ export default function DashboardPage() {
       subtitle="Real-time daily operations, live inventory health, and billing status"
     >
       <div className="space-y-6 max-w-7xl mx-auto">
+        {/* Active Online Store Orders Alert Banner */}
+        {activeOnlineOrders.length > 0 && (
+          <div className="bg-gradient-to-r from-purple-800 to-indigo-900 text-white rounded-2xl p-5 shadow-lg border border-purple-400/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-purple-500/30 border border-purple-400/30 flex items-center justify-center text-white shrink-0">
+                <Boxes className="w-6 h-6 text-purple-200 animate-bounce" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="bg-amber-400 text-amber-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    {activeOnlineOrders.length} New Orders
+                  </span>
+                  <span className="text-xs text-purple-200">Customer Storefront</span>
+                </div>
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  Incoming Online Orders Pending Fulfillment
+                </h3>
+                <p className="text-xs text-purple-200">
+                  Latest: Order #{activeOnlineOrders[0].invoice_number} from {activeOnlineOrders[0].customer?.name || "Customer"} (₹{activeOnlineOrders[0].total_amount})
+                </p>
+              </div>
+            </div>
+
+            <Link href="/sales?tab=online">
+              <Button
+                size="sm"
+                className="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold shadow-md gap-1.5 shrink-0"
+              >
+                <span>Manage Online Orders</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </Link>
+          </div>
+        )}
+
         {/* Quick Launch POS Banner */}
         <div className="bg-gradient-to-r from-brand-700 via-brand-600 to-indigo-800 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">

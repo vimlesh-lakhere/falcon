@@ -22,10 +22,16 @@ import { productsRepository } from "@/repositories/products.repo";
 import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { Product, Category, Supplier, Unit } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
+import { useAuthStore } from "@/store/useAuthStore";
+import { AddProductSplitButton } from "@/components/products/AddProductSplitButton";
+import { FalconAiProductModal } from "@/components/products/FalconAiProductModal";
 
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
 export default function ProductsPage() {
+  const currentStore = useAuthStore((state) => state.currentStore);
+  const activeShopId = currentStore?.id || FALLBACK_SHOP_ID;
+
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -34,10 +40,13 @@ export default function ProductsPage() {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("all");
 
-  // Add / Edit Modal state
+  // Add / Edit Modal state (Manual)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Falcon AI Modal state
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -60,10 +69,10 @@ export default function ProductsPage() {
     try {
       setLoading(true);
       const [prods, cats, supps, unts] = await Promise.all([
-        productsRepository.getAll(SHOP_ID, { isActive: true }),
-        productsRepository.getCategories(SHOP_ID),
-        suppliersRepository.getAll(SHOP_ID),
-        productsRepository.getUnits(SHOP_ID),
+        productsRepository.getAll(activeShopId, { isActive: true }),
+        productsRepository.getCategories(activeShopId),
+        suppliersRepository.getAll(activeShopId),
+        productsRepository.getUnits(activeShopId),
       ]);
       setProducts(prods);
       setCategories(cats);
@@ -78,7 +87,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeShopId]);
 
   const openAddModal = () => {
     setEditingProduct(null);
@@ -127,7 +136,7 @@ export default function ProductsPage() {
     try {
       setIsSaving(true);
       const payload: Partial<Product> = {
-        shop_id: SHOP_ID,
+        shop_id: activeShopId,
         name: formData.name,
         sku: formData.sku || null,
         barcode: formData.barcode || null,
@@ -215,10 +224,11 @@ export default function ProductsPage() {
             </select>
           </div>
 
-          <Button onClick={openAddModal} className="gap-1.5 font-semibold text-xs shadow-sm">
-            <Plus className="w-4 h-4" />
-            Add New Product
-          </Button>
+          {/* Upgraded Split Action: Falcon AI (Primary) vs Manual Entry */}
+          <AddProductSplitButton
+            onOpenAiCreation={() => setIsAiModalOpen(true)}
+            onOpenManualCreation={openAddModal}
+          />
         </div>
 
         {/* Product Table */}
@@ -440,6 +450,38 @@ export default function ProductsPage() {
             </div>
           </form>
         </Modal>
+
+        {/* Falcon AI Smart Product Creation Modal */}
+        <FalconAiProductModal
+          isOpen={isAiModalOpen}
+          onClose={() => setIsAiModalOpen(false)}
+          onProductCreated={loadData}
+          shopId={activeShopId}
+          categories={categories}
+          suppliers={suppliers}
+          units={units}
+          existingProducts={products}
+          onOpenManualModal={() => {
+            setEditingProduct(null);
+            setFormData({
+              name: "",
+              sku: "",
+              barcode: "",
+              brand: "",
+              category_id: "",
+              supplier_id: "",
+              unit_id: "",
+              purchase_price: 0,
+              selling_price: 0,
+              wholesale_price: 0,
+              minimum_selling_price: 0,
+              current_stock: 0,
+              minimum_stock: 5,
+              description: "",
+            });
+            setIsModalOpen(true);
+          }}
+        />
       </div>
     </MainLayout>
   );

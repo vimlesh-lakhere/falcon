@@ -214,7 +214,7 @@ export interface Sale {
   discount_amount: number;
   tax_amount: number;
   total_amount: number;
-  status: 'completed' | 'held' | 'voided';
+  status: 'completed' | 'held' | 'voided' | 'pending' | 'received' | 'confirmed' | 'packing' | 'out_for_delivery' | 'delivered' | 'cancelled';
   notes: string | null;
   created_at: string;
   customer?: Customer;

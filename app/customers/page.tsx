@@ -12,10 +12,14 @@ import { customersRepository } from "@/repositories/customers.repo";
 import { productsRepository } from "@/repositories/products.repo";
 import { Customer, Product } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { useAuthStore } from "@/store/useAuthStore";
 
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
 export default function CustomersPage() {
+  const currentStore = useAuthStore((state) => state.currentStore);
+  const activeShopId = currentStore?.id || FALLBACK_SHOP_ID;
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,8 +44,8 @@ export default function CustomersPage() {
     try {
       setLoading(true);
       const [custs, prods] = await Promise.all([
-        customersRepository.getAll(SHOP_ID),
-        productsRepository.getAll(SHOP_ID, { isActive: true }),
+        customersRepository.getAll(activeShopId),
+        productsRepository.getAll(activeShopId, { isActive: true }),
       ]);
       setCustomers(custs);
       setProducts(prods);
@@ -54,14 +58,14 @@ export default function CustomersPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeShopId]);
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setIsSaving(true);
       await customersRepository.create({
-        shop_id: SHOP_ID,
+        shop_id: activeShopId,
         name,
         phone: phone || null,
         email: email || null,

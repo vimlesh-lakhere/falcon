@@ -31,6 +31,19 @@ export function AppHeader({ title, subtitle }: { title?: string; subtitle?: stri
           </span>
         </div>
 
+        {/* View Customer Storefront Button */}
+        <a
+          href="/store"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold transition-all shadow-2xs"
+          title="Open Customer Storefront in new tab"
+        >
+          <Store className="w-3.5 h-3.5 text-purple-600" />
+          <span className="hidden sm:inline">Online Store</span>
+          <span className="text-[10px] text-purple-500">↗</span>
+        </a>
+
         {/* Quick Add Menu */}
         <QuickActionMenu />
 

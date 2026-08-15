@@ -53,14 +53,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ availableStores: allStores });
 
       if (!session?.user) {
-        // Fallback default store
-        const savedStoreId = typeof window !== "undefined" ? localStorage.getItem("falcon_active_store_id") : null;
-        const active = allStores.find((s) => s.id === savedStoreId) || allStores[0] || null;
-
         set({
           user: null,
           profile: null,
-          currentStore: active,
+          currentStore: null,
+          availableStores: [],
           isAuthenticated: false,
           isLoading: false,
         });
@@ -70,25 +67,89 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: session.user, isAuthenticated: true });
 
       // Fetch profile details
-      const { data: profile } = await supabase
+      let { data: profile } = await supabase
         .from("profiles")
         .select("*, store:stores(*), branch:branches(*)")
         .eq("id", session.user.id)
-        .single();
+        .maybeSingle();
 
-      if (profile) {
-        // Check if there's a stored active store preference
-        const savedStoreId = typeof window !== "undefined" ? localStorage.getItem("falcon_active_store_id") : null;
-        const activeStore = (savedStoreId && allStores.find((s) => s.id === savedStoreId)) || (profile.store as Store) || allStores[0] || null;
+      // If user is brand new (e.g. Google OAuth) and has no profile or store assigned yet
+      if (!profile || !profile.store_id) {
+        const userName =
+          session.user.user_metadata?.full_name ||
+          session.user.user_metadata?.name ||
+          session.user.email?.split("@")[0] ||
+          "My Store";
+        const storeName = `${userName}'s Store`;
 
-        set({
-          profile: profile as Profile,
-          currentStore: activeStore,
-          currentBranch: profile.branch as Branch,
-        });
-      } else if (allStores.length > 0) {
-        set({ currentStore: allStores[0] });
+        // 1. Create a fresh dedicated store for this user
+        const { data: newStore } = await supabase
+          .from("stores")
+          .insert([
+            {
+              name: storeName,
+              business_type: "Cosmetics & Retail",
+              currency: "INR",
+              timezone: "Asia/Kolkata",
+            },
+          ])
+          .select()
+          .single();
+
+        if (newStore) {
+          // 2. Create main branch
+          const { data: newBranch } = await supabase
+            .from("branches")
+            .insert([
+              {
+                store_id: newStore.id,
+                name: `${storeName} (Main Branch)`,
+                is_main_branch: true,
+                is_active: true,
+              },
+            ])
+            .select()
+            .single();
+
+          // 3. Upsert profile with new store
+          const { data: upsertedProfile } = await supabase
+            .from("profiles")
+            .upsert({
+              id: session.user.id,
+              email: session.user.email || "",
+              full_name: userName,
+              avatar_url: session.user.user_metadata?.avatar_url || null,
+              role: "Owner",
+              store_id: newStore.id,
+              branch_id: newBranch?.id || null,
+              is_active: true,
+            })
+            .select("*, store:stores(*), branch:branches(*)")
+            .single();
+
+          profile = upsertedProfile;
+        }
       }
+
+      // Fetch stores belonging to this user
+      let userStores: Store[] = [];
+      if (profile?.store_id) {
+        const { data: storesData } = await supabase
+          .from("stores")
+          .select("*")
+          .eq("id", profile.store_id);
+        userStores = (storesData as Store[]) || [];
+      }
+
+      const activeStore = (profile?.store as Store) || userStores[0] || null;
+      const activeBranch = (profile?.branch as Branch) || null;
+
+      set({
+        profile: profile as Profile,
+        availableStores: userStores.length > 0 ? userStores : activeStore ? [activeStore] : [],
+        currentStore: activeStore,
+        currentBranch: activeBranch,
+      });
     } catch (err) {
       console.error("Failed to fetch session", err);
     } finally {

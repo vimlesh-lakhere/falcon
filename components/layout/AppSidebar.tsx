@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 const navigationItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, shortcut: "G D" },
   { name: "POS / Billing", href: "/pos", icon: ShoppingCart, shortcut: "G P", highlight: true },
+  { name: "Online Orders", href: "/sales?tab=online", icon: Store, badge: "Live" },
   { name: "Products", href: "/products", icon: Package },
   { name: "Inventory", href: "/inventory", icon: Boxes, shortcut: "G I" },
   { name: "Purchases", href: "/purchases", icon: Truck },
