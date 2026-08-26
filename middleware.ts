@@ -37,7 +37,12 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.json({ error: "Server authentication is not configured." }, { status: 500 });
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Server authentication is not configured." }, { status: 500 });
+    }
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    return NextResponse.redirect(loginUrl);
   }
 
   const response = NextResponse.next({ request });
