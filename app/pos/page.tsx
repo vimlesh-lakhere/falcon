@@ -395,7 +395,20 @@ export default function PosBillingPage() {
         }
       }
 
-      setCompletedSale(sale);
+      // Ensure items have full product object attached for receipt printing & WhatsApp
+      const enrichedSale: Sale = {
+        ...sale,
+        customer: selectedCustomer || sale.customer,
+        items: (sale.items || []).map((saleItem) => {
+          const cartMatch = cart.find((c) => c.product.id === saleItem.product_id);
+          return {
+            ...saleItem,
+            product: saleItem.product || cartMatch?.product,
+          };
+        }),
+      };
+
+      setCompletedSale(enrichedSale);
       setIsCheckoutModalOpen(false);
       setIsReceiptModalOpen(true);
       clearCart();

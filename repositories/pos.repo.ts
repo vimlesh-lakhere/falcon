@@ -92,11 +92,21 @@ export const posRepository = {
     }));
 
     const { error: stockError } = await supabase.from("stock_movements").insert(stockMovements);
-    if (stockError) throw stockError;
+    // 5. Fetch and return the fully joined sale object with products and customer
+    const { data: fullSale, error: fetchError } = await supabase
+      .from("sales")
+      .select("*, customer:customers(*), items:sale_items(*, product:products(*)), payments:payments(*)")
+      .eq("id", sale.id)
+      .single();
 
-    // Return the full sale object
+    if (!fetchError && fullSale) {
+      return fullSale as Sale;
+    }
+
+    // Fallback if select fails
     return {
       ...sale,
+      customer: payload.customer_id ? { id: payload.customer_id, name: "Customer" } as any : undefined,
       items: saleItems as SaleItem[],
       payments: payments as Payment[],
     };

@@ -66,6 +66,8 @@ export const offlinePosEngine = {
     currentQueue.push(queuedBill);
     localStorage.setItem(OFFLINE_BILLS_KEY, JSON.stringify(currentQueue));
 
+    const cachedProducts = this.getCachedCatalog();
+
     // Return a mock Sale structure so receipt can immediately be shown & printed
     const mockSale: Sale = {
       id: offlineId,
@@ -80,17 +82,21 @@ export const offlinePosEngine = {
       status: "completed",
       notes: payload.notes || "Created in Offline POS Mode",
       created_at: new Date().toISOString(),
-      items: payload.items.map((it) => ({
-        id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        sale_id: offlineId,
-        product_id: it.product_id,
-        variant_id: it.variant_id || null,
-        quantity: it.quantity,
-        unit_price: it.unit_price,
-        cost_price: it.cost_price,
-        is_price_overridden: it.is_price_overridden || false,
-        overridden_by: null,
-      })),
+      items: payload.items.map((it) => {
+        const cachedProd = cachedProducts.find((p: Product) => p.id === it.product_id);
+        return {
+          id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sale_id: offlineId,
+          product_id: it.product_id,
+          variant_id: it.variant_id || null,
+          quantity: it.quantity,
+          unit_price: it.unit_price,
+          cost_price: it.cost_price,
+          is_price_overridden: it.is_price_overridden || false,
+          overridden_by: null,
+          product: cachedProd,
+        };
+      }),
       payments: payload.payments.map((p) => ({
         id: `pay-${Date.now()}`,
         sale_id: offlineId,

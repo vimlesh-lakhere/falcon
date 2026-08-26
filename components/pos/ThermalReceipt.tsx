@@ -35,8 +35,11 @@ export function ThermalReceipt({
   // 1. Generate formatted WhatsApp Billing Receipt text
   const itemsText = items
     .map(
-      (it: any, idx: number) =>
-        `${idx + 1}. *${it.product?.name || it.name || "Item"}*\n   ${it.quantity} x ₹${it.unit_price} = *₹${Number(it.unit_price) * it.quantity}*`
+      (it: any, idx: number) => {
+        const pName = it.product?.name || it.product_name || it.name || it.title || "Product";
+        const lineTotal = Number(it.unit_price) * it.quantity;
+        return `${idx + 1}. *${pName}*\n   ${it.quantity} x ₹${it.unit_price} = *₹${lineTotal}*`;
+      }
     )
     .join("\n");
 
@@ -164,7 +167,7 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${sale.discount_amoun
             </div>
 
             {items.map((it: any, idx: number) => {
-              const pName = it.product?.name || it.name || "Item";
+              const pName = it.product?.name || it.product_name || it.name || it.title || "Product";
               const total = Number(it.unit_price) * it.quantity;
               return (
                 <div key={idx} className="space-y-0.5">
