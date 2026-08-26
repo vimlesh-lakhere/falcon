@@ -18,8 +18,11 @@ import {
   Settings,
   Store,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StoreSwitcher } from "@/components/layout/StoreSwitcher";
+import { useAuthStore } from "@/store/useAuthStore";
 
 const navigationItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, shortcut: "G D" },
@@ -37,33 +40,48 @@ const navigationItems = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-import { StoreSwitcher } from "@/components/layout/StoreSwitcher";
-import { useAuthStore } from "@/store/useAuthStore";
+interface AppSidebarProps {
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
 
-export function AppSidebar() {
+export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarProps) {
   const pathname = usePathname();
-  const { currentStore, profile, user } = useAuthStore();
+  const { currentStore, profile } = useAuthStore();
 
   const activeStoreName = currentStore?.name || "AGS Store";
   const userName = profile?.full_name || "Store Owner";
   const userInitials = userName.slice(0, 2).toUpperCase();
 
-  return (
-    <aside className="w-64 bg-white border-r border-surface-border flex flex-col shrink-0 h-screen sticky top-0 select-none z-30">
+  const sidebarContent = (
+    <div className="flex flex-col h-full bg-white select-none">
       {/* Brand Header */}
       <div className="p-4 border-b border-surface-border space-y-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white shadow-sm font-bold text-base">
-            F
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white shadow-sm font-bold text-base">
+              F
+            </div>
+            <div className="flex flex-col">
+              <span className="font-extrabold text-sm text-gray-900 leading-tight">
+                Falcon ERP
+              </span>
+              <span className="text-[10px] text-gray-400 font-medium tracking-tight">
+                Enterprise Store Suite
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="font-extrabold text-sm text-gray-900 leading-tight">
-              Falcon ERP
-            </span>
-            <span className="text-[10px] text-gray-400 font-medium tracking-tight">
-              Enterprise Store Suite
-            </span>
-          </div>
+
+          {/* Close button for Mobile Drawer */}
+          {onMobileClose && (
+            <button
+              type="button"
+              onClick={onMobileClose}
+              className="md:hidden p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Dynamic Multi-Store Switcher */}
@@ -80,6 +98,7 @@ export function AppSidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={() => onMobileClose?.()}
               className={cn(
                 "group relative flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-all",
                 isActive
@@ -120,6 +139,7 @@ export function AppSidebar() {
       {/* Store Location / User info footer */}
       <Link
         href="/profile"
+        onClick={() => onMobileClose?.()}
         className="p-3.5 border-t border-surface-border bg-gray-50/60 hover:bg-gray-100/80 transition-colors block"
       >
         <div className="flex items-center gap-3">
@@ -135,6 +155,30 @@ export function AppSidebar() {
           </div>
         </div>
       </Link>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Persistent Sidebar (md+) */}
+      <aside className="hidden md:flex w-64 bg-white border-r border-surface-border flex-col shrink-0 h-screen sticky top-0 z-30">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Slide-over Drawer (< md) */}
+      {isMobileOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+            onClick={onMobileClose}
+          />
+          {/* Drawer content */}
+          <div className="relative w-72 max-w-[85vw] h-full shadow-2xl z-10 animate-in slide-in-from-left duration-200">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -17,7 +17,13 @@ import {
   Printer,
   Sparkles,
   ArrowLeft,
+  ArrowRight,
   RefreshCw,
+  ShoppingCart,
+  Wifi,
+  WifiOff,
+  Camera,
+  CloudUpload,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -27,11 +33,11 @@ import { productsRepository } from "@/repositories/products.repo";
 import { customersRepository } from "@/repositories/customers.repo";
 import { posRepository, CheckoutPayload } from "@/repositories/pos.repo";
 import { Product, Category, Customer, Sale } from "@/types/database";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import { offlinePosEngine } from "@/lib/offline-pos";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
 import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
-import { Wifi, WifiOff, Camera, CloudUpload } from "lucide-react";
+
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -85,6 +91,9 @@ export default function PosBillingPage() {
   // Success Receipt modal
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+
+  // Mobile Active Tab (Catalog vs Cart)
+  const [mobileTab, setMobileTab] = useState<"catalog" | "cart">("catalog");
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -415,31 +424,44 @@ export default function PosBillingPage() {
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans select-none">
       {/* POS Top Bar */}
-      <header className="h-14 bg-brand-700 text-white px-4 flex items-center justify-between shadow-md shrink-0">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="p-1.5 rounded-lg bg-brand-800 hover:bg-brand-900 transition-colors text-white">
+      <header className="h-14 bg-brand-700 text-white px-3 sm:px-4 flex items-center justify-between shadow-md shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <Link href="/" className="p-1.5 rounded-lg bg-brand-800 hover:bg-brand-900 transition-colors text-white shrink-0">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-base tracking-wide">POS Billing Station</span>
-            <Badge variant="neutral" className="bg-white/20 text-white border-white/30 text-[10px]">
-              Terminal #1
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <span className="font-bold text-sm sm:text-base tracking-wide truncate">POS Terminal</span>
+            <Badge variant="neutral" className="hidden sm:inline-flex bg-white/20 text-white border-white/30 text-[10px]">
+              #1
             </Badge>
 
             {/* Online / Offline Status Badge */}
             {isOnline ? (
-              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Wifi className="w-3 h-3" /> Live Online
+              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                <Wifi className="w-3 h-3" /> <span className="hidden sm:inline">Live</span> Online
               </span>
             ) : (
-              <span className="text-[10px] font-bold bg-amber-500/30 text-amber-200 border border-amber-400/40 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                <WifiOff className="w-3 h-3" /> Offline Billing Mode
+              <span className="text-[10px] font-bold bg-amber-500/30 text-amber-200 border border-amber-400/40 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse shrink-0">
+                <WifiOff className="w-3 h-3" /> Offline
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Mobile Cart View Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setMobileTab(mobileTab === "catalog" ? "cart" : "catalog")}
+            className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 bg-brand-800 hover:bg-brand-900 text-white rounded-lg text-xs font-bold shrink-0 relative transition-all active:scale-95 cursor-pointer shadow-inner"
+          >
+            <ShoppingCart className="w-4 h-4" />
+            <span>{mobileTab === "catalog" ? `Cart (${cart.length})` : "Products"}</span>
+            {cart.length > 0 && (
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping absolute -top-0.5 -right-0.5" />
+            )}
+          </button>
+
           {/* Pending Offline Bills Sync Button */}
           {pendingOfflineBills > 0 && (
             <Button
@@ -449,14 +471,14 @@ export default function PosBillingPage() {
               className="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold text-xs gap-1.5 shadow-md animate-bounce"
             >
               <CloudUpload className="w-4 h-4" />
-              <span>Sync {pendingOfflineBills} Offline Bill(s)</span>
+              <span className="hidden sm:inline">Sync {pendingOfflineBills} Offline</span>
             </Button>
           )}
 
           {/* Held Bills dropdown/button */}
           {heldBills.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-amber-200 font-semibold">{heldBills.length} Held Bill(s)</span>
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-xs text-amber-200 font-semibold">{heldBills.length} Held</span>
               {heldBills.map((b, idx) => (
                 <Button
                   key={b.id}
@@ -466,7 +488,7 @@ export default function PosBillingPage() {
                   className="bg-amber-500 hover:bg-amber-600 text-white border-none text-xs gap-1"
                 >
                   <PlayCircle className="w-3.5 h-3.5" />
-                  Resume #{idx + 1}
+                  #{idx + 1}
                 </Button>
               ))}
             </div>
@@ -476,17 +498,22 @@ export default function PosBillingPage() {
             size="sm"
             variant="ghost"
             onClick={loadCatalog}
-            className="text-white hover:bg-brand-800 text-xs gap-1"
+            className="hidden sm:inline-flex text-white hover:bg-brand-800 text-xs gap-1"
           >
-            <RefreshCw className="w-3.5 h-3.5" /> Sync Stock
+            <RefreshCw className="w-3.5 h-3.5" /> Sync
           </Button>
         </div>
       </header>
 
       {/* Main Split Interface */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Side: Product catalog & Search (60%) */}
-        <div className="flex-1 flex flex-col bg-surface-canvas border-r border-gray-200 overflow-hidden">
+        {/* Left Side: Product catalog & Search (Full width on mobile when catalog active, 60% on desktop) */}
+        <div
+          className={cn(
+            "flex-1 flex-col bg-surface-canvas border-r border-gray-200 overflow-hidden",
+            mobileTab === "catalog" ? "flex" : "hidden lg:flex"
+          )}
+        >
           {/* Search & Category Header */}
           <div className="p-4 bg-white border-b border-gray-200 space-y-3">
             <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
@@ -597,10 +624,53 @@ export default function PosBillingPage() {
               );
             })}
           </div>
+
+          {/* Mobile Floating Cart Summary Bar (appears when catalog is active and cart has items) */}
+          {cart.length > 0 && (
+            <div className="lg:hidden p-3 bg-white border-t border-gray-200 shadow-xl flex items-center justify-between gap-3 shrink-0">
+              <div className="flex flex-col">
+                <span className="text-[11px] text-gray-500 font-medium">
+                  {cart.reduce((s, i) => s + i.quantity, 0)} items in bill
+                </span>
+                <span className="text-base font-extrabold text-brand-700">
+                  {formatCurrency(subtotal)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileTab("cart")}
+                className="px-4 py-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span>View Cart & Pay</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Right Side: Active Cart & Bill Operations (40%) */}
-        <div className="w-96 xl:w-[440px] bg-white flex flex-col justify-between border-l border-gray-200 shadow-lg">
+        {/* Right Side: Active Cart & Bill Operations (Full width on mobile when cart active, 40% on desktop) */}
+        <div
+          className={cn(
+            "w-full lg:w-96 xl:w-[440px] bg-white flex-col justify-between border-l border-gray-200 shadow-lg overflow-y-auto lg:overflow-visible",
+            mobileTab === "cart" ? "flex" : "hidden lg:flex"
+          )}
+        >
+          {/* Mobile Back to Products Bar */}
+          <div className="lg:hidden p-2.5 bg-brand-50 border-b border-brand-100 flex items-center justify-between shrink-0">
+            <button
+              type="button"
+              onClick={() => setMobileTab("catalog")}
+              className="flex items-center gap-1 text-xs font-bold text-brand-700 hover:text-brand-800 cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>← Back to Products</span>
+            </button>
+            <span className="text-xs font-bold text-gray-700">
+              Total: {formatCurrency(subtotal)}
+            </span>
+          </div>
+
           {/* Customer Selection bar */}
           <div className="p-4 border-b border-gray-200 bg-gray-50/70 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-1 min-w-0">
