@@ -960,15 +960,20 @@ export default function PosBillingPage() {
         isOpen={isCameraScannerOpen}
         onClose={() => setIsCameraScannerOpen(false)}
         onScan={(scannedCode) => {
+          const cleanCode = scannedCode.trim();
+          if (!cleanCode) return;
+
           const matched = products.find(
             (p) =>
-              p.barcode?.toLowerCase() === scannedCode.toLowerCase() ||
-              p.sku?.toLowerCase() === scannedCode.toLowerCase()
+              p.barcode?.toLowerCase() === cleanCode.toLowerCase() ||
+              p.sku?.toLowerCase() === cleanCode.toLowerCase() ||
+              p.id === cleanCode
           );
+
           if (matched) {
             addToCart(matched);
           } else {
-            alert(`No product found matching barcode: ${scannedCode}`);
+            setSearchQuery(cleanCode);
           }
         }}
       />
