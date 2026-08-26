@@ -27,6 +27,12 @@ import { useStoreCart } from "@/store/useStoreCart";
 import { createClient } from "@/lib/supabase/client";
 import { Product } from "@/types/database";
 
+import {
+  extractProductVariants,
+  stripVariantsFromDescription,
+  CleanVariant,
+} from "@/lib/product-variants";
+
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
 export default function ProductDetailPage() {
@@ -39,6 +45,7 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<CleanVariant | null>(null);
 
   const { addToCart, toggleWishlist, isInWishlist, setIsCartOpen } = useStoreCart();
 
@@ -57,6 +64,13 @@ export default function ProductDetailPage() {
           .maybeSingle();
 
         setProduct(prod);
+
+        if (prod) {
+          const vars = extractProductVariants(prod);
+          if (vars.length > 0) {
+            setSelectedVariant(vars[0]);
+          }
+        }
 
         // 2. Fetch Similar Products
         if (prod?.category_id) {
@@ -111,12 +125,16 @@ export default function ProductDetailPage() {
     );
   }
 
+  const variants = extractProductVariants(product);
   const isFavorite = isInWishlist(product.id);
-  const price = Number(product.selling_price) || 0;
-  const mrp = Number((product as any).mrp) || price;
+
+  // Use selected variant pricing or base product pricing
+  const price = selectedVariant ? selectedVariant.price : Number(product.selling_price) || 0;
+  const mrp = selectedVariant ? selectedVariant.mrp : Number((product as any).mrp) || price;
   const savings = mrp > price ? mrp - price : 0;
   const discountPercent = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
-  const isOutOfStock = product.current_stock <= 0;
+  const stockCount = selectedVariant?.stock ?? product.current_stock;
+  const isOutOfStock = stockCount <= 0;
 
   const handleShare = () => {
     if (typeof window !== "undefined") {
@@ -126,11 +144,21 @@ export default function ProductDetailPage() {
     }
   };
 
+  const handleAddToCartWithVariant = (customQty: number = quantity) => {
+    const customizedProduct = {
+      ...product,
+      selling_price: price,
+    };
+    addToCart(customizedProduct, customQty, selectedVariant?.size);
+  };
+
   const handleBuyNow = () => {
-    addToCart(product, quantity);
+    handleAddToCartWithVariant(quantity);
     setIsCartOpen(false);
     router.push("/store/checkout");
   };
+
+  const cleanDescriptionText = stripVariantsFromDescription(product.description);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-10">
@@ -155,7 +183,7 @@ export default function ProductDetailPage() {
         </div>
 
         {/* Right: Product Details & Purchase Form */}
-        <div className="lg:col-span-6 space-y-6">
+        <div className="lg:col-span-6 space-y-5">
           {/* Brand & Title */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -195,6 +223,59 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
+          {/* ================================================================= */}
+          {/* ⚡ PACK SIZE / VOLUME / WEIGHT VARIANT SELECTOR                   */}
+          {/* ================================================================= */}
+          {variants.length > 0 && (
+            <div className="space-y-2 bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-purple-600" />
+                  Select Pack Size / Variant:
+                </label>
+                <span className="text-[11px] font-bold text-purple-700">
+                  {selectedVariant ? `Selected: ${selectedVariant.size}` : "Choose size"}
+                </span>
+              </div>
+
+              {/* Variant Selector Pills */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                {variants.map((v) => {
+                  const isSelected = selectedVariant?.id === v.id;
+                  const vDiscount = v.mrp > v.price ? Math.round(((v.mrp - v.price) / v.mrp) * 100) : 0;
+
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setSelectedVariant(v)}
+                      className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
+                        isSelected
+                          ? "bg-white border-purple-600 ring-2 ring-purple-500/20 shadow-xs"
+                          : "bg-white/80 border-gray-200 hover:border-purple-300 hover:bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-xs font-black text-gray-900">{v.size}</span>
+                        {vDiscount > 0 && (
+                          <span className="text-[9px] font-black bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-md">
+                            {vDiscount}% OFF
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-1.5 mt-1">
+                        <span className="text-sm font-black text-purple-900">₹{v.price}</span>
+                        {v.mrp > v.price && (
+                          <span className="text-[10px] text-gray-400 line-through">₹{v.mrp}</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Pricing Card */}
           <div className="bg-gradient-to-r from-purple-50/80 to-pink-50/80 rounded-2xl p-4 sm:p-5 border border-purple-100/80 space-y-2">
             <div className="flex items-baseline gap-3">
@@ -211,11 +292,16 @@ export default function ProductDetailPage() {
                   </span>
                 </>
               )}
+              {selectedVariant && (
+                <span className="text-xs font-bold text-purple-900 bg-purple-100 px-2 py-0.5 rounded-md ml-auto">
+                  For {selectedVariant.size}
+                </span>
+              )}
             </div>
 
             {savings > 0 && (
               <p className="text-xs font-bold text-emerald-700">
-                🎉 You save ₹{savings} on this product! (Inclusive of all taxes)
+                🎉 You save ₹{savings} on this pack size! (Inclusive of all taxes)
               </p>
             )}
 
@@ -227,7 +313,7 @@ export default function ProductDetailPage() {
               ) : (
                 <span className="text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  In Stock - Ready for Fast Village/Town Dispatch
+                  In Stock ({stockCount} units available) - Ready for Fast Village/Town Dispatch
                 </span>
               )}
             </div>
@@ -308,14 +394,118 @@ export default function ProductDetailPage() {
           </div>
 
           {/* Description & Specifications */}
-          {product.description && (
+          {cleanDescriptionText && (
             <div className="bg-white rounded-2xl border border-gray-200/80 p-5 space-y-2.5">
               <h3 className="text-xs font-black uppercase tracking-wider text-purple-800">
                 Product Details & Benefits
               </h3>
               <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
-                {product.description}
+                {cleanDescriptionText}
               </p>
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* 📊 ALL PACK SIZES & PRICE COMPARISON TABLE (Transparent 1-Page View) */}
+          {/* ================================================================= */}
+          {variants.length > 1 && (
+            <div className="bg-white rounded-2xl border border-gray-200/80 overflow-hidden shadow-xs">
+              <div className="bg-gradient-to-r from-purple-900 to-indigo-900 px-4 py-3 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-pink-400" />
+                  <h3 className="text-xs font-black tracking-wide">
+                    All Pack Sizes & Price Comparison
+                  </h3>
+                </div>
+                <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full text-purple-100">
+                  {variants.length} Sizes Available
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 border-b border-gray-100 text-gray-500 font-bold text-[11px]">
+                    <tr>
+                      <th className="py-2.5 px-4">Pack Size</th>
+                      <th className="py-2.5 px-3">MRP</th>
+                      <th className="py-2.5 px-3 text-purple-950 font-black">Our Price</th>
+                      <th className="py-2.5 px-3">You Save</th>
+                      <th className="py-2.5 px-3 text-center">Status</th>
+                      <th className="py-2.5 px-4 text-right">Select</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {variants.map((v) => {
+                      const isSelected = selectedVariant?.id === v.id;
+                      const vSavings = v.mrp > v.price ? v.mrp - v.price : 0;
+                      const vDiscount = v.mrp > v.price ? Math.round(((v.mrp - v.price) / v.mrp) * 100) : 0;
+                      const isVarOut = (v.stock ?? 10) <= 0;
+
+                      return (
+                        <tr
+                          key={v.id}
+                          onClick={() => setSelectedVariant(v)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected ? "bg-purple-50/70 font-semibold" : "hover:bg-gray-50/80"
+                          }`}
+                        >
+                          <td className="py-3 px-4 font-black text-gray-900 flex items-center gap-2">
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                isSelected ? "bg-purple-600 ring-2 ring-purple-300" : "bg-gray-300"
+                              }`}
+                            />
+                            {v.size}
+                          </td>
+                          <td className="py-3 px-3 text-gray-400 line-through">
+                            ₹{v.mrp}
+                          </td>
+                          <td className="py-3 px-3 font-black text-purple-700 text-sm">
+                            ₹{v.price}
+                          </td>
+                          <td className="py-3 px-3">
+                            {vSavings > 0 ? (
+                              <span className="text-emerald-700 font-bold text-[11px]">
+                                Save ₹{vSavings} ({vDiscount}%)
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {isVarOut ? (
+                              <span className="text-[10px] text-red-600 bg-red-50 px-2 py-0.5 rounded-full font-bold">
+                                Out of Stock
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
+                                In Stock
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedVariant(v);
+                                handleAddToCartWithVariant(1);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-2xs ${
+                                isSelected
+                                  ? "bg-purple-600 text-white hover:bg-purple-700"
+                                  : "bg-gray-100 text-gray-700 hover:bg-purple-100 hover:text-purple-900"
+                              }`}
+                            >
+                              {isSelected ? "✓ Active" : "Choose"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

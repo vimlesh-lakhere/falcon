@@ -110,7 +110,7 @@ export default function DashboardPage() {
               <span className="bg-white/20 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full backdrop-blur-md">
                 POS Billing Terminal
               </span>
-              <span className="text-xs text-indigo-100 font-mono">Press 'N' or 'G P'</span>
+              <span className="text-xs text-indigo-100 font-mono">Press &apos;N&apos; or &apos;G P&apos;</span>
             </div>
             <h2 className="text-xl font-bold">Fast Keyboard & Barcode Billing</h2>
             <p className="text-sm text-indigo-100 max-w-xl">
@@ -135,7 +135,7 @@ export default function DashboardPage() {
             <CardContent className="p-5 flex items-center justify-between">
               <div className="space-y-1">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Today's Sales
+                  Today&apos;s Sales
                 </span>
                 <div className="text-2xl font-bold text-gray-900 tabular-nums">
                   {loading ? "..." : formatCurrency(metrics?.todaySalesTotal || 0)}
@@ -155,7 +155,7 @@ export default function DashboardPage() {
             <CardContent className="p-5 flex items-center justify-between">
               <div className="space-y-1">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Today's Net Profit
+                  Today&apos;s Net Profit
                 </span>
                 <div className="text-2xl font-bold text-emerald-600 tabular-nums">
                   {loading ? "..." : formatCurrency(metrics?.todayProfit || 0)}

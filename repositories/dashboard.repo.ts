@@ -43,14 +43,14 @@ export const dashboardRepository = {
       });
     });
 
-    // 2. Fetch low stock items
+    // 2. Fetch low stock items count efficiently without heavy joins
     const { data: productsData } = await supabase
       .from("products")
-      .select("*, category:categories(*)")
+      .select("id, current_stock, minimum_stock")
       .eq("shop_id", shopId)
       .eq("is_active", true);
 
-    const products = (productsData as Product[]) || [];
+    const products = productsData || [];
     const lowStockCount = products.filter((p) => Number(p.current_stock) <= Number(p.minimum_stock)).length;
 
     // 3. Fetch pending requests

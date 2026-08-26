@@ -86,29 +86,32 @@ export const purchasesRepository = {
       quantity_received: number;
     }[];
   }) {
-    // 1. Update received quantity on purchase order items
-    for (const it of payload.items) {
-      const { error: updateErr } = await supabase
-        .from("purchase_order_items")
-        .update({ quantity_received: it.quantity_received })
-        .eq("id", it.item_id);
+    // 1. Parallelize received quantity updates on purchase order items
+    await Promise.all(
+      payload.items.map((it) =>
+        supabase
+          .from("purchase_order_items")
+          .update({ quantity_received: it.quantity_received })
+          .eq("id", it.item_id)
+      )
+    );
 
-      if (updateErr) throw updateErr;
+    // 2. Batch insert stock movements for received goods in a single network round-trip
+    const movementsToInsert = payload.items
+      .filter((it) => it.quantity_received > 0)
+      .map((it) => ({
+        shop_id: payload.shop_id,
+        product_id: it.product_id,
+        movement_type: "purchase_receipt" as const,
+        quantity_delta: it.quantity_received,
+        reference_table: "purchase_orders",
+        reference_id: payload.purchase_order_id,
+        notes: `Stock received for PO: ${payload.purchase_order_id}`,
+      }));
 
-      // 2. Add stock movements for received goods
-      if (it.quantity_received > 0) {
-        await supabase.from("stock_movements").insert([
-          {
-            shop_id: payload.shop_id,
-            product_id: it.product_id,
-            movement_type: "purchase_receipt",
-            quantity_delta: it.quantity_received,
-            reference_table: "purchase_orders",
-            reference_id: payload.purchase_order_id,
-            notes: `Stock received for PO: ${payload.purchase_order_id}`,
-          },
-        ]);
-      }
+    if (movementsToInsert.length > 0) {
+      const { error: stockErr } = await supabase.from("stock_movements").insert(movementsToInsert);
+      if (stockErr) throw stockErr;
     }
 
     // 3. Mark PO as received

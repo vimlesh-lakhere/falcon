@@ -6,13 +6,20 @@ export type HeroTheme =
   | "minimal_studio"
   | "dark_obsidian"
   | "bright_retail"
-  | "festival_gold";
+  | "festival_gold"
+  | "water_splash"
+  | "tropical_summer"
+  | "floral_spa"
+  | "custom_prompt";
 
 export interface StudioAssetGallery {
   heroUrl: string; // Default primary e-commerce image
   catalogUrl: string; // 1080x1080 pure white for POS / Admin / Search
   lifestyleUrl: string; // Realistic contextual scene (marble / wood / countertop)
   promoBannerUrl: string; // Marketing promotional discount card
+  aiGeneratedHeroUrl?: string; // Production AI-Generated (DALL-E 3 / Imagen 3) Showroom Asset
+  aiProvider?: string; // e.g. "OpenAI DALL-E 3 (HD)" or "Google Imagen 3"
+  aiPromptUsed?: string; // Stored prompt for reproducing or tweaking
   socialMedia: {
     instagramPostUrl: string; // 1080x1080 (1:1)
     storyUrl: string; // 1080x1920 (9:16) WhatsApp Status / IG Story
@@ -108,6 +115,13 @@ export interface AiProductAnalysisResult {
   attributes: ExtractedAttributes;
   descriptions: AiDescriptions;
   images: AiImageEnhancementResult;
+  packagingDetails?: {
+    packagingShape?: string;
+    capDetails?: string;
+    containerColorMaterial?: string;
+    labelDesignColors?: string;
+    exactLabelText?: string;
+  };
 }
 
 export interface DuplicateCheckResult {

@@ -28,6 +28,10 @@ import { customersRepository } from "@/repositories/customers.repo";
 import { posRepository, CheckoutPayload } from "@/repositories/pos.repo";
 import { Product, Category, Customer, Sale } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { offlinePosEngine } from "@/lib/offline-pos";
+import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
+import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
+import { Wifi, WifiOff, Camera, CloudUpload } from "lucide-react";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -55,6 +59,14 @@ export default function PosBillingPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerPrices, setCustomerPrices] = useState<Record<string, number>>({});
 
+  // Online / Offline & Sync state
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingOfflineBills, setPendingOfflineBills] = useState(0);
+  const [isSyncingBills, setIsSyncingBills] = useState(false);
+
+  // Camera Barcode Scanner
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
@@ -76,7 +88,40 @@ export default function PosBillingPage() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Load initial catalog data
+  // Network listener & offline sync count
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    setPendingOfflineBills(offlinePosEngine.getPendingCount());
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      handleSyncOfflineBills();
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  const handleSyncOfflineBills = async () => {
+    if (!navigator.onLine || isSyncingBills) return;
+    setIsSyncingBills(true);
+    try {
+      await offlinePosEngine.syncPendingBills();
+      setPendingOfflineBills(offlinePosEngine.getPendingCount());
+    } catch (e) {
+      console.warn("Offline sync error:", e);
+    } finally {
+      setIsSyncingBills(false);
+    }
+  };
+
+  // Load catalog data (with offline cache fallback)
   const loadCatalog = async () => {
     try {
       const [prods, cats, custs] = await Promise.all([
@@ -87,8 +132,16 @@ export default function PosBillingPage() {
       setProducts(prods);
       setCategories(cats);
       setCustomers(custs);
+
+      // Cache locally for offline use
+      offlinePosEngine.cacheCatalog(prods);
+      offlinePosEngine.cacheCustomers(custs);
     } catch (err) {
-      console.error("Failed to load catalog", err);
+      console.warn("Online catalog load failed, loading from offline cache:", err);
+      const cachedProds = offlinePosEngine.getCachedCatalog();
+      const cachedCusts = offlinePosEngine.getCachedCustomers();
+      if (cachedProds.length > 0) setProducts(cachedProds);
+      if (cachedCusts.length > 0) setCustomers(cachedCusts);
     }
   };
 
@@ -127,6 +180,57 @@ export default function PosBillingPage() {
     };
     loadPrices();
   }, [selectedCustomer]);
+
+  // Hardware Barcode Scanner global listener (USB/Bluetooth)
+  const barcodeBufferRef = useRef<string>("");
+  const lastKeyTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if user is currently inside a modal
+      if (isCheckoutModalOpen || isReceiptModalOpen) return;
+
+      const target = e.target as HTMLElement | null;
+      const isInputFocused = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
+
+      const now = Date.now();
+      const timeDiff = now - lastKeyTimeRef.current;
+      lastKeyTimeRef.current = now;
+
+      // If time between keystrokes is more than 60ms, reset buffer (it's manual human typing)
+      if (timeDiff > 60) {
+        barcodeBufferRef.current = "";
+      }
+
+      if (e.key === "Enter") {
+        const scannedCode = barcodeBufferRef.current.trim();
+        if (scannedCode.length >= 3) {
+          const matched = products.find(
+            (p) =>
+              p.barcode?.toLowerCase() === scannedCode.toLowerCase() ||
+              p.sku?.toLowerCase() === scannedCode.toLowerCase()
+          );
+
+          if (matched) {
+            e.preventDefault();
+            addToCart(matched);
+            barcodeBufferRef.current = "";
+            if (isInputFocused && target instanceof HTMLInputElement) {
+              target.value = "";
+              setSearchQuery("");
+            }
+            return;
+          }
+        }
+        barcodeBufferRef.current = "";
+      } else if (e.key.length === 1) {
+        barcodeBufferRef.current += e.key;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [products, isCheckoutModalOpen, isReceiptModalOpen]);
 
   // Barcode / Search auto-matching
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -268,12 +372,27 @@ export default function PosBillingPage() {
         payments,
       };
 
-      const sale = await posRepository.checkout(payload);
+      let sale: Sale;
+      if (!navigator.onLine) {
+        sale = offlinePosEngine.saveOfflineBill(payload);
+        setPendingOfflineBills(offlinePosEngine.getPendingCount());
+      } else {
+        try {
+          sale = await posRepository.checkout(payload);
+        } catch (serverErr) {
+          console.warn("Server checkout failed, saving offline fallback:", serverErr);
+          sale = offlinePosEngine.saveOfflineBill(payload);
+          setPendingOfflineBills(offlinePosEngine.getPendingCount());
+        }
+      }
+
       setCompletedSale(sale);
       setIsCheckoutModalOpen(false);
       setIsReceiptModalOpen(true);
       clearCart();
-      loadCatalog(); // Refresh current_stock
+      if (navigator.onLine) {
+        loadCatalog(); // Refresh current_stock
+      }
     } catch (err: any) {
       console.error("Checkout failed", err);
       alert("Failed to complete sale: " + (err.message || "Unknown error"));
@@ -306,10 +425,34 @@ export default function PosBillingPage() {
             <Badge variant="neutral" className="bg-white/20 text-white border-white/30 text-[10px]">
               Terminal #1
             </Badge>
+
+            {/* Online / Offline Status Badge */}
+            {isOnline ? (
+              <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Wifi className="w-3 h-3" /> Live Online
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold bg-amber-500/30 text-amber-200 border border-amber-400/40 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                <WifiOff className="w-3 h-3" /> Offline Billing Mode
+              </span>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Pending Offline Bills Sync Button */}
+          {pendingOfflineBills > 0 && (
+            <Button
+              size="sm"
+              onClick={handleSyncOfflineBills}
+              isLoading={isSyncingBills}
+              className="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold text-xs gap-1.5 shadow-md animate-bounce"
+            >
+              <CloudUpload className="w-4 h-4" />
+              <span>Sync {pendingOfflineBills} Offline Bill(s)</span>
+            </Button>
+          )}
+
           {/* Held Bills dropdown/button */}
           {heldBills.length > 0 && (
             <div className="flex items-center gap-2">
@@ -360,6 +503,17 @@ export default function PosBillingPage() {
                 />
                 <Barcode className="w-5 h-5 text-gray-400 absolute right-3 top-2.5" />
               </div>
+
+              {/* Camera Scanner Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setIsCameraScannerOpen(true)}
+                className="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
+                title="Scan Barcode with Device Camera"
+              >
+                <Camera className="w-4 h-4 text-amber-300" />
+                <span className="hidden sm:inline">Camera Scan</span>
+              </button>
             </form>
 
             {/* Category Filter Chips */}
@@ -715,83 +869,39 @@ export default function PosBillingPage() {
         </div>
       </Modal>
 
-      {/* Receipt & Invoice Confirmation Modal */}
+      {/* Receipt & Thermal Invoice Modal with WhatsApp Sharing */}
       <Modal
-        isOpen={isReceiptModalOpen}
+        isOpen={isReceiptModalOpen && !!completedSale}
         onClose={() => setIsReceiptModalOpen(false)}
-        title="Sale Completed Successfully"
+        title="🧾 Billing Invoice & Thermal Receipt"
         maxWidth="md"
       >
-        <div className="space-y-4">
-          <div className="p-4 border border-gray-200 rounded-xl bg-white space-y-3 font-mono text-xs text-gray-800">
-            <div className="text-center pb-3 border-b border-dashed border-gray-300">
-              <h2 className="font-bold text-sm text-gray-900">AGS STORE</h2>
-              <p className="text-[11px] text-gray-500">Retail & Wholesale Cosmetics</p>
-              <p className="text-[10px] text-gray-400">GST: 27AAAAA0000A1Z5</p>
-            </div>
-
-            <div className="flex justify-between text-[11px]">
-              <span>Invoice: {completedSale?.invoice_number}</span>
-              <span>{completedSale && formatDateTime(completedSale.created_at)}</span>
-            </div>
-
-            {completedSale?.customer && (
-              <div className="text-[11px]">
-                Customer: <span className="font-bold">{completedSale.customer.name}</span>
-              </div>
-            )}
-
-            <div className="border-t border-b border-dashed border-gray-300 py-2 space-y-1">
-              {completedSale?.items?.map((it, idx) => (
-                <div key={idx} className="flex justify-between">
-                  <span className="truncate max-w-[200px]">{it.product?.name || "Item"}</span>
-                  <span className="tabular-nums">
-                    {it.quantity} × {formatCurrency(it.unit_price)}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-1 text-right font-bold text-xs pt-1">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>{completedSale && formatCurrency(completedSale.subtotal)}</span>
-              </div>
-              {Number(completedSale?.discount_amount) > 0 && (
-                <div className="flex justify-between text-emerald-700">
-                  <span>Discount:</span>
-                  <span>- {completedSale && formatCurrency(completedSale.discount_amount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm text-gray-900 pt-1 border-t border-gray-200">
-                <span>Grand Total:</span>
-                <span className="text-brand-700">{completedSale && formatCurrency(completedSale.total_amount)}</span>
-              </div>
-            </div>
-
-            <div className="text-center pt-3 text-[10px] text-gray-400">
-              Thank you for shopping with AGS Store!
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => window.print()}
-              className="flex-1 gap-1.5 text-xs font-semibold"
-            >
-              <Printer className="w-4 h-4" />
-              Print Receipt
-            </Button>
-            <Button
-              onClick={() => setIsReceiptModalOpen(false)}
-              className="flex-1 bg-brand-600 text-white text-xs font-semibold"
-            >
-              Start Next Sale
-            </Button>
-          </div>
-        </div>
+        {completedSale && (
+          <ThermalReceipt
+            sale={completedSale}
+            customer={selectedCustomer}
+            onDone={() => setIsReceiptModalOpen(false)}
+          />
+        )}
       </Modal>
+
+      {/* Live Camera Barcode Scanner Modal */}
+      <CameraBarcodeScanner
+        isOpen={isCameraScannerOpen}
+        onClose={() => setIsCameraScannerOpen(false)}
+        onScan={(scannedCode) => {
+          const matched = products.find(
+            (p) =>
+              p.barcode?.toLowerCase() === scannedCode.toLowerCase() ||
+              p.sku?.toLowerCase() === scannedCode.toLowerCase()
+          );
+          if (matched) {
+            addToCart(matched);
+          } else {
+            alert(`No product found matching barcode: ${scannedCode}`);
+          }
+        }}
+      />
     </div>
   );
 }

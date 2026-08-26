@@ -30,6 +30,12 @@ import {
   Maximize2,
   Smartphone,
   Award,
+  Download,
+  Copy,
+  Cpu,
+  Zap,
+  Check,
+  ImagePlus,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -39,6 +45,7 @@ import { aiVisionService } from "@/lib/ai/vision-analysis";
 import { aiDuplicateDetector } from "@/lib/ai/duplicate-detector";
 import { aiBarcodeLookup } from "@/lib/ai/barcode-lookup";
 import { masterStudioGenerator } from "@/lib/ai/studio-generator";
+import { aiImagePromptEngine } from "@/lib/ai/image-prompt-engine";
 import {
   AiProductAnalysisResult,
   DuplicateCheckResult,
@@ -62,7 +69,7 @@ interface FalconAiProductModalProps {
   onOpenManualModal?: () => void;
 }
 
-export type ProductCreationMethod = "vision" | "barcode" | "manual";
+export type ProductCreationMethod = "vision" | "barcode" | "prompt" | "manual";
 
 export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
   isOpen,
@@ -92,12 +99,34 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
   const [inputBarcode, setInputBarcode] = useState<string>("");
   const [isLookingUpBarcode, setIsLookingUpBarcode] = useState(false);
 
+  // Direct Prompt Generation State (Stage 1 Method 3)
+  const [promptFormData, setPromptFormData] = useState({
+    name: "",
+    brand: "",
+    category_id: "",
+    mrp: 999,
+    prompt: "",
+    theme: "luxury_marble",
+  });
+  const [isPromptGenerating, setIsPromptGenerating] = useState(false);
+
   // Selected Hero Theme
   const [selectedTheme, setSelectedTheme] = useState<HeroTheme>("luxury_marble");
 
+  // Production AI Image Generation & Magic Prompt Editor States (ChatGPT / Gemini grade)
+  const [customAiPrompt, setCustomAiPrompt] = useState<string>("");
+  const [aiEngineProvider, setAiEngineProvider] = useState<"auto" | "openai" | "google">("auto");
+  const [isGeneratingAiImage, setIsGeneratingAiImage] = useState(false);
+  const [aiGeneratedImageUrl, setAiGeneratedImageUrl] = useState<string>("");
+  const [aiGeneratedProviderName, setAiGeneratedProviderName] = useState<string>("");
+  const [aiGeneratedPrompt, setAiGeneratedPrompt] = useState<string>("");
+  const [isCopiedPrompt, setIsCopiedPrompt] = useState(false);
+  const [imageAspectRatio, setImageAspectRatio] = useState<"1:1" | "9:16" | "16:9">("1:1");
+  const [customDirectImageUrl, setCustomDirectImageUrl] = useState<string>("");
+
   // Active Studio Image Asset Tab in Stage 3
   const [activeAssetTab, setActiveAssetTab] = useState<
-    "hero" | "catalog" | "lifestyle" | "promo" | "story" | "zoom" | "original"
+    "ai_showroom" | "hero" | "catalog" | "lifestyle" | "promo" | "story" | "zoom" | "original"
   >("hero");
 
   // Camera capture modal state
@@ -381,6 +410,36 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         is_website_published: true,
       });
 
+      // Auto-generate 8K AI Commercial Showroom Master
+      try {
+        const catName =
+          categories.find((c) => c.id === (result.suggestedCategoryId || categories[0]?.id))?.name ||
+          result.productName;
+        const aiImg = await masterStudioGenerator.generateAiShowroomImage({
+          productName: result.productName,
+          brand: result.brandName,
+          categoryName: catName,
+          theme: selectedTheme,
+          packagingShape: result.packagingDetails?.packagingShape,
+          capDetails: result.packagingDetails?.capDetails,
+          containerColorMaterial: result.packagingDetails?.containerColorMaterial,
+          labelDesignColors: result.packagingDetails?.labelDesignColors,
+          exactLabelText: result.packagingDetails?.exactLabelText,
+          aspectRatio: imageAspectRatio,
+          provider: aiEngineProvider,
+          apiKey: geminiApiKey || undefined,
+        });
+        if (aiImg?.imageUrl) {
+          setAiGeneratedImageUrl(aiImg.imageUrl);
+          setAiGeneratedProviderName(aiImg.provider);
+          setAiGeneratedPrompt(aiImg.prompt);
+          setActiveAssetTab("ai_showroom");
+        }
+      } catch (imgErr) {
+        console.warn("AI Showroom auto-generation fallback:", imgErr);
+        setActiveAssetTab("hero");
+      }
+
       setStage(3);
     } catch (err: any) {
       clearInterval(stepInterval);
@@ -425,6 +484,173 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       console.error("Barcode lookup failed:", err);
     } finally {
       setIsLookingUpBarcode(false);
+    }
+  };
+
+  // Method 3: ChatGPT / Gemini Style Direct Prompt to Product Generation
+  const handleGenerateFromDirectPrompt = async () => {
+    if (!promptFormData.name.trim()) {
+      alert("Please enter a product name.");
+      return;
+    }
+
+    setIsPromptGenerating(true);
+    setStage(2);
+    setScanStepIndex(0);
+
+    const stepInterval = setInterval(() => {
+      setScanStepIndex((prev) => (prev < scanSteps.length - 1 ? prev + 1 : prev));
+    }, 800);
+
+    try {
+      const catObj = categories.find((c) => c.id === promptFormData.category_id);
+      const catName = catObj?.name || "General Goods";
+
+      const imageRes = await masterStudioGenerator.generateAiShowroomImage({
+        productName: promptFormData.name,
+        brand: promptFormData.brand,
+        categoryName: catName,
+        theme: promptFormData.theme,
+        customPrompt: promptFormData.prompt,
+        aspectRatio: imageAspectRatio,
+        provider: aiEngineProvider,
+        apiKey: geminiApiKey || undefined,
+      });
+
+      clearInterval(stepInterval);
+
+      setAiGeneratedImageUrl(imageRes.imageUrl);
+      setAiGeneratedProviderName(imageRes.provider);
+      setAiGeneratedPrompt(imageRes.prompt);
+      setFrontPreviewUrl(imageRes.imageUrl);
+
+      const mrp = Number(promptFormData.mrp) || 999;
+      const sku = `${(promptFormData.brand.slice(0, 3) || "PRD").toUpperCase()}-${(catName.slice(0, 3) || "GEN").toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+
+      setFormData({
+        name: promptFormData.name,
+        brand: promptFormData.brand,
+        category_id: promptFormData.category_id || categories[0]?.id || "",
+        sub_category: "",
+        sku,
+        barcode: `890${Math.floor(100000000 + Math.random() * 900000000)}`.slice(0, 13),
+        unit_id: units[0]?.id || "",
+        supplier_id: suppliers[0]?.id || "",
+        mrp,
+        purchase_price: Math.round(mrp * 0.7),
+        selling_price: mrp,
+        wholesale_price: Math.round(mrp * 0.85),
+        current_stock: 10,
+        minimum_stock: 5,
+        reorder_level: 10,
+        variant_name: "Standard",
+        shade_color: "",
+        net_weight: "1 Unit",
+        short_description: `Premium showroom grade ${promptFormData.name} by ${promptFormData.brand || "our brand"}. Crafted with superior standards.`,
+        long_description: `Experience the finest quality with ${promptFormData.name}. Designed for exceptional everyday performance and customer delight.`,
+        ingredients: "",
+        directions: "Use as indicated on packaging.",
+        warnings: "Store in a cool dry place.",
+        country_of_origin: "India",
+        manufacturer: `${promptFormData.brand || "Falcon"} Enterprise Pvt. Ltd.`,
+        is_website_published: true,
+      });
+
+      setAiResult({
+        productName: promptFormData.name,
+        brandName: promptFormData.brand,
+        category: catName,
+        subCategory: "",
+        suggestedCategoryId: promptFormData.category_id || categories[0]?.id || "",
+        mrp,
+        suggestedPurchasePrice: Math.round(mrp * 0.7),
+        suggestedSellingPrice: mrp,
+        suggestedWholesalePrice: Math.round(mrp * 0.85),
+        sku,
+        barcode: "",
+        confidenceScore: 0.99,
+        provider: imageRes.provider,
+        attributes: {
+          brand: promptFormData.brand,
+          countryOfOrigin: "India",
+          packagingType: "Showroom Display",
+        },
+        descriptions: {
+          shortDescription: `Showroom Grade ${promptFormData.name}`,
+          longDescription: `Full commercial listing for ${promptFormData.name}`,
+        },
+        images: {
+          originalUrl: imageRes.imageUrl,
+          enhancedUrl: imageRes.imageUrl,
+          thumbnailUrl: imageRes.imageUrl,
+          galleryUrls: [imageRes.imageUrl],
+        },
+      });
+
+      setActiveAssetTab("ai_showroom");
+      setStage(3);
+    } catch (err: any) {
+      clearInterval(stepInterval);
+      console.error("Direct prompt generation error:", err);
+      alert("AI Generation Error: " + (err.message || "Failed to generate AI product image."));
+      setStage(1);
+    } finally {
+      setIsPromptGenerating(false);
+    }
+  };
+
+  // Interactive ChatGPT / Gemini Magic Image Studio & Prompt Generator
+  const handleGenerateCustomAiImage = async (promptOverride?: string, themeOverride?: string) => {
+    const promptToUse = promptOverride !== undefined ? promptOverride : customAiPrompt;
+    const themeToUse = themeOverride || selectedTheme;
+
+    setIsGeneratingAiImage(true);
+    try {
+      const activeCat = categories.find((c) => c.id === formData.category_id)?.name || formData.name;
+      const res = await masterStudioGenerator.generateAiShowroomImage({
+        productName: formData.name || "Product",
+        brand: formData.brand,
+        categoryName: activeCat,
+        theme: themeToUse,
+        customPrompt: promptToUse,
+        aspectRatio: imageAspectRatio,
+        provider: aiEngineProvider,
+        apiKey: geminiApiKey || undefined,
+      });
+
+      setAiGeneratedImageUrl(res.imageUrl);
+      setAiGeneratedProviderName(res.provider);
+      setAiGeneratedPrompt(res.prompt);
+      setActiveAssetTab("ai_showroom");
+
+      // Attach to AI studio gallery
+      setAiResult((prev) =>
+        prev
+          ? {
+              ...prev,
+              images: {
+                ...prev.images,
+                enhancedUrl: res.imageUrl,
+                galleryUrls: [res.imageUrl, ...prev.images.galleryUrls.filter((u) => u !== res.imageUrl)],
+                studioAssets: prev.images.studioAssets
+                  ? {
+                      ...prev.images.studioAssets,
+                      aiGeneratedHeroUrl: res.imageUrl,
+                      aiProvider: res.provider,
+                      aiPromptUsed: res.prompt,
+                      heroUrl: res.imageUrl,
+                      galleryUrls: [res.imageUrl, ...prev.images.studioAssets.galleryUrls.filter((u) => u !== res.imageUrl)],
+                    }
+                  : undefined,
+              },
+            }
+          : null
+      );
+    } catch (err: any) {
+      console.error("AI Image Generation failed:", err);
+      alert("AI Image Generation Notice: " + (err.message || "Failed to generate image."));
+    } finally {
+      setIsGeneratingAiImage(false);
     }
   };
 
@@ -473,7 +699,14 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
     const supabase = createClient();
 
     try {
-      const heroImg = aiResult?.images?.studioAssets?.heroUrl || aiResult?.images?.enhancedUrl || frontPreviewUrl;
+      // Prioritize AI Generated image > Studio Hero > Enhanced Cutout > Original Preview
+      const heroImg =
+        aiGeneratedImageUrl ||
+        aiResult?.images?.studioAssets?.aiGeneratedHeroUrl ||
+        aiResult?.images?.studioAssets?.heroUrl ||
+        aiResult?.images?.enhancedUrl ||
+        frontPreviewUrl;
+
       const catalogImg = aiResult?.images?.studioAssets?.catalogUrl || heroImg;
       const lifestyleImg = aiResult?.images?.studioAssets?.lifestyleUrl || heroImg;
       const promoImg = aiResult?.images?.studioAssets?.promoBannerUrl || heroImg;
@@ -494,7 +727,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         current_stock: Number(formData.current_stock) || 0,
         minimum_stock: Number(formData.minimum_stock) || 0,
         description: formData.short_description || formData.long_description || null,
-        image_url: heroImg, // Primary website image
+        image_url: heroImg, // Primary website & showroom display image
         is_active: true,
       };
 
@@ -537,9 +770,12 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
   // Render Active Studio Preview Image
   const getActiveDisplayImage = () => {
+    if (activeAssetTab === "ai_showroom") {
+      return aiGeneratedImageUrl || aiResult?.images?.studioAssets?.heroUrl || frontPreviewUrl;
+    }
     if (!aiResult) return frontPreviewUrl;
     const assets = aiResult.images.studioAssets;
-    if (!assets) return aiResult.images.enhancedUrl;
+    if (!assets) return aiGeneratedImageUrl || aiResult.images.enhancedUrl;
 
     switch (activeAssetTab) {
       case "hero":
@@ -557,7 +793,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       case "original":
         return aiResult.images.originalUrl;
       default:
-        return assets.heroUrl;
+        return aiGeneratedImageUrl || assets.heroUrl;
     }
   };
 
@@ -603,7 +839,19 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                 }`}
               >
                 <Camera className="w-3.5 h-3.5" />
-                Vision AI Studio
+                Vision AI Scan
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreationMethod("prompt")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  creationMethod === "prompt"
+                    ? "bg-white text-purple-950 shadow-md"
+                    : "text-white/80 hover:text-white"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                Prompt AI Studio
               </button>
               <button
                 type="button"
@@ -650,8 +898,179 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         {/* ========================================================================= */}
         {stage === 1 && (
           <div className="space-y-6 max-w-4xl mx-auto">
-            {/* Method 2: Barcode Lookup View */}
-            {creationMethod === "barcode" ? (
+            {/* Method 3: Direct Prompt AI Studio (ChatGPT / Gemini Grade) */}
+            {creationMethod === "prompt" ? (
+              <div className="bg-white border border-purple-200/80 rounded-2xl p-6 shadow-xs space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gradient-to-tr from-purple-600 to-pink-600 text-white rounded-2xl flex items-center justify-center shadow-md">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-gray-900">
+                      ChatGPT & Gemini Grade AI Product Generator
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Type product details or visual concepts. AI generates 8K showroom photography and populates the entire catalog spec.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-800 mb-1">
+                      Product Name / Title *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Lumina Hydrating Rose Facial Serum"
+                      value={promptFormData.name}
+                      onChange={(e) =>
+                        setPromptFormData({ ...promptFormData, name: e.target.value })
+                      }
+                      className="w-full text-xs font-bold border border-gray-300 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-800 mb-1">
+                      Brand Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Lumina Skin"
+                      value={promptFormData.brand}
+                      onChange={(e) =>
+                        setPromptFormData({ ...promptFormData, brand: e.target.value })
+                      }
+                      className="w-full text-xs border border-gray-300 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-800 mb-1">Category</label>
+                    <select
+                      value={promptFormData.category_id}
+                      onChange={(e) =>
+                        setPromptFormData({ ...promptFormData, category_id: e.target.value })
+                      }
+                      className="w-full text-xs border border-gray-300 rounded-xl px-3.5 py-2.5 font-medium bg-white focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                    >
+                      <option value="">Select Category</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-800 mb-1">
+                      Packaging MRP (₹)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="999"
+                      value={promptFormData.mrp}
+                      onChange={(e) =>
+                        setPromptFormData({
+                          ...promptFormData,
+                          mrp: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full text-xs font-bold border border-gray-300 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Custom Scene Prompt Input */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
+                      <Wand2 className="w-4 h-4 text-purple-600" />
+                      Scene & Photography Art Direction (ChatGPT / Gemini Prompt)
+                    </label>
+                    <span className="text-[11px] text-gray-400">Optional - AI enhances automatically</span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. Place the luxury glass serum bottle on a wet Carrara marble slab with soft morning sunbeams, fresh pink rose petals and subtle water reflections..."
+                    value={promptFormData.prompt}
+                    onChange={(e) =>
+                      setPromptFormData({ ...promptFormData, prompt: e.target.value })
+                    }
+                    className="w-full text-xs border border-purple-200 rounded-xl p-3 focus:ring-2 focus:ring-purple-600 focus:outline-none bg-purple-50/20"
+                  />
+                </div>
+
+                {/* Preset Style Chips */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-gray-700">
+                    Quick Photography Style Presets:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {aiImagePromptEngine.getQuickPromptPresets().map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setPromptFormData({
+                            ...promptFormData,
+                            theme: preset.id,
+                            prompt: preset.prompt,
+                          });
+                        }}
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-purple-100 hover:text-purple-900 border border-gray-200 transition-colors flex items-center gap-1"
+                      >
+                        <span>{preset.icon}</span>
+                        <span>{preset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Model Engine & Aspect Ratio */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-gray-100 text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-gray-700">AI Model:</span>
+                      <select
+                        value={aiEngineProvider}
+                        onChange={(e) => setAiEngineProvider(e.target.value as any)}
+                        className="text-xs border border-gray-300 rounded-lg px-2.5 py-1 font-semibold bg-white"
+                      >
+                        <option value="auto">Auto (DALL-E 3 / Imagen 3)</option>
+                        <option value="openai">OpenAI DALL-E 3 (HD)</option>
+                        <option value="google">Google Imagen 3 (Showroom)</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-gray-700">Ratio:</span>
+                      <select
+                        value={imageAspectRatio}
+                        onChange={(e) => setImageAspectRatio(e.target.value as any)}
+                        className="text-xs border border-gray-300 rounded-lg px-2 py-1 font-semibold bg-white"
+                      >
+                        <option value="1:1">1:1 (Square)</option>
+                        <option value="9:16">9:16 (Story)</option>
+                        <option value="16:9">16:9 (Banner)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleGenerateFromDirectPrompt}
+                    disabled={isPromptGenerating || !promptFormData.name.trim()}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-purple-500/25 flex items-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {isPromptGenerating ? "Generating 8K Showroom Assets..." : "Generate Product with AI"}
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : creationMethod === "barcode" ? (
               <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-xs space-y-6 text-center">
                 <div className="w-14 h-14 bg-purple-100 text-purple-700 rounded-2xl flex items-center justify-center mx-auto">
                   <Barcode className="w-8 h-8" />
@@ -1106,12 +1525,24 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       Studio Asset Gallery
                     </span>
                     <span className="text-[10px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full font-bold">
-                      5 Assets
+                      {aiGeneratedImageUrl ? "6 Assets" : "5 Assets"}
                     </span>
                   </div>
 
                   {/* Asset Category Selector Tabs */}
-                  <div className="grid grid-cols-3 gap-1 bg-gray-100 p-1 rounded-xl text-[10px] font-bold text-gray-700">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1 bg-gray-100 p-1 rounded-xl text-[10px] font-bold text-gray-700">
+                    <button
+                      type="button"
+                      onClick={() => setActiveAssetTab("ai_showroom")}
+                      className={`py-1 px-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                        activeAssetTab === "ai_showroom"
+                          ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-2xs font-black"
+                          : "hover:bg-gray-200 text-purple-900"
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      AI Showroom
+                    </button>
                     <button
                       type="button"
                       onClick={() => setActiveAssetTab("hero")}
@@ -1121,7 +1552,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                           : "hover:bg-gray-200"
                       }`}
                     >
-                      🌟 Website Hero
+                      🌟 Web Hero
                     </button>
                     <button
                       type="button"
@@ -1186,58 +1617,196 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       src={getActiveDisplayImage()}
                       alt="Active Studio Asset"
                       className={`w-full h-full object-contain p-2 transition-all duration-300 ${
-                        isRegeneratingTheme ? "opacity-30 blur-xs" : "opacity-100"
+                        isRegeneratingTheme || isGeneratingAiImage
+                          ? "opacity-30 blur-xs"
+                          : "opacity-100"
                       }`}
                     />
 
-                    {isRegeneratingTheme && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-2xs">
-                        <div className="flex items-center gap-2 text-xs font-bold text-purple-700 bg-white px-3.5 py-2 rounded-full shadow-lg">
-                          <RefreshCw className="w-4 h-4 animate-spin text-purple-600" />
-                          Rendering Theme Assets...
+                    {/* AI Loading State Overlay */}
+                    {(isRegeneratingTheme || isGeneratingAiImage) && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/75 backdrop-blur-2xs">
+                        <div className="flex flex-col items-center gap-2 text-xs font-bold text-purple-900 bg-white px-5 py-3 rounded-2xl shadow-xl border border-purple-100">
+                          <div className="relative w-8 h-8">
+                            <div className="absolute inset-0 rounded-full bg-purple-500/20 animate-ping" />
+                            <RefreshCw className="w-8 h-8 animate-spin text-purple-600" />
+                          </div>
+                          <span>
+                            {isGeneratingAiImage
+                              ? "Creating 8K Showroom with DALL-E 3 / Imagen 3..."
+                              : "Rendering Theme Assets..."}
+                          </span>
                         </div>
                       </div>
                     )}
+
+                    {/* AI Badge indicator */}
+                    {activeAssetTab === "ai_showroom" && aiGeneratedImageUrl && (
+                      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-purple-950/85 text-white text-[10px] font-black px-2.5 py-1 rounded-lg backdrop-blur-md shadow-md border border-purple-500/40">
+                        <Sparkles className="w-3 h-3 text-pink-400" />
+                        <span>AI Showroom • {aiGeneratedProviderName || "Production AI"}</span>
+                      </div>
+                    )}
+
+                    {/* Download & Fullscreen Controls */}
+                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
+                      <a
+                        href={getActiveDisplayImage()}
+                        download={`product-${formData.name.toLowerCase().replace(/\s+/g, "-") || "photo"}.jpg`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-xs transition-colors"
+                        title="Download Asset"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
 
                     <span className="absolute bottom-2 right-2 text-[9px] font-bold px-2 py-0.5 bg-black/65 text-white rounded-md backdrop-blur-xs">
                       {activeAssetTab === "hero"
                         ? "1080×1080 Showroom Master"
                         : activeAssetTab === "story"
                         ? "1080×1920 Story"
+                        : activeAssetTab === "ai_showroom"
+                        ? "1024×1024 8K Commercial"
                         : "1080×1080 High-Res"}
                     </span>
                   </div>
 
-                  {/* Live Hero Theme Switcher ("Generate Hero Images") */}
-                  <div className="p-2.5 rounded-xl bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200/80 space-y-2">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-purple-950">
-                      <span className="flex items-center gap-1">
-                        <Palette className="w-3.5 h-3.5 text-purple-600" />
-                        Change Showroom Theme:
-                      </span>
+                  {/* Direct Image URL & Manufacturer Catalog Upload Override */}
+                  <div className="flex items-center gap-1.5 p-2 bg-gray-50 rounded-xl border border-gray-200 text-xs">
+                    <input
+                      type="text"
+                      placeholder="Paste official brand/catalog image URL..."
+                      value={customDirectImageUrl}
+                      onChange={(e) => setCustomDirectImageUrl(e.target.value)}
+                      className="flex-1 text-[11px] bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-600 font-mono"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (customDirectImageUrl.trim()) {
+                          setAiGeneratedImageUrl(customDirectImageUrl.trim());
+                          setFrontPreviewUrl(customDirectImageUrl.trim());
+                          setActiveAssetTab("ai_showroom");
+                        }
+                      }}
+                      className="text-[11px] h-7 px-2.5 font-bold"
+                    >
+                      Use URL
+                    </Button>
+                  </div>
+
+                  {/* ============================================================== */}
+                  {/* ✨ MAGIC AI IMAGE STUDIO & PROMPT EDITOR (ChatGPT / Gemini)  */}
+                  {/* ============================================================== */}
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-br from-purple-950 via-indigo-950 to-slate-950 text-white space-y-3 shadow-md border border-purple-500/30">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-purple-400 to-pink-500 flex items-center justify-center shadow-xs">
+                          <Wand2 className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black tracking-tight text-white flex items-center gap-1.5">
+                            Magic AI Image Studio
+                            <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.2 rounded-full bg-pink-500/30 text-pink-300 border border-pink-400/40">
+                              DALL-E 3 / Imagen
+                            </span>
+                          </h4>
+                          <p className="text-[10px] text-purple-200/80">
+                            Ask AI to stage custom scene or edit lighting like in ChatGPT
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-1.5 text-[10px] font-bold">
-                      {[
-                        { id: "luxury_marble", label: "🌟 Luxury Marble" },
-                        { id: "botanical_herbal", label: "🌿 Botanical Teak" },
-                        { id: "minimal_studio", label: "📸 Pure Studio" },
-                        { id: "dark_obsidian", label: "🖤 Dark Obsidian" },
-                        { id: "festival_gold", label: "✨ Festival Gold" },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => handleSwitchTheme(t.id as HeroTheme)}
-                          className={`px-1.5 py-1.5 rounded-lg border text-center transition-all ${
-                            selectedTheme === t.id
-                              ? "bg-purple-600 text-white border-purple-600 shadow-2xs font-extrabold"
-                              : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                          }`}
+                    {/* Custom Prompt Input */}
+                    <div className="space-y-1.5">
+                      <textarea
+                        rows={2}
+                        value={customAiPrompt}
+                        onChange={(e) => setCustomAiPrompt(e.target.value)}
+                        placeholder="e.g. Place on luxury dark granite with fresh water droplets, morning sunlight through blinds, and gold rim light..."
+                        className="w-full text-xs bg-white/10 text-white placeholder-white/50 border border-white/20 rounded-xl p-2.5 focus:ring-2 focus:ring-purple-400 focus:outline-none backdrop-blur-xs font-normal"
+                      />
+                    </div>
+
+                    {/* Quick Style Chips */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-purple-200">
+                        1-Click Showroom Themes:
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {aiImagePromptEngine.getQuickPromptPresets().map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedTheme(preset.id as HeroTheme);
+                              setCustomAiPrompt(preset.prompt);
+                              handleGenerateCustomAiImage(preset.prompt, preset.id);
+                            }}
+                            className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1 ${
+                              selectedTheme === preset.id
+                                ? "bg-white text-purple-950 border-white shadow-xs"
+                                : "bg-white/10 text-purple-100 border-white/15 hover:bg-white/20"
+                            }`}
+                          >
+                            <span>{preset.icon}</span>
+                            <span>{preset.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Model & Generation Action Controls */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-xs">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={aiEngineProvider}
+                          onChange={(e) => setAiEngineProvider(e.target.value as any)}
+                          className="text-[10px] bg-white/10 text-white border border-white/20 rounded-lg px-2 py-1 font-bold focus:outline-none"
                         >
-                          {t.label}
-                        </button>
-                      ))}
+                          <option value="auto" className="bg-slate-900 text-white">
+                            Auto (DALL-E 3 / Imagen 3)
+                          </option>
+                          <option value="openai" className="bg-slate-900 text-white">
+                            OpenAI DALL-E 3 (HD)
+                          </option>
+                          <option value="google" className="bg-slate-900 text-white">
+                            Google Imagen 3
+                          </option>
+                        </select>
+
+                        <select
+                          value={imageAspectRatio}
+                          onChange={(e) => setImageAspectRatio(e.target.value as any)}
+                          className="text-[10px] bg-white/10 text-white border border-white/20 rounded-lg px-2 py-1 font-bold focus:outline-none"
+                        >
+                          <option value="1:1" className="bg-slate-900 text-white">
+                            1:1 Square
+                          </option>
+                          <option value="9:16" className="bg-slate-900 text-white">
+                            9:16 Story
+                          </option>
+                          <option value="16:9" className="bg-slate-900 text-white">
+                            16:9 Banner
+                          </option>
+                        </select>
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleGenerateCustomAiImage()}
+                        disabled={isGeneratingAiImage}
+                        className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-black text-xs px-3.5 py-1.5 rounded-xl shadow-lg shadow-pink-500/30 flex items-center gap-1.5"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        {isGeneratingAiImage ? "Generating..." : "Generate with AI"}
+                      </Button>
                     </div>
                   </div>
 

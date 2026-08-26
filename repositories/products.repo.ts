@@ -82,6 +82,25 @@ export const productsRepository = {
     return data as Category;
   },
 
+  async updateCategory(id: string, category: Partial<Category>) {
+    const { data, error } = await supabase
+      .from("categories")
+      .update(category)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as Category;
+  },
+
+  async deleteCategory(id: string) {
+    // Unassign products from this category first so they don't break
+    await supabase.from("products").update({ category_id: null }).eq("category_id", id);
+    const { error } = await supabase.from("categories").update({ is_active: false }).eq("id", id);
+    if (error) throw error;
+    return true;
+  },
+
   async getUnits(shopId: string) {
     const { data, error } = await supabase
       .from("units")

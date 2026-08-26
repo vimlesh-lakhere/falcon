@@ -82,26 +82,24 @@ export const aiVisionService = {
     // 4. Structured Data Population from Vision AI
     let extractedName = aiData?.product_name || "";
     let extractedBrand = aiData?.brand || "";
-    let extractedVolume = aiData?.net_weight || "50 g";
+    let extractedVolume = aiData?.net_weight || "100 ml / 100 g";
     let extractedBarcode = opticalBarcode || (aiData?.barcode ? String(aiData.barcode).replace(/[^0-9]/g, "") : "");
-    let extractedMrp = Number(aiData?.mrp || 0) || 50;
+    let extractedMrp = Number(aiData?.mrp || 0) || 99;
 
     if (!extractedName) {
       const fileName =
         typeof payload.frontImage !== "string" && payload.frontImage.name
           ? payload.frontImage.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ")
           : "";
-      if (fileName && !fileName.toLowerCase().includes("photo") && !fileName.toLowerCase().includes("image")) {
+      if (fileName && !fileName.toLowerCase().includes("photo") && !fileName.toLowerCase().includes("image") && !fileName.toLowerCase().includes("upload")) {
         extractedName = fileName;
       } else {
-        extractedName = "Isha Herbal Tooth Powder";
-        extractedBrand = "Isha Life";
-        extractedMrp = 50;
+        extractedName = "New Retail Product";
       }
     }
 
     if (!extractedBrand) {
-      extractedBrand = "Isha Life";
+      extractedBrand = "General Brand";
     }
 
     // 5. Category Detection
@@ -169,7 +167,16 @@ export const aiVisionService = {
     const suggestedPurchasePrice = Math.round(extractedMrp * 0.7);
     const suggestedWholesalePrice = Math.round(extractedMrp * 0.85);
 
-    // 10. Generate Master AI Studio Suite (Hero, Catalog, Lifestyle, Promo Banner, Social Stories, Zoom)
+    // 10. Extract Physical Packaging Reconstruction Details
+    const packagingDetails = {
+      packagingShape: aiData?.packaging_shape || "Square rectangular bottle with rounded shoulders",
+      capDetails: aiData?.cap_color_and_type || "Black ribbed screw cap",
+      containerColorMaterial: aiData?.container_color_material || "Transparent container showing the product inside",
+      labelDesignColors: aiData?.label_design_and_colors || "Matte black label with crisp white typography and logo",
+      exactLabelText: aiData?.exact_label_text || extractedName,
+    };
+
+    // 11. Generate Master AI Studio Suite (Hero, Catalog, Lifestyle, Promo Banner, Social Stories, Zoom)
     const studioSuite = await masterStudioGenerator.generateStudioSuite({
       frontImage: payload.frontImage,
       backImage: payload.backImage,
@@ -197,6 +204,7 @@ export const aiVisionService = {
       countryOfOrigin: attributes.countryOfOrigin,
       attributes,
       descriptions,
+      packagingDetails,
       confidenceScore: aiData ? 0.99 : 0.88,
       provider: apiProviderUsed || "Falcon Vision AI",
       images: {

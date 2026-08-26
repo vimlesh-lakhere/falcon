@@ -1,10 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
-import { ShoppingCart, Heart, MessageCircle, Sparkles, Plus, Check } from "lucide-react";
+import { Heart, MessageCircle, Plus, Check } from "lucide-react";
 import { Product } from "@/types/database";
 import { useStoreCart } from "@/store/useStoreCart";
+import { extractProductVariants, CleanVariant } from "@/lib/product-variants";
 
 interface ProductCardProps {
   product: Product;
@@ -17,27 +18,64 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const { addToCart, toggleWishlist, isInWishlist, cart } = useStoreCart();
 
+  const variants = React.useMemo(() => extractProductVariants(product), [product]);
+  const [selectedVariant, setSelectedVariant] = React.useState<CleanVariant | null>(
+    variants.length > 0 ? variants[0] : null
+  );
+
   const isFavorite = isInWishlist(product.id);
-  const cartItem = cart.find((it) => it.product.id === product.id);
+  const cartItem = cart.find(
+    (it) => it.product.id === product.id && it.selectedVariant === selectedVariant?.size
+  );
 
-  const price = Number(product.selling_price) || 0;
-  const mrp = Number((product as any).mrp) || price;
+  const price = selectedVariant ? selectedVariant.price : Number(product.selling_price) || 0;
+  const mrp = selectedVariant ? selectedVariant.mrp : Number((product as any).mrp) || price;
   const discountPercent = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
-  const isOutOfStock = product.current_stock <= 0;
+  const isOutOfStock = (selectedVariant?.stock ?? product.current_stock) <= 0;
 
-  const imageSrc =
-    product.image_url ||
+  const rawImages = (product.image_url || "").split("|||").filter(Boolean);
+  const frontImage =
+    rawImages[0] ||
     "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=500&auto=format&fit=crop&q=60";
+  const backImage = rawImages.length > 1 ? rawImages[1] : null;
+
+  const [activeSide, setActiveSide] = React.useState<"front" | "back">("front");
+  const [isHovered, setIsHovered] = React.useState(false);
+
+  const displayImage =
+    activeSide === "back" && backImage
+      ? backImage
+      : isHovered && backImage
+      ? backImage
+      : frontImage;
 
   const handleWhatsAppOrder = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const text = `Hello! I would like to order this product from your online store:\n\n*${product.name}*\nBrand: ${product.brand || "Standard"}\nPrice: ₹${price}\nLink: ${window.location.origin}/store/product/${product.id}`;
+    const sizeText = selectedVariant ? ` (${selectedVariant.size})` : "";
+    const text = `Hello! I would like to order this product from your online store:\n\n*${product.name}${sizeText}*\nBrand: ${product.brand || "Standard"}\nPrice: ₹${price}\nLink: ${window.location.origin}/store/product/${product.id}`;
     window.open(`https://wa.me/${shopPhone}?text=${encodeURIComponent(text)}`, "_blank");
   };
 
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const customized = {
+      ...product,
+      selling_price: price,
+    };
+    addToCart(customized, 1, selectedVariant?.size);
+  };
+
   return (
-    <div className="group relative flex flex-col justify-between bg-white rounded-2xl border border-gray-100/90 hover:border-purple-200 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-200 overflow-hidden">
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setActiveSide("front");
+      }}
+      className="group relative flex flex-col justify-between bg-white rounded-2xl border border-gray-100/90 hover:border-purple-200 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-200 overflow-hidden"
+    >
       {/* Discount & Wishlist Badges */}
       <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between pointer-events-none">
         {discountPercent > 0 ? (
@@ -50,32 +88,56 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleWishlist(product.id);
-          }}
-          className="pointer-events-auto w-7 h-7 rounded-full bg-white/90 backdrop-blur-xs flex items-center justify-center text-gray-400 hover:text-pink-600 shadow-xs transition-colors"
-          title="Save to Wishlist"
-        >
-          <Heart className={`w-3.5 h-3.5 ${isFavorite ? "fill-pink-500 text-pink-500" : ""}`} />
-        </button>
+        <div className="flex items-center gap-1">
+          {backImage && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setActiveSide((prev) => (prev === "front" ? "back" : "front"));
+              }}
+              className="pointer-events-auto text-[9px] font-bold bg-white/90 backdrop-blur-xs text-purple-900 px-1.5 py-0.5 rounded-md shadow-xs border border-purple-200 hover:bg-purple-50"
+              title="Click to toggle Front / Back Packaging"
+            >
+              {activeSide === "front" ? "Front" : "Back"}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleWishlist(product.id);
+            }}
+            className="pointer-events-auto w-7 h-7 rounded-full bg-white/90 backdrop-blur-xs flex items-center justify-center text-gray-400 hover:text-pink-600 shadow-xs transition-colors"
+            title="Save to Wishlist"
+          >
+            <Heart className={`w-3.5 h-3.5 ${isFavorite ? "fill-pink-500 text-pink-500" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* Product Image Area */}
       <Link href={`/store/product/${product.id}`} className="block relative bg-gray-50 aspect-square overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={imageSrc}
+          src={displayImage}
           alt={product.name}
-          className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+          className="w-full h-full object-contain p-3 group-hover:scale-105 transition-all duration-300"
           loading="lazy"
         />
         {isOutOfStock && (
           <div className="absolute inset-0 bg-black/40 backdrop-blur-2xs flex items-center justify-center text-white text-xs font-bold uppercase tracking-wider">
             Out of Stock
+          </div>
+        )}
+
+        {/* Small indicator when back view is active */}
+        {backImage && (displayImage === backImage) && (
+          <div className="absolute bottom-2 left-2 bg-purple-950/80 backdrop-blur-xs text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+            🔍 Back / MRP View
           </div>
         )}
       </Link>
@@ -97,12 +159,51 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </Link>
         </div>
 
+        {/* Mini Variant Chips (if multiple pack sizes exist) */}
+        {variants.length > 1 && (
+          <div className="flex items-center gap-1 overflow-x-auto py-0.5 scrollbar-none">
+            {variants.slice(0, 4).map((v) => {
+              const isSelected = selectedVariant?.id === v.id;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedVariant(v);
+                  }}
+                  className={`px-1.5 py-0.5 text-[10px] font-black rounded-md border transition-all shrink-0 ${
+                    isSelected
+                      ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
+                      : "bg-gray-50 text-gray-700 border-gray-200 hover:border-purple-300"
+                  }`}
+                >
+                  {v.size}
+                </button>
+              );
+            })}
+            {variants.length > 4 && (
+              <span className="text-[9px] text-purple-700 font-bold px-1">
+                +{variants.length - 4}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Price & Cart Actions */}
         <div className="space-y-2 pt-1 border-t border-gray-50">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-sm sm:text-base font-black text-gray-900">₹{price}</span>
-            {mrp > price && (
-              <span className="text-[11px] text-gray-400 line-through font-medium">₹{mrp}</span>
+          <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-sm sm:text-base font-black text-gray-900">₹{price}</span>
+              {mrp > price && (
+                <span className="text-[11px] text-gray-400 line-through font-medium">₹{mrp}</span>
+              )}
+            </div>
+            {selectedVariant && (
+              <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded-md">
+                {selectedVariant.size}
+              </span>
             )}
           </div>
 
@@ -111,10 +212,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <button
               type="button"
               disabled={isOutOfStock}
-              onClick={(e) => {
-                e.preventDefault();
-                addToCart(product, 1);
-              }}
+              onClick={handleAddToCart}
               className={`w-full flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 ${
                 cartItem
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100"

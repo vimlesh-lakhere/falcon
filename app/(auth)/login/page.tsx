@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -22,11 +22,15 @@ import { loginSchema, LoginInput } from "@/lib/validation/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useAuthStore } from "@/store/useAuthStore";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextDestination = searchParams.get("next") || "/";
+  const urlError = searchParams.get("error");
+
   const fetchSession = useAuthStore((state) => state.fetchSession);
   const [showPassword, setShowPassword] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(urlError ? decodeURIComponent(urlError) : null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -63,9 +67,8 @@ export default function LoginPage() {
         setSuccessMessage("Authentication successful! Loading your store workspace...");
         await fetchSession();
         setTimeout(() => {
-          router.push("/");
-          router.refresh();
-        }, 800);
+          window.location.href = nextDestination;
+        }, 500);
       }
     } catch (err: any) {
       setErrorMessage(err.message || "An unexpected error occurred during login.");
@@ -77,15 +80,21 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     try {
       setIsLoading(true);
+      setErrorMessage(null);
+      const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextDestination)}`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: callbackUrl,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
       if (error) setErrorMessage(error.message);
     } catch (err: any) {
-      setErrorMessage(err.message);
+      setErrorMessage(err.message || "Failed to connect to Google.");
     } finally {
       setIsLoading(false);
     }
@@ -241,5 +250,13 @@ export default function LoginPage() {
         </div>
       </form>
     </AuthLayout>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-gray-400">Loading workspace login...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

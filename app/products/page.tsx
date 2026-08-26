@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Package,
   Plus,
@@ -11,6 +11,16 @@ import {
   Barcode,
   Layers,
   Sparkles,
+  Printer,
+  Download,
+  Upload,
+  FileSpreadsheet,
+  Percent,
+  TrendingUp,
+  DollarSign,
+  PlusCircle,
+  Tag,
+  Check,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -24,15 +34,9 @@ import { Product, Category, Supplier, Unit } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { AddProductSplitButton } from "@/components/products/AddProductSplitButton";
-import dynamic from "next/dynamic";
-
-const FalconAiProductModal = dynamic(
-  () =>
-    import("@/components/products/FalconAiProductModal").then(
-      (mod) => mod.FalconAiProductModal
-    ),
-  { ssr: false }
-);
+import { UnifiedAddProductModal } from "@/components/products/UnifiedAddProductModal";
+import { ExcelBulkImportModal } from "@/components/products/ExcelBulkImportModal";
+import { ManageCategoriesModal } from "@/components/products/ManageCategoriesModal";
 
 const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -48,30 +52,22 @@ export default function ProductsPage() {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("all");
 
-  // Add / Edit Modal state (Manual)
+  // Unified Add / Edit Product Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+
+  // Excel Bulk Import Modal state
+  const [isExcelImportOpen, setIsExcelImportOpen] = useState(false);
+
+  // Category Management Modal state
+  const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
+
+  // Barcode Label Print Modal state
+  const [printProduct, setPrintProduct] = useState<Product | null>(null);
+  const [printQuantity, setPrintQuantity] = useState(1);
 
   // Falcon AI Modal state
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-
-  const [formData, setFormData] = useState({
-    name: "",
-    sku: "",
-    barcode: "",
-    brand: "",
-    category_id: "",
-    supplier_id: "",
-    unit_id: "",
-    purchase_price: 0,
-    selling_price: 0,
-    wholesale_price: 0,
-    minimum_selling_price: 0,
-    current_stock: 0,
-    minimum_stock: 5,
-    description: "",
-  });
 
   const loadData = async () => {
     try {
@@ -97,84 +93,54 @@ export default function ProductsPage() {
     loadData();
   }, [activeShopId]);
 
+  const handleExportCsv = () => {
+    if (products.length === 0) return alert("No products to export!");
+    const headers = [
+      "ID",
+      "Product Name",
+      "Brand",
+      "SKU",
+      "Barcode",
+      "Category",
+      "Purchase Price",
+      "Selling Price",
+      "Wholesale Price",
+      "Current Stock",
+      "Min Stock",
+    ];
+    const rows = products.map((p) => [
+      p.id,
+      `"${p.name.replace(/"/g, '""')}"`,
+      `"${(p.brand || "").replace(/"/g, '""')}"`,
+      p.sku || "",
+      p.barcode || "",
+      `"${(p.category?.name || "").replace(/"/g, '""')}"`,
+      p.purchase_price,
+      p.selling_price,
+      p.wholesale_price || "",
+      p.current_stock,
+      p.minimum_stock,
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Falcon_Inventory_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const openAddModal = () => {
     setEditingProduct(null);
-    setFormData({
-      name: "",
-      sku: `SKU-${Date.now().toString().slice(-4)}`,
-      barcode: "",
-      brand: "",
-      category_id: categories[0]?.id || "",
-      supplier_id: suppliers[0]?.id || "",
-      unit_id: units[0]?.id || "",
-      purchase_price: 0,
-      selling_price: 0,
-      wholesale_price: 0,
-      minimum_selling_price: 0,
-      current_stock: 0,
-      minimum_stock: 5,
-      description: "",
-    });
     setIsModalOpen(true);
   };
 
   const openEditModal = (p: Product) => {
     setEditingProduct(p);
-    setFormData({
-      name: p.name,
-      sku: p.sku || "",
-      barcode: p.barcode || "",
-      brand: p.brand || "",
-      category_id: p.category_id || "",
-      supplier_id: p.supplier_id || "",
-      unit_id: p.unit_id || "",
-      purchase_price: Number(p.purchase_price || 0),
-      selling_price: Number(p.selling_price || 0),
-      wholesale_price: Number(p.wholesale_price || 0),
-      minimum_selling_price: Number(p.minimum_selling_price || 0),
-      current_stock: Number(p.current_stock || 0),
-      minimum_stock: Number(p.minimum_stock || 0),
-      description: p.description || "",
-    });
     setIsModalOpen(true);
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      setIsSaving(true);
-      const payload: Partial<Product> = {
-        shop_id: activeShopId,
-        name: formData.name,
-        sku: formData.sku || null,
-        barcode: formData.barcode || null,
-        brand: formData.brand || null,
-        category_id: formData.category_id || null,
-        supplier_id: formData.supplier_id || null,
-        unit_id: formData.unit_id || null,
-        purchase_price: formData.purchase_price,
-        selling_price: formData.selling_price,
-        wholesale_price: formData.wholesale_price || null,
-        minimum_selling_price: formData.minimum_selling_price || null,
-        minimum_stock: formData.minimum_stock,
-        description: formData.description || null,
-      };
-
-      if (editingProduct) {
-        await productsRepository.update(editingProduct.id, payload);
-      } else {
-        payload.current_stock = formData.current_stock;
-        await productsRepository.create(payload);
-      }
-
-      setIsModalOpen(false);
-      loadData();
-    } catch (err: any) {
-      console.error(err);
-      alert("Failed to save product: " + err.message);
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const handleDelete = async (id: string) => {
@@ -183,8 +149,7 @@ export default function ProductsPage() {
       await productsRepository.delete(id);
       loadData();
     } catch (err: any) {
-      console.error(err);
-      alert("Failed to deactivate: " + err.message);
+      alert("Failed to delete product: " + err.message);
     }
   };
 
@@ -232,11 +197,91 @@ export default function ProductsPage() {
             </select>
           </div>
 
-          {/* Upgraded Split Action: Falcon AI (Primary) vs Manual Entry */}
-          <AddProductSplitButton
-            onOpenAiCreation={() => setIsAiModalOpen(true)}
-            onOpenManualCreation={openAddModal}
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsCategoriesModalOpen(true)}
+              className="gap-1.5 text-xs text-purple-700 bg-purple-50/50 hover:bg-purple-100/70 border-purple-200 font-bold"
+              title="Manage, Edit & Delete Categories"
+            >
+              <Layers className="w-3.5 h-3.5 text-purple-600" />
+              <span>Manage Categories ({categories.length})</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsExcelImportOpen(true)}
+              className="gap-1.5 text-xs text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100/70 border-indigo-200 font-bold"
+              title="Bulk Import Products from Excel / CSV"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Import Excel (.xlsx)</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              className="gap-1.5 text-xs text-gray-700 hover:bg-gray-50 border-gray-200"
+              title="Export Inventory to CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </Button>
+
+            {/* Primary Add Product Action */}
+            <AddProductSplitButton
+              onOpenAiCreation={openAddModal}
+              onOpenManualCreation={openAddModal}
+            />
+          </div>
+        </div>
+
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <button
+            onClick={() => setSelectedCat("all")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
+              selectedCat === "all"
+                ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
+                : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+            }`}
+          >
+            All Products ({products.length})
+          </button>
+          {categories.map((c) => {
+            const count = products.filter((p) => p.category_id === c.id).length;
+            const isSelected = selectedCat === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCat(c.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center gap-1.5 ${
+                  isSelected
+                    ? "bg-purple-600 text-white shadow-md shadow-purple-600/20"
+                    : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                }`}
+              >
+                <span>{c.name}</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    isSelected ? "bg-purple-700 text-purple-100" : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setIsCategoriesModalOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-purple-600 hover:bg-purple-50 border border-dashed border-purple-300 shrink-0 transition-all flex items-center gap-1"
+          >
+            <Plus className="w-3 h-3" />
+            <span>Add / Edit Categories</span>
+          </button>
         </div>
 
         {/* Product Table */}
@@ -251,7 +296,7 @@ export default function ProductsPage() {
                     <th className="px-6 py-3.5">SKU / Barcode</th>
                     <th className="px-6 py-3.5 text-right">Cost Price</th>
                     <th className="px-6 py-3.5 text-right">Retail Price</th>
-                    <th className="px-6 py-3.5 text-right">Wholesale</th>
+                    <th className="px-6 py-3.5 text-right">Margin</th>
                     <th className="px-6 py-3.5 text-center">Stock</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
                   </tr>
@@ -272,6 +317,10 @@ export default function ProductsPage() {
                   ) : (
                     filteredProducts.map((p) => {
                       const isLowStock = Number(p.current_stock) <= Number(p.minimum_stock);
+                      const cost = Number(p.purchase_price || 0);
+                      const sell = Number(p.selling_price || 0);
+                      const marginPercent = sell > 0 ? Math.round(((sell - cost) / sell) * 100) : 0;
+
                       return (
                         <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="px-6 py-4">
@@ -295,8 +344,18 @@ export default function ProductsPage() {
                           <td className="px-6 py-4 text-xs font-bold text-brand-700 text-right tabular-nums">
                             {formatCurrency(p.selling_price)}
                           </td>
-                          <td className="px-6 py-4 text-xs font-semibold text-gray-700 text-right tabular-nums">
-                            {p.wholesale_price ? formatCurrency(p.wholesale_price) : "—"}
+                          <td className="px-6 py-4 text-right">
+                            <span
+                              className={`inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                                marginPercent >= 30
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : marginPercent >= 15
+                                  ? "bg-blue-50 text-blue-700"
+                                  : "bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              {marginPercent}% ({formatCurrency(sell - cost)})
+                            </span>
                           </td>
                           <td className="px-6 py-4 text-center">
                             <Badge variant={isLowStock ? "warning" : "success"}>
@@ -305,6 +364,20 @@ export default function ProductsPage() {
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => setPrintProduct(p)}
+                                className="p-1.5 rounded-md text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                title="Print Barcode Label Sticker"
+                              >
+                                <Printer className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setIsAiModalOpen(true)}
+                                className="p-1.5 rounded-md text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors"
+                                title="AI Showroom & Image Studio"
+                              >
+                                <Sparkles className="w-4 h-4" />
+                              </button>
                               <button
                                 onClick={() => openEditModal(p)}
                                 className="p-1.5 rounded-md text-gray-400 hover:text-brand-600 hover:bg-gray-100 transition-colors"
@@ -331,163 +404,112 @@ export default function ProductsPage() {
           </CardContent>
         </Card>
 
-        {/* Product Add / Edit Modal */}
-        <Modal
+        {/* Unified Fast Product Creation & Edit Modal */}
+        <UnifiedAddProductModal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          title={editingProduct ? "Edit Product Details" : "Add New Product"}
-          maxWidth="2xl"
-        >
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Product Name *"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Argan Oil Nourishing Shampoo"
-              />
-              <Input
-                label="Brand"
-                value={formData.brand}
-                onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                placeholder="e.g. Lumina Skin"
-              />
-              <Input
-                label="SKU"
-                value={formData.sku}
-                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                placeholder="e.g. SKN-001"
-              />
-              <Input
-                label="Barcode (EAN / UPC)"
-                value={formData.barcode}
-                onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                placeholder="Scan or enter barcode"
-              />
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Category</label>
-                <select
-                  value={formData.category_id}
-                  onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                  className="w-full text-xs h-9 bg-white border border-gray-300 rounded-md px-3 font-medium text-gray-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"
-                >
-                  <option value="">Select Category</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Supplier</label>
-                <select
-                  value={formData.supplier_id}
-                  onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value })}
-                  className="w-full text-xs h-9 bg-white border border-gray-300 rounded-md px-3 font-medium text-gray-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"
-                >
-                  <option value="">Select Supplier</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <Input
-                type="number"
-                label="Purchase / Cost Price (₹)"
-                required
-                value={formData.purchase_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })
-                }
-              />
-
-              <Input
-                type="number"
-                label="Selling / Retail Price (₹) *"
-                required
-                value={formData.selling_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, selling_price: parseFloat(e.target.value) || 0 })
-                }
-              />
-
-              <Input
-                type="number"
-                label="Wholesale Price (₹)"
-                value={formData.wholesale_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, wholesale_price: parseFloat(e.target.value) || 0 })
-                }
-              />
-
-              <Input
-                type="number"
-                label="Minimum Reorder Stock Alert"
-                value={formData.minimum_stock}
-                onChange={(e) =>
-                  setFormData({ ...formData, minimum_stock: parseFloat(e.target.value) || 0 })
-                }
-              />
-            </div>
-
-            {!editingProduct && (
-              <Input
-                type="number"
-                label="Initial Stock Quantity"
-                value={formData.current_stock}
-                onChange={(e) =>
-                  setFormData({ ...formData, current_stock: parseFloat(e.target.value) || 0 })
-                }
-              />
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-200">
-              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" isLoading={isSaving}>
-                {editingProduct ? "Save Changes" : "Create Product"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-
-        {/* Falcon AI Smart Product Creation Modal */}
-        <FalconAiProductModal
-          isOpen={isAiModalOpen}
-          onClose={() => setIsAiModalOpen(false)}
-          onProductCreated={loadData}
+          onClose={() => {
+            setIsModalOpen(false);
+            setEditingProduct(null);
+          }}
+          onSuccess={() => {
+            loadData();
+          }}
+          editingProduct={editingProduct}
           shopId={activeShopId}
           categories={categories}
           suppliers={suppliers}
           units={units}
-          existingProducts={products}
-          onOpenManualModal={() => {
-            setEditingProduct(null);
-            setFormData({
-              name: "",
-              sku: "",
-              barcode: "",
-              brand: "",
-              category_id: "",
-              supplier_id: "",
-              unit_id: "",
-              purchase_price: 0,
-              selling_price: 0,
-              wholesale_price: 0,
-              minimum_selling_price: 0,
-              current_stock: 0,
-              minimum_stock: 5,
-              description: "",
-            });
-            setIsModalOpen(true);
+          onCategoryCreated={(newCat) => setCategories((prev) => [...prev, newCat])}
+          onSupplierCreated={(newSupp) => setSuppliers((prev) => [...prev, newSupp])}
+        />
+
+        {/* Barcode Label Print Preview Modal */}
+        {printProduct && (
+          <Modal
+            isOpen={!!printProduct}
+            onClose={() => setPrintProduct(null)}
+            title="Print Barcode Sticker Label"
+            maxWidth="md"
+          >
+            <div className="space-y-4">
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center">
+                {/* 50x25mm Label Simulator */}
+                <div className="bg-white border-2 border-dashed border-gray-400 p-4 rounded-lg shadow-sm text-center w-64">
+                  <div className="text-[10px] font-black uppercase text-gray-500 tracking-wider">
+                    {currentStore?.name || "FALCON RETAIL"}
+                  </div>
+                  <div className="font-bold text-xs text-gray-900 mt-1 truncate">
+                    {printProduct.name}
+                  </div>
+                  <div className="font-mono text-sm tracking-widest my-2 font-black py-1 bg-gray-100 rounded">
+                    ||| | || |||| | |||
+                  </div>
+                  <div className="font-mono text-[10px] text-gray-500">
+                    {printProduct.barcode || printProduct.sku || "890123456789"}
+                  </div>
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                    <span className="text-[10px] text-gray-400 line-through">
+                      MRP: {formatCurrency(Math.round(printProduct.selling_price * 1.15))}
+                    </span>
+                    <span className="text-xs font-black text-brand-700">
+                      Our Price: {formatCurrency(printProduct.selling_price)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-gray-700">Print Quantity:</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={printQuantity}
+                    onChange={(e) => setPrintQuantity(parseInt(e.target.value) || 1)}
+                    className="w-16 h-8 text-xs border border-gray-300 rounded px-2 text-center"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setPrintProduct(null)}>
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      window.print();
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Printer className="w-4 h-4" />
+                    Print {printQuantity} Labels
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Excel / CSV Bulk Product & Category Importer */}
+        <ExcelBulkImportModal
+          isOpen={isExcelImportOpen}
+          onClose={() => setIsExcelImportOpen(false)}
+          shopId={activeShopId}
+          existingCategories={categories}
+          onImportComplete={() => {
+            setIsExcelImportOpen(false);
+            loadData();
+          }}
+        />
+
+        {/* Manage Categories Modal */}
+        <ManageCategoriesModal
+          isOpen={isCategoriesModalOpen}
+          onClose={() => setIsCategoriesModalOpen(false)}
+          shopId={activeShopId}
+          categories={categories}
+          products={products}
+          onCategoriesUpdated={() => {
+            loadData();
           }}
         />
       </div>

@@ -1,8 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireStaff } from "@/lib/auth/server";
 
 const SHOP_OWNER_WHATSAPP = process.env.NEXT_PUBLIC_SHOP_WHATSAPP || "919340362381";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await req.json();
     const { order, customer, items, totalAmount, paymentMethod, address } = body;

@@ -71,10 +71,10 @@ export const aiImageEnhancer = {
       }
     }
 
-    // 3. Load cutout image
+    // 3. Load image and isolate center product bottle
     const rawImg = await this.loadImage(processedImgSrc);
 
-    // 4. Auto-Crop to Content Bounding Box (remove all dead space around product)
+    // 4. Auto-Crop to Content Bounding Box (or smart center isolate if still opaque)
     const croppedProductCanvas = this.cropToBoundingBox(rawImg);
 
     // 5. Apply Surface Clean-up, Color Restoration, & Blemish Polish on Product
@@ -98,28 +98,13 @@ export const aiImageEnhancer = {
       };
     }
 
-    // 6.1 Studio Pure White Backdrop with subtle softbox vignette
+    // 6.1 Studio Pure White Backdrop (Amazon #FFFFFF Standard)
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, targetSize, targetSize);
 
-    // Soft overhead studio lighting glow
-    const studioLightGrad = ctx.createRadialGradient(
-      targetSize / 2,
-      targetSize * 0.38,
-      targetSize * 0.05,
-      targetSize / 2,
-      targetSize * 0.45,
-      targetSize * 0.72
-    );
-    studioLightGrad.addColorStop(0, "#FFFFFF");
-    studioLightGrad.addColorStop(0.65, "#FAFAFC");
-    studioLightGrad.addColorStop(1, "#F1F5F9");
-    ctx.fillStyle = studioLightGrad;
-    ctx.fillRect(0, 0, targetSize, targetSize);
-
     // 6.2 Calculate Centered Dimensions (78% of canvas height for hero presence)
-    const maxProductH = targetSize * 0.76;
-    const maxProductW = targetSize * 0.76;
+    const maxProductH = targetSize * 0.78;
+    const maxProductW = targetSize * 0.78;
 
     const cropAspect = polishedProductCanvas.width / polishedProductCanvas.height;
     let drawW = maxProductW;
@@ -133,62 +118,42 @@ export const aiImageEnhancer = {
 
     const drawX = (targetSize - drawW) / 2;
     // Align base slightly below center for realistic gravity feel
-    const drawY = targetSize * 0.52 - drawH / 2;
+    const drawY = targetSize * 0.50 - drawH / 2;
 
-    // 6.3 Professional Studio Reflections & Multi-Tier Ground Shadows
+    // 6.3 Clean Realistic Ground Contact Shadows (No ugly hand reflections)
     ctx.save();
-
-    // Subtle Acrylic Floor Reflection (Luxury cosmetic / perfume photography look)
-    if (shouldAddReflection) {
-      ctx.save();
-      ctx.translate(0, (drawY + drawH) * 2);
-      ctx.scale(1, -1);
-      ctx.globalAlpha = 0.12;
-      ctx.filter = "blur(2px)";
-      ctx.drawImage(polishedProductCanvas, drawX, drawY + drawH, drawW, drawH * 0.35, drawX, drawY + drawH, drawW, drawH * 0.35);
-      
-      // Reflection fade gradient
-      const fadeGrad = ctx.createLinearGradient(0, drawY + drawH, 0, drawY + drawH + drawH * 0.35);
-      fadeGrad.addColorStop(0, "rgba(255,255,255,0)");
-      fadeGrad.addColorStop(1, "rgba(255,255,255,1)");
-      ctx.fillStyle = fadeGrad;
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillRect(drawX, drawY + drawH, drawW, drawH * 0.4);
-      ctx.restore();
-    }
-
-    // Ground Ambient Shadow
+    // Ambient Ground Soft Glow
     ctx.beginPath();
     ctx.ellipse(
       targetSize / 2,
-      drawY + drawH + 6,
-      drawW * 0.46,
-      16,
+      drawY + drawH + 4,
+      drawW * 0.44,
+      12,
       0,
       0,
       2 * Math.PI
     );
-    ctx.fillStyle = "rgba(15, 23, 42, 0.08)";
-    ctx.filter = "blur(14px)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+    ctx.filter = "blur(12px)";
     ctx.fill();
 
-    // Tight Crisp Base Contact Shadow
+    // Crisp Contact Shadow
     ctx.beginPath();
     ctx.ellipse(
       targetSize / 2,
       drawY + drawH - 1,
-      drawW * 0.36,
-      7,
+      drawW * 0.34,
+      5,
       0,
       0,
       2 * Math.PI
     );
-    ctx.fillStyle = "rgba(15, 23, 42, 0.22)";
-    ctx.filter = "blur(4px)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+    ctx.filter = "blur(3px)";
     ctx.fill();
     ctx.restore();
 
-    // 6.4 Draw Polished Product with DSLR Clarity Filters
+    // 6.4 Draw Isolated Real Product
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";

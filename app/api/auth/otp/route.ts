@@ -1,67 +1,123 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://knbabffighhuguxsdtzj.supabase.co";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuYmFiZmZpZ2hodWd1eHNkdHpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3NDI5NzYsImV4cCI6MjEwMjMxODk3Nn0.AEXQwmXuHcv2l4jQklvNe-U-jauTLD4AsTvVjWXlVPA";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
-// In-memory OTP storage for instant fast verification (Phone -> { otp, expiresAt, name })
-const otpStore = new Map<string, { otp: string; expiresAt: number; name?: string }>();
+// Fast2SMS / 2Factor / Twilio Gateway Keys (if configured in environment)
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY;
+const TWO_FACTOR_API_KEY = process.env.TWO_FACTOR_API_KEY;
+
+// Real In-memory & Supabase OTP registry (Identifier -> { otp, expiresAt, attempts, name })
+const otpStore = new Map<string, { otp: string; expiresAt: number; attempts: number; name?: string }>();
+const MAX_OTP_ATTEMPTS = 5;
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { action, phone, email, otp, name } = body;
+    const { action, phone, email, otp, name, channel = "sms" } = body;
 
-    const identifier = phone ? phone.replace(/[^0-9]/g, "") : (email || "").toLowerCase().trim();
+    const cleanPhone = phone ? phone.replace(/[^0-9]/g, "").slice(-10) : "";
+    const cleanEmail = email ? (email || "").toLowerCase().trim() : "";
+    const identifier = cleanPhone || cleanEmail;
 
     if (!identifier) {
       return NextResponse.json(
-        { success: false, error: "Valid mobile number or email is required." },
+        { success: false, error: "Valid 10-digit mobile number or email is required." },
         { status: 400 }
       );
     }
 
-    // ACTION 1: SEND OTP
+    // ACTION 1: SEND REAL OTP
     if (action === "send_otp") {
-      // Generate 6-digit secure OTP code
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
+      // Generate cryptographically secure 6-digit real OTP
+      const generatedOtp = crypto.randomInt(100000, 1000000).toString();
+      const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
 
       otpStore.set(identifier, {
         otp: generatedOtp,
         expiresAt,
+        attempts: 0,
         name: name?.trim(),
       });
 
-      console.log(`[OTP DISPATCH] Identifier: ${identifier} | Generated OTP: ${generatedOtp}`);
 
-      // If Supabase phone auth is active, we can also trigger Supabase OTP
+      console.log(`[REAL OTP DISPATCH] ${identifier} -> Code: ${generatedOtp} (Channel: ${channel})`);
+
+      let deliveryStatus = "queued";
+      let whatsappLink: string | undefined = undefined;
+
+      // 1. WhatsApp OTP Delivery URL
+      if (cleanPhone) {
+        const waMessage = `*AGS Store & Cosmetics Verification Code*\n\nYour 6-digit verification code is: *${generatedOtp}*\n\nValid for 10 minutes. Do not share this OTP with anyone.`;
+        whatsappLink = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(waMessage)}`;
+      }
+
+      // 2. Dispatch via Fast2SMS Gateway (if key available)
+      if (cleanPhone && FAST2SMS_API_KEY) {
+        try {
+          const fast2smsRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+            method: "POST",
+            headers: {
+              authorization: FAST2SMS_API_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              route: "otp",
+              variables_values: generatedOtp,
+              numbers: cleanPhone,
+            }),
+          });
+          const fast2smsData = await fast2smsRes.json().catch(() => ({}));
+          if (fast2smsData.return) {
+            deliveryStatus = "sms_sent";
+          }
+        } catch (smsErr) {
+          console.warn("Fast2SMS gateway error:", smsErr);
+        }
+      }
+
+      // 3. Dispatch via 2Factor.in Gateway (if key available)
+      if (cleanPhone && TWO_FACTOR_API_KEY && deliveryStatus !== "sms_sent") {
+        try {
+          await fetch(`https://2factor.in/API/V1/${TWO_FACTOR_API_KEY}/SMS/${cleanPhone}/${generatedOtp}/AGSSTORE`);
+          deliveryStatus = "sms_sent";
+        } catch (tfErr) {
+          console.warn("2Factor gateway error:", tfErr);
+        }
+      }
+
+      // 4. Dispatch via Supabase Native Phone / Email OTP
       const supabase = createClient(supabaseUrl, supabaseAnonKey);
-      if (phone) {
+      if (cleanPhone) {
         try {
           await supabase.auth.signInWithOtp({
-            phone: `+91${identifier}`,
+            phone: `+91${cleanPhone}`,
           }).catch(() => {});
-        } catch {
-          // Fallback to local OTP
-        }
+        } catch {}
+      } else if (cleanEmail) {
+        try {
+          await supabase.auth.signInWithOtp({
+            email: cleanEmail,
+          }).catch(() => {});
+        } catch {}
       }
 
       return NextResponse.json({
         success: true,
-        message: `6-Digit OTP sent successfully to ${phone ? `+91 ${identifier}` : identifier}.`,
-        // Return preview OTP in non-production for instant verification reliability
-        previewOtp: process.env.NODE_ENV !== "production" ? generatedOtp : undefined,
-        expiresInSeconds: 300,
+        message: `Real 6-Digit OTP sent to ${cleanPhone ? `+91 ${cleanPhone}` : cleanEmail}.`,
+        whatsappLink,
+        expiresInSeconds: 600,
       });
     }
 
-    // ACTION 2: VERIFY OTP
+    // ACTION 2: VERIFY REAL OTP
     if (action === "verify_otp") {
       if (!otp) {
         return NextResponse.json(
-          { success: false, error: "Please enter the 6-digit OTP." },
+          { success: false, error: "Please enter the 6-digit OTP code." },
           { status: 400 }
         );
       }
@@ -69,40 +125,87 @@ export async function POST(req: NextRequest) {
       const cleanOtp = otp.toString().trim();
       const storedData = otpStore.get(identifier);
 
+      if (storedData) {
+        storedData.attempts = (storedData.attempts || 0) + 1;
+        if (storedData.attempts > MAX_OTP_ATTEMPTS) {
+          otpStore.delete(identifier);
+          return NextResponse.json(
+            { success: false, error: "Too many failed attempts. Please request a new OTP." },
+            { status: 429 }
+          );
+        }
+      }
+
       let isOtpValid = false;
 
-      // Check in-memory store
-      if (storedData && storedData.otp === cleanOtp && Date.now() <= storedData.expiresAt) {
-        isOtpValid = true;
-      } else if (cleanOtp === "123456" || (storedData && cleanOtp === storedData.otp)) {
-        // Universal demo code fallback for test numbers
-        isOtpValid = true;
+      // 1. Verify against server OTP storage
+      if (storedData && storedData.otp === cleanOtp) {
+        if (Date.now() <= storedData.expiresAt) {
+          isOtpValid = true;
+        } else {
+          otpStore.delete(identifier);
+          return NextResponse.json(
+            { success: false, error: "OTP has expired. Please request a new OTP." },
+            { status: 400 }
+          );
+        }
+      }
+
+      // 2. Fallback check with Supabase verifyOtp
+      if (!isOtpValid && supabaseUrl && supabaseAnonKey) {
+        try {
+          const supabase = createClient(supabaseUrl, supabaseAnonKey);
+          if (cleanPhone) {
+            const { data: supaVerify, error: supaErr } = await supabase.auth.verifyOtp({
+              phone: `+91${cleanPhone}`,
+              token: cleanOtp,
+              type: "sms",
+            });
+            if (!supaErr && supaVerify?.session) {
+              isOtpValid = true;
+            }
+          } else if (cleanEmail) {
+            const { data: supaVerify, error: supaErr } = await supabase.auth.verifyOtp({
+              email: cleanEmail,
+              token: cleanOtp,
+              type: "email",
+            });
+            if (!supaErr && supaVerify?.session) {
+              isOtpValid = true;
+            }
+          }
+        } catch {}
       }
 
       if (!isOtpValid) {
+        const attemptsLeft = storedData ? Math.max(0, MAX_OTP_ATTEMPTS - storedData.attempts) : 0;
         return NextResponse.json(
-          { success: false, error: "Invalid or expired OTP. Please try again." },
+          { 
+            success: false, 
+            error: attemptsLeft > 0 
+              ? `Invalid OTP code. ${attemptsLeft} attempts remaining.` 
+              : "Invalid OTP code. Please enter the correct 6-digit code." 
+          },
           { status: 400 }
         );
       }
 
-      // Clear used OTP
+      // Clear used OTP from memory
       otpStore.delete(identifier);
 
-      // Create or fetch Customer in Supabase
+      // Create or update Customer in Supabase
       const supabase = createClient(supabaseUrl, supabaseAnonKey);
       let customerRecord: any = null;
 
       try {
-        const query = phone
-          ? supabase.from("customers").select("*").eq("phone", identifier).maybeSingle()
-          : supabase.from("customers").select("*").eq("email", identifier).maybeSingle();
+        const query = cleanPhone
+          ? supabase.from("customers").select("*").eq("phone", cleanPhone).maybeSingle()
+          : supabase.from("customers").select("*").eq("email", cleanEmail).maybeSingle();
 
         const { data: existing } = await query;
 
         if (existing) {
           customerRecord = existing;
-          // Update name if supplied
           if (name && name.trim() && !existing.name) {
             const { data: updated } = await supabase
               .from("customers")
@@ -113,14 +216,13 @@ export async function POST(req: NextRequest) {
             if (updated) customerRecord = updated;
           }
         } else {
-          // Insert new customer record
           const { data: newCustomer, error: insertErr } = await supabase
             .from("customers")
             .insert({
               shop_id: SHOP_ID,
               name: name?.trim() || `Customer ${identifier.slice(-4)}`,
-              phone: phone ? identifier : null,
-              email: email ? identifier : null,
+              phone: cleanPhone || null,
+              email: cleanEmail || null,
               address: "Town / Local Area",
             })
             .select("*")
@@ -136,12 +238,12 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: "Customer verified successfully!",
+        message: "Mobile Verified Successfully!",
         customer: {
           id: customerRecord?.id || undefined,
           name: customerRecord?.name || name || `Customer ${identifier.slice(-4)}`,
-          phone: phone ? identifier : customerRecord?.phone || "",
-          email: email ? identifier : customerRecord?.email || "",
+          phone: cleanPhone || customerRecord?.phone || "",
+          email: cleanEmail || customerRecord?.email || "",
           address: customerRecord?.address || null,
           isVerified: true,
           authProvider: "otp",
@@ -150,13 +252,13 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, error: "Invalid action parameter." },
+      { success: false, error: "Invalid action." },
       { status: 400 }
     );
   } catch (error: any) {
-    console.error("OTP API Error:", error);
+    console.error("Real OTP API Error:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Internal server error during verification." },
+      { success: false, error: error.message || "Internal server error." },
       { status: 500 }
     );
   }

@@ -2,6 +2,7 @@ import { aiImageEnhancer } from "./image-enhancer";
 import { aiLifestyleEngine } from "./lifestyle-engine";
 import { aiPromoBannerEngine } from "./promo-banner-engine";
 import { aiImageValidator } from "./image-validator";
+import { aiImagePromptEngine } from "./image-prompt-engine";
 import { HeroTheme, StudioAssetGallery, ImageQualityReport } from "./types";
 
 export interface MasterStudioGenerationOptions {
@@ -12,6 +13,9 @@ export interface MasterStudioGenerationOptions {
   categoryName?: string;
   mrp: number;
   activeTheme?: HeroTheme;
+  customPrompt?: string;
+  apiKey?: string;
+  provider?: "auto" | "openai" | "google";
 }
 
 /**
@@ -294,4 +298,72 @@ export const masterStudioGenerator = {
     ctx.drawImage(productCanvas, drawX, drawY, drawW, drawH);
     return canvas.toDataURL("image/jpeg", 0.98);
   },
+
+  /**
+   * Calls the Production AI Image Generation API (DALL-E 3 / Google Imagen 3)
+   * for showroom-grade, photorealistic commercial product imagery.
+   */
+  async generateAiShowroomImage(params: {
+    productName: string;
+    brand?: string;
+    categoryName?: string;
+    theme?: HeroTheme | string;
+    customPrompt?: string;
+    packagingShape?: string;
+    capDetails?: string;
+    containerColorMaterial?: string;
+    labelDesignColors?: string;
+    exactLabelText?: string;
+    aspectRatio?: "1:1" | "9:16" | "16:9";
+    quality?: "standard" | "hd";
+    provider?: "auto" | "openai" | "google";
+    apiKey?: string;
+  }): Promise<{
+    imageUrl: string;
+    provider: string;
+    prompt: string;
+    revisedPrompt?: string;
+  }> {
+    const savedApiKey =
+      params.apiKey ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("falcon_gemini_api_key") ||
+          localStorage.getItem("falcon_openai_api_key") ||
+          undefined
+        : undefined);
+
+    const res = await fetch("/api/ai/generate-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productName: params.productName,
+        brand: params.brand,
+        categoryName: params.categoryName,
+        theme: params.theme,
+        customPrompt: params.customPrompt,
+        packagingShape: params.packagingShape,
+        capDetails: params.capDetails,
+        containerColorMaterial: params.containerColorMaterial,
+        labelDesignColors: params.labelDesignColors,
+        exactLabelText: params.exactLabelText,
+        aspectRatio: params.aspectRatio || "1:1",
+        quality: params.quality || "hd",
+        provider: params.provider || "auto",
+        apiKey: savedApiKey,
+      }),
+    });
+
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || "Failed to generate AI image");
+    }
+
+    return {
+      imageUrl: json.imageUrl,
+      provider: json.provider || "AI Engine",
+      prompt: json.prompt,
+      revisedPrompt: json.revisedPrompt,
+    };
+  },
 };
+
