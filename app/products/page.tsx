@@ -37,6 +37,8 @@ import { AddProductSplitButton } from "@/components/products/AddProductSplitButt
 import { UnifiedAddProductModal } from "@/components/products/UnifiedAddProductModal";
 import { ExcelBulkImportModal } from "@/components/products/ExcelBulkImportModal";
 import { ManageCategoriesModal } from "@/components/products/ManageCategoriesModal";
+import { BarcodeLabelGenerator } from "@/components/products/BarcodeLabelGenerator";
+
 
 const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -423,69 +425,23 @@ export default function ProductsPage() {
           onSupplierCreated={(newSupp) => setSuppliers((prev) => [...prev, newSupp])}
         />
 
-        {/* Barcode Label Print Preview Modal */}
+        {/* Barcode Label Print & Generator Modal */}
         {printProduct && (
           <Modal
             isOpen={!!printProduct}
             onClose={() => setPrintProduct(null)}
-            title="Print Barcode Sticker Label"
+            title="🏷️ Barcode Sticker Label Studio"
             maxWidth="md"
           >
-            <div className="space-y-4">
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center">
-                {/* 50x25mm Label Simulator */}
-                <div className="bg-white border-2 border-dashed border-gray-400 p-4 rounded-lg shadow-sm text-center w-64">
-                  <div className="text-[10px] font-black uppercase text-gray-500 tracking-wider">
-                    {currentStore?.name || "FALCON RETAIL"}
-                  </div>
-                  <div className="font-bold text-xs text-gray-900 mt-1 truncate">
-                    {printProduct.name}
-                  </div>
-                  <div className="font-mono text-sm tracking-widest my-2 font-black py-1 bg-gray-100 rounded">
-                    ||| | || |||| | |||
-                  </div>
-                  <div className="font-mono text-[10px] text-gray-500">
-                    {printProduct.barcode || printProduct.sku || "890123456789"}
-                  </div>
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-                    <span className="text-[10px] text-gray-400 line-through">
-                      MRP: {formatCurrency(Math.round(printProduct.selling_price * 1.15))}
-                    </span>
-                    <span className="text-xs font-black text-brand-700">
-                      Our Price: {formatCurrency(printProduct.selling_price)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-semibold text-gray-700">Print Quantity:</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={printQuantity}
-                    onChange={(e) => setPrintQuantity(parseInt(e.target.value) || 1)}
-                    className="w-16 h-8 text-xs border border-gray-300 rounded px-2 text-center"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setPrintProduct(null)}>
-                    Close
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      window.print();
-                    }}
-                    className="gap-1.5"
-                  >
-                    <Printer className="w-4 h-4" />
-                    Print {printQuantity} Labels
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <BarcodeLabelGenerator
+              product={printProduct}
+              shopName={currentStore?.name || "AGS STORE"}
+              onClose={() => setPrintProduct(null)}
+              onUpdateBarcode={async (newBarcode) => {
+                await productsRepository.update(printProduct.id, { barcode: newBarcode });
+                loadData();
+              }}
+            />
           </Modal>
         )}
 
