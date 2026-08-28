@@ -39,7 +39,7 @@ import { Product, Category, Customer, Sale } from "@/types/database";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import { offlinePosEngine } from "@/lib/offline-pos";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
-import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
+import { CameraBarcodeScanner, ScanFeedback } from "@/components/pos/CameraBarcodeScanner";
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
 import { PosCategoryRightRail } from "@/components/pos/PosCategoryRightRail";
 import { PosCategorySidebar } from "@/components/pos/PosCategorySidebar";
@@ -88,6 +88,7 @@ export default function PosBillingPage() {
 
   // Camera Barcode Scanner
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+  const [scanFeedback, setScanFeedback] = useState<ScanFeedback | null>(null);
 
   // POS Quick Add Product Modal
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -1301,10 +1302,21 @@ export default function PosBillingPage() {
         )}
       </Modal>
 
-      {/* Live Camera Barcode Scanner Modal */}
+      {/* Continuous Live Camera Barcode Scanner Modal */}
       <CameraBarcodeScanner
         isOpen={isCameraScannerOpen}
-        onClose={() => setIsCameraScannerOpen(false)}
+        onClose={() => {
+          setIsCameraScannerOpen(false);
+          setScanFeedback(null);
+        }}
+        isContinuous={true}
+        cartCount={cart.reduce((s, i) => s + i.quantity, 0)}
+        cartTotal={totalAmount}
+        lastScannedFeedback={scanFeedback}
+        onQuickAddUnknown={(code) => {
+          setSearchQuery(code);
+          setIsQuickAddOpen(true);
+        }}
         onScan={(scannedCode) => {
           const cleanCode = scannedCode.trim();
           if (!cleanCode) return;
@@ -1318,9 +1330,21 @@ export default function PosBillingPage() {
 
           if (matched) {
             addToCart(matched, "piece", 1);
+            setScanFeedback({
+              type: "success",
+              title: `✓ Added: ${matched.name}`,
+              subtitle: `${formatCurrency(matched.selling_price)} /pc • Added to bill!`,
+              barcode: cleanCode,
+              timestamp: Date.now(),
+            });
           } else {
-            setSearchQuery(cleanCode);
-            setIsQuickAddOpen(true);
+            setScanFeedback({
+              type: "error",
+              title: `⚠️ Unknown Barcode: ${cleanCode}`,
+              subtitle: "Product not in inventory",
+              barcode: cleanCode,
+              timestamp: Date.now(),
+            });
           }
         }}
       />
