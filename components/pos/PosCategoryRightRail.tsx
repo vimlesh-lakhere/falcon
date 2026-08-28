@@ -141,19 +141,22 @@ export const PosCategoryRightRail: React.FC<PosCategoryRightRailProps> = ({
   return (
     <>
       {/* Right Slim Category Rail */}
-      <aside className="w-14 sm:w-16 bg-white border-l border-gray-200 flex flex-col items-center py-2 h-full select-none shrink-0 shadow-xs z-10">
+      <aside className="w-14 sm:w-16 bg-white border-l border-gray-200 flex flex-col items-center py-2 h-full select-none shrink-0 shadow-xs z-10 overscroll-contain touch-pan-y">
         {/* Settings Button */}
         <button
           type="button"
           onClick={() => setIsSettingsModalOpen(true)}
-          className="w-10 h-10 mb-2 rounded-xl bg-gray-50 hover:bg-purple-50 text-gray-500 hover:text-purple-700 flex items-center justify-center transition-all cursor-pointer group shadow-2xs"
+          className="w-10 h-10 mb-2 rounded-xl bg-gray-50 hover:bg-purple-50 text-gray-500 hover:text-purple-700 flex items-center justify-center transition-all cursor-pointer group shadow-2xs shrink-0"
           title="Customize Category Emojis, Icons & Priority Order"
         >
           <Settings className="w-4 h-4 group-hover:rotate-45 transition-transform" />
         </button>
 
-        {/* Scrollable Icons Container */}
-        <div className="flex-1 w-full overflow-y-auto space-y-2 px-1.5 flex flex-col items-center no-scrollbar">
+        {/* Scrollable Icons Container with isolated scrolling */}
+        <div
+          className="flex-1 w-full overflow-y-auto overscroll-contain space-y-2 px-1.5 flex flex-col items-center no-scrollbar touch-pan-y"
+          onWheel={(e) => e.stopPropagation()}
+        >
           {/* ALL Products Icon */}
           <button
             type="button"

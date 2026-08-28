@@ -123,7 +123,10 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
         </div>
 
         {/* Categories Vertical List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
+        <div
+          className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2 space-y-1.5 scrollbar-thin"
+          onWheel={(e) => e.stopPropagation()}
+        >
           {/* All Products Item */}
           <button
             type="button"

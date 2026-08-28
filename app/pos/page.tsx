@@ -682,16 +682,16 @@ export default function PosBillingPage() {
         {/* Left Side: Product catalog & Search (Full width on mobile when catalog active, 60% on desktop) */}
         <div
           className={cn(
-            "flex-1 bg-surface-canvas border-r border-gray-200 overflow-hidden flex flex-col",
+            "flex-1 bg-surface-canvas border-r border-gray-200 overflow-hidden flex flex-col h-full",
             mobileTab === "catalog" ? "flex" : "hidden lg:flex"
           )}
         >
           {/* Content Row: Catalog Area on Left + Slim Category Icon Rail on Right */}
-          <div className="flex-1 flex min-h-0 overflow-hidden">
+          <div className="flex-1 flex min-h-0 h-full overflow-hidden">
             {/* Product Matrix & Search Area */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
               {/* Search Header */}
-              <div className="p-3 bg-white border-b border-gray-200 space-y-2">
+              <div className="p-3 bg-white border-b border-gray-200 space-y-2 shrink-0">
                 <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
                   <div className="relative flex-1">
                     <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
@@ -799,8 +799,11 @@ export default function PosBillingPage() {
                 </div>
               </div>
 
-              {/* Product Cards Grid */}
-              <div className="flex-1 p-2.5 sm:p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-3 content-start">
+              {/* Product Cards Grid with isolated independent scrolling */}
+              <div
+                className="flex-1 p-2.5 sm:p-4 overflow-y-auto overscroll-contain touch-pan-y grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-3 content-start scrollbar-thin"
+                onWheel={(e) => e.stopPropagation()}
+              >
                 {filteredProducts.length === 0 ? (
                   <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white rounded-2xl border border-dashed border-gray-300 p-8 space-y-3">
                     <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
