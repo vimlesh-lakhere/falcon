@@ -41,6 +41,7 @@ import { offlinePosEngine } from "@/lib/offline-pos";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
 import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
+import { PosCategoryRightRail } from "@/components/pos/PosCategoryRightRail";
 import { PosCategorySidebar } from "@/components/pos/PosCategorySidebar";
 import {
   UnitKey,
@@ -169,6 +170,7 @@ export default function PosBillingPage() {
 
       // Cache locally for offline use
       offlinePosEngine.cacheCatalog(prods);
+      offlinePosEngine.cacheCategories(cats);
       offlinePosEngine.cacheCustomers(custs);
 
       // Fetch sales stats to compute top selling items
@@ -184,16 +186,23 @@ export default function PosBillingPage() {
             }
           });
           setProductSalesCount(counts);
+          offlinePosEngine.cacheSalesStats(counts);
         }
       } catch (e) {
         console.warn("Could not load sales count stats:", e);
+        setProductSalesCount(offlinePosEngine.getCachedSalesStats());
       }
     } catch (err) {
       console.warn("Online catalog load failed, loading from offline cache:", err);
       const cachedProds = offlinePosEngine.getCachedCatalog();
+      const cachedCats = offlinePosEngine.getCachedCategories();
       const cachedCusts = offlinePosEngine.getCachedCustomers();
+      const cachedStats = offlinePosEngine.getCachedSalesStats();
+
       if (cachedProds.length > 0) setProducts(cachedProds);
+      if (cachedCats.length > 0) setCategories(cachedCats);
       if (cachedCusts.length > 0) setCustomers(cachedCusts);
+      if (Object.keys(cachedStats).length > 0) setProductSalesCount(cachedStats);
     }
   };
 
@@ -635,19 +644,8 @@ export default function PosBillingPage() {
             mobileTab === "catalog" ? "flex" : "hidden lg:flex"
           )}
         >
-          {/* Content Row: Desktop Vertical Category Sidebar + Catalog Area */}
+          {/* Content Row: Catalog Area on Left + Slim Category Icon Rail on Right */}
           <div className="flex-1 flex min-h-0 overflow-hidden">
-            {/* Vertical Category Sidebar (desktop/tablet) */}
-            <div className="hidden md:flex shrink-0">
-              <PosCategorySidebar
-                categories={categories}
-                products={products}
-                selectedCategoryId={selectedCategory}
-                onSelectCategory={setSelectedCategory}
-                shopId={SHOP_ID}
-              />
-            </div>
-
             {/* Product Matrix & Search Area */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
               {/* Search Header */}
@@ -872,6 +870,15 @@ export default function PosBillingPage() {
                 )}
               </div>
             </div>
+
+            {/* Right: Slim Vertical Category Rail with Icons */}
+            <PosCategoryRightRail
+              categories={categories}
+              products={products}
+              selectedCategoryId={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              shopId={SHOP_ID}
+            />
           </div>
 
           {/* Mobile Floating Cart Summary Bar (appears docked at bottom of catalog view when cart has items) */}

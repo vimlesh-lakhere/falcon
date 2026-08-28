@@ -2,7 +2,9 @@ import { Product, Customer, Sale } from "@/types/database";
 import { CheckoutPayload, posRepository } from "@/repositories/pos.repo";
 
 const CACHE_PRODUCTS_KEY = "falcon_pos_cached_products";
+const CACHE_CATEGORIES_KEY = "falcon_pos_cached_categories";
 const CACHE_CUSTOMERS_KEY = "falcon_pos_cached_customers";
+const CACHE_SALES_STATS_KEY = "falcon_pos_cached_sales_stats";
 const OFFLINE_BILLS_KEY = "falcon_pos_offline_bills";
 
 export interface OfflineQueuedBill {
@@ -32,7 +34,43 @@ export const offlinePosEngine = {
     }
   },
 
-  // 2. Cache Customers locally
+  // 2. Cache Categories locally
+  cacheCategories(categories: any[]) {
+    try {
+      localStorage.setItem(CACHE_CATEGORIES_KEY, JSON.stringify(categories));
+    } catch (e) {
+      console.warn("Offline categories cache warning:", e);
+    }
+  },
+
+  getCachedCategories(): any[] {
+    try {
+      const data = localStorage.getItem(CACHE_CATEGORIES_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  // 3. Cache Sales Velocity Stats locally
+  cacheSalesStats(stats: Record<string, number>) {
+    try {
+      localStorage.setItem(CACHE_SALES_STATS_KEY, JSON.stringify(stats));
+    } catch (e) {
+      console.warn("Offline sales stats cache warning:", e);
+    }
+  },
+
+  getCachedSalesStats(): Record<string, number> {
+    try {
+      const data = localStorage.getItem(CACHE_SALES_STATS_KEY);
+      return data ? JSON.parse(data) : {};
+    } catch {
+      return {};
+    }
+  },
+
+  // 4. Cache Customers locally
   cacheCustomers(customers: Customer[]) {
     try {
       localStorage.setItem(CACHE_CUSTOMERS_KEY, JSON.stringify(customers));

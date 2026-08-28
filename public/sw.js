@@ -1,21 +1,21 @@
 // Project Falcon POS Service Worker
-const CACHE_NAME = "falcon-pos-v1";
-const STATIC_ASSETS = [
+const CACHE_NAME = "falcon-pos-v2";
+
+const STATIC_PRECACHE = [
   "/pos",
-  "/store",
   "/manifest.webmanifest",
+  "/favicon.svg",
   "/icons/icon.svg",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
   "/icons/apple-touch-icon.png",
-  "/favicon.svg",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn("SW install cache warm warning:", err);
+      return cache.addAll(STATIC_PRECACHE).catch((err) => {
+        console.warn("SW precache warning:", err);
       });
     })
   );
@@ -41,36 +41,58 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET and API mutations
+  // Skip non-GET requests
   if (request.method !== "GET") return;
 
-  // Don't intercept Supabase API calls or Auth endpoints directly
+  // Don't intercept Supabase API mutations or auth endpoints directly
   if (url.hostname.includes("supabase.co") || url.pathname.startsWith("/api/auth")) {
     return;
   }
 
-  // Network First, Cache Fallback strategy for HTML and static assets
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (!response || response.status !== 200 || response.type !== "basic") {
-          return response;
-        }
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, responseToCache);
-        });
-        return response;
-      })
-      .catch(async () => {
-        const cachedResponse = await caches.match(request);
+  // Next.js static files (_next/static) -> Cache First, Network Fallback
+  if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
         if (cachedResponse) {
           return cachedResponse;
         }
-        if (request.mode === "navigate") {
-          return caches.match("/pos");
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          }
+          return networkResponse;
+        });
+      })
+    );
+    return;
+  }
+
+  // Navigation requests & HTML -> Network First, Cache Fallback
+  event.respondWith(
+    fetch(request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
         }
-        return new Response("Offline", { status: 503, statusText: "Service Unavailable Offline" });
+        return networkResponse;
+      })
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+
+        // If user is navigating to any page while offline, return cached /pos shell
+        if (request.mode === "navigate") {
+          const posFallback = await caches.match("/pos");
+          if (posFallback) return posFallback;
+        }
+
+        return new Response("Offline", {
+          status: 503,
+          statusText: "Offline",
+          headers: { "Content-Type": "text/plain" },
+        });
       })
   );
 });
