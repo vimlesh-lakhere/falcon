@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+const fs = require('fs');
+const path = require('path');
+const sharp = require('sharp');
+
+// 1. High-Resolution Majestic Falcon / Eagle Emblem Vector SVG (512x512)
+const falconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <!-- Deep Royal Background Gradient -->
     <radialGradient id="bgGlow" cx="50%" cy="40%" r="65%">
@@ -118,4 +123,56 @@
     <circle cx="120" cy="30" r="4" fill="#fbbf24" />
     <circle cx="392" cy="30" r="4" fill="#fbbf24" />
   </g>
-</svg>
+</svg>`;
+
+async function buildIcons() {
+  const publicIconsDir = path.join(__dirname, '..', 'public', 'icons');
+  const publicDir = path.join(__dirname, '..', 'public');
+
+  if (!fs.existsSync(publicIconsDir)) {
+    fs.mkdirSync(publicIconsDir, { recursive: true });
+  }
+
+  const svgBuffer = Buffer.from(falconSvg);
+
+  // 1. Save SVG files
+  fs.writeFileSync(path.join(publicIconsDir, 'icon.svg'), falconSvg);
+  fs.writeFileSync(path.join(publicIconsDir, 'icon-192x192.svg'), falconSvg);
+  fs.writeFileSync(path.join(publicIconsDir, 'icon-512x512.svg'), falconSvg);
+  fs.writeFileSync(path.join(publicDir, 'favicon.svg'), falconSvg);
+
+  // 2. Generate 512x512 PNG (Master PWA / Android Play Store & Launcher)
+  await sharp(svgBuffer)
+    .resize(512, 512)
+    .png({ quality: 100 })
+    .toFile(path.join(publicIconsDir, 'icon-512x512.png'));
+  console.log('✓ Generated 512x512 PNG');
+
+  // 3. Generate 192x192 PNG (PWA Home Screen standard)
+  await sharp(svgBuffer)
+    .resize(192, 192)
+    .png({ quality: 100 })
+    .toFile(path.join(publicIconsDir, 'icon-192x192.png'));
+  console.log('✓ Generated 192x192 PNG');
+
+  // 4. Generate Apple Touch Icon (180x180 for iOS Safari & iPad)
+  await sharp(svgBuffer)
+    .resize(180, 180)
+    .png({ quality: 100 })
+    .toFile(path.join(publicIconsDir, 'apple-touch-icon.png'));
+  console.log('✓ Generated Apple Touch Icon');
+
+  // 5. Generate Favicon PNGs
+  await sharp(svgBuffer)
+    .resize(48, 48)
+    .png({ quality: 100 })
+    .toFile(path.join(publicDir, 'favicon.ico'));
+  console.log('✓ Generated favicon.ico');
+
+  console.log('🎉 All Falcon High-Resolution App Icons generated successfully!');
+}
+
+buildIcons().catch(err => {
+  console.error('Failed generating icons', err);
+  process.exit(1);
+});
