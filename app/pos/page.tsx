@@ -583,7 +583,7 @@ export default function PosBillingPage() {
   }, [products, selectedCategory, searchQuery, sortMode, productSalesCount]);
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col font-sans select-none">
+    <div className="h-screen w-screen max-h-screen overflow-hidden bg-gray-100 flex flex-col font-sans">
       {/* POS Top Bar */}
       <header className="h-14 bg-brand-700 text-white px-3 sm:px-4 flex items-center justify-between shadow-md shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -950,7 +950,7 @@ export default function PosBillingPage() {
         {/* Right Side: Active Cart & Bill Operations (Full width on mobile when cart active, 40% on desktop) */}
         <div
           className={cn(
-            "w-full lg:w-96 xl:w-[440px] bg-white flex-col justify-between border-l border-gray-200 shadow-lg overflow-y-auto lg:overflow-visible",
+            "w-full lg:w-96 xl:w-[440px] bg-white flex flex-col justify-between border-l border-gray-200 shadow-lg h-full min-h-0 overflow-hidden shrink-0",
             mobileTab === "cart" ? "flex" : "hidden lg:flex"
           )}
         >
