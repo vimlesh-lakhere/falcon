@@ -221,11 +221,11 @@ export function CameraBarcodeScanner({
     if (!isScanningRef.current) return;
 
     const now = Date.now();
-    // Continuous Hold-to-Increment Interval: 800ms for exact same barcode, 0ms for different barcode
+    // Continuous Hold-to-Increment Interval: 650ms for exact same barcode, 0ms for different barcode
     const isSameCode = lastScannedCodeRef.current === barcode;
     const timeSinceLastScan = now - lastScannedTimeRef.current;
 
-    if (isSameCode && timeSinceLastScan < 800) {
+    if (isSameCode && timeSinceLastScan < 650) {
       return;
     }
 

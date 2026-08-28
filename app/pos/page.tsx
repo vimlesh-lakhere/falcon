@@ -320,55 +320,66 @@ export default function PosBillingPage() {
     }
   };
 
-  // Add product to cart with Unit support
+  // Add product to cart with Unit support (Atomic functional state update)
   const addToCart = (product: Product, unitKey: UnitKey = "piece", initialQty: number = 1) => {
-    const existingIndex = cart.findIndex((item) => item.product.id === product.id && item.unit === unitKey);
-    const customPrice = customerPrices[product.id];
-    const unitPrice =
-      customPrice !== undefined && unitKey === "piece"
-        ? customPrice
-        : calculateDefaultUnitPrice(product, unitKey);
+    setCart((prevCart) => {
+      const existingIndex = prevCart.findIndex(
+        (item) => item.product.id === product.id && item.unit === unitKey
+      );
+      const customPrice = customerPrices[product.id];
+      const unitPrice =
+        customPrice !== undefined && unitKey === "piece"
+          ? customPrice
+          : calculateDefaultUnitPrice(product, unitKey);
 
-    const unitDef = STANDARD_UNITS[unitKey] || STANDARD_UNITS.piece;
+      const unitDef = STANDARD_UNITS[unitKey] || STANDARD_UNITS.piece;
 
-    if (existingIndex > -1) {
-      const updated = [...cart];
-      updated[existingIndex].quantity += initialQty;
-      setCart(updated);
-    } else {
-      setCart([
-        ...cart,
-        {
-          product,
-          quantity: initialQty,
-          unitPrice,
-          originalPrice: unitPrice,
-          isPriceOverridden: customPrice !== undefined && unitKey === "piece",
-          unit: unitKey,
-          unitName: unitDef.shortName,
-          unitMultiplier: unitDef.multiplier,
-        },
-      ]);
-    }
+      if (existingIndex > -1) {
+        const updated = [...prevCart];
+        const existingItem = updated[existingIndex];
+        updated[existingIndex] = {
+          ...existingItem,
+          quantity: existingItem.quantity + initialQty,
+        };
+        return updated;
+      } else {
+        return [
+          ...prevCart,
+          {
+            product,
+            quantity: initialQty,
+            unitPrice,
+            originalPrice: unitPrice,
+            isPriceOverridden: customPrice !== undefined && unitKey === "piece",
+            unit: unitKey,
+            unitName: unitDef.shortName,
+            unitMultiplier: unitDef.multiplier,
+          },
+        ];
+      }
+    });
   };
 
   // Switch unit on an existing cart item (e.g. from Piece to Dozen)
   const updateCartItemUnit = (index: number, newUnit: UnitKey) => {
-    const updated = [...cart];
-    const item = updated[index];
-    const unitDef = STANDARD_UNITS[newUnit] || STANDARD_UNITS.piece;
-    const newPrice = calculateDefaultUnitPrice(item.product, newUnit);
+    setCart((prevCart) => {
+      if (index < 0 || index >= prevCart.length) return prevCart;
+      const updated = [...prevCart];
+      const item = updated[index];
+      const unitDef = STANDARD_UNITS[newUnit] || STANDARD_UNITS.piece;
+      const newPrice = calculateDefaultUnitPrice(item.product, newUnit);
 
-    updated[index] = {
-      ...item,
-      unit: newUnit,
-      unitName: unitDef.shortName,
-      unitMultiplier: unitDef.multiplier,
-      unitPrice: newPrice,
-      originalPrice: newPrice,
-      isPriceOverridden: false,
-    };
-    setCart(updated);
+      updated[index] = {
+        ...item,
+        unit: newUnit,
+        unitName: unitDef.shortName,
+        unitMultiplier: unitDef.multiplier,
+        unitPrice: newPrice,
+        originalPrice: newPrice,
+        isPriceOverridden: false,
+      };
+      return updated;
+    });
   };
 
   // Handle successful POS Quick Add
@@ -380,27 +391,42 @@ export default function PosBillingPage() {
   };
 
   const updateQuantity = (index: number, delta: number) => {
-    const updated = [...cart];
-    const newQty = updated[index].quantity + delta;
-    if (newQty <= 0) {
-      updated.splice(index, 1);
-    } else {
-      updated[index].quantity = newQty;
-    }
-    setCart(updated);
+    setCart((prevCart) => {
+      if (index < 0 || index >= prevCart.length) return prevCart;
+      const updated = [...prevCart];
+      const newQty = updated[index].quantity + delta;
+      if (newQty <= 0) {
+        updated.splice(index, 1);
+      } else {
+        updated[index] = {
+          ...updated[index],
+          quantity: newQty,
+        };
+      }
+      return updated;
+    });
   };
 
   const updatePriceOverride = (index: number, newPrice: number) => {
-    const updated = [...cart];
-    updated[index].unitPrice = Math.max(0, newPrice);
-    updated[index].isPriceOverridden = true;
-    setCart(updated);
+    setCart((prevCart) => {
+      if (index < 0 || index >= prevCart.length) return prevCart;
+      const updated = [...prevCart];
+      updated[index] = {
+        ...updated[index],
+        unitPrice: Math.max(0, newPrice),
+        isPriceOverridden: true,
+      };
+      return updated;
+    });
   };
 
   const removeItem = (index: number) => {
-    const updated = [...cart];
-    updated.splice(index, 1);
-    setCart(updated);
+    setCart((prevCart) => {
+      if (index < 0 || index >= prevCart.length) return prevCart;
+      const updated = [...prevCart];
+      updated.splice(index, 1);
+      return updated;
+    });
   };
 
   const clearCart = () => {
@@ -1360,19 +1386,25 @@ export default function PosBillingPage() {
 
           if (matched) {
             addToCart(matched, "piece", 1);
-            const existingInCart = cart.find((i) => i.product.id === matched.id && i.unit === "piece");
-            const newQty = (existingInCart ? existingInCart.quantity : 0) + 1;
-            const lineTotal = Number(matched.selling_price) * newQty;
 
-            setScanFeedback({
-              type: "success",
-              title: newQty > 1 ? `⚡ ${matched.name} (Qty: ${newQty})` : `✓ Added: ${matched.name}`,
-              subtitle:
-                newQty > 1
-                  ? `+1 Added • Total: ${formatCurrency(lineTotal)} (${newQty} pcs)`
-                  : `${formatCurrency(matched.selling_price)} /pc • Added to bill!`,
-              barcode: cleanCode,
-              timestamp: Date.now(),
+            // Access latest cart state to accurately calculate new quantity and line total in HUD
+            setCart((latestCart) => {
+              const inCart = latestCart.find((i) => i.product.id === matched.id && i.unit === "piece");
+              const currentQty = inCart ? inCart.quantity : 1;
+              const unitP = inCart ? inCart.unitPrice : Number(matched.selling_price);
+              const lineTotal = unitP * currentQty;
+
+              setScanFeedback({
+                type: "success",
+                title: currentQty > 1 ? `⚡ ${matched.name} (Qty: ${currentQty})` : `✓ Added: ${matched.name}`,
+                subtitle:
+                  currentQty > 1
+                    ? `+1 Added • Total: ${formatCurrency(lineTotal)} (${currentQty} pcs)`
+                    : `${formatCurrency(unitP)} /pc • Added to bill!`,
+                barcode: cleanCode,
+                timestamp: Date.now(),
+              });
+              return latestCart;
             });
           } else {
             setScanFeedback({
