@@ -42,9 +42,9 @@ export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {
   shopName: "AGS STORE & COSMETICS",
   shopPhone: "+91 9340362381",
   shopAddress: "Main Market Road, Town Area",
-  shopGst: "23AAAAA0000A1Z5",
+  shopGst: "", // Blank by default - never print dummy GSTIN
   customFooter: "Thank you for shopping! Goods once sold can be exchanged within 7 days.",
-  showGstin: true,
+  showGstin: false, // Only show if user enters a valid GSTIN
   showCustomerInfo: true,
   showQrCode: true,
   showDynamicUpiQr: true,
@@ -67,6 +67,11 @@ export function getPrinterConfig(shopId: string): PrinterConfig {
       // Migrate legacy invalid default UPI ID if unchanged
       if (parsed.upiId === "9340362381@paytm") {
         parsed.upiId = "9340362381@ybl";
+      }
+      // Remove any legacy dummy GSTIN
+      if (parsed.shopGst === "23AAAAA0000A1Z5") {
+        parsed.shopGst = "";
+        parsed.showGstin = false;
       }
       return { ...DEFAULT_PRINTER_CONFIG, ...parsed };
     }
@@ -422,7 +427,9 @@ export async function buildRasterGraphicsReceipt(
   drawCenteredText(config.shopName || "FALCON STORE", titleFontSize, true);
   if (config.shopAddress) drawCenteredText(config.shopAddress, smallFontSize);
   if (config.shopPhone) drawCenteredText(`Tel: ${config.shopPhone}`, smallFontSize);
-  if (config.showGstin && config.shopGst) drawCenteredText(`GSTIN: ${config.shopGst}`, smallFontSize, true);
+  if (config.showGstin && config.shopGst && config.shopGst.trim().length > 0 && config.shopGst !== "23AAAAA0000A1Z5") {
+    drawCenteredText(`GSTIN: ${config.shopGst.trim()}`, smallFontSize, true);
+  }
 
   drawDashedLine();
 
@@ -672,7 +679,9 @@ export function buildEscPosReceipt(
   writeBytes(ESC, 0x21, 0x00);
   if (config.shopAddress) write(`${config.shopAddress}\n`);
   if (config.shopPhone) write(`Tel: ${config.shopPhone}\n`);
-  if (config.showGstin && config.shopGst) write(`GSTIN: ${config.shopGst}\n`);
+  if (config.showGstin && config.shopGst && config.shopGst.trim().length > 0 && config.shopGst !== "23AAAAA0000A1Z5") {
+    write(`GSTIN: ${config.shopGst.trim()}\n`);
+  }
 
   const lineWidth = config.paperWidth === "80mm" ? 44 : 32;
   const separator = "-".repeat(lineWidth) + "\n";

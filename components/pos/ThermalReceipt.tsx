@@ -99,7 +99,8 @@ export function ThermalReceipt({
   const activeShopName = shopName || printerConfig.shopName || "AGS STORE & COSMETICS";
   const activeShopPhone = shopPhone || printerConfig.shopPhone || "+91 9340362381";
   const activeShopAddress = shopAddress || printerConfig.shopAddress || "Main Market Road, Town Area";
-  const activeShopGst = shopGst || printerConfig.shopGst || "23AAAAA0000A1Z5";
+  const rawGst = shopGst !== undefined ? shopGst : printerConfig.shopGst;
+  const activeShopGst = rawGst && rawGst !== "23AAAAA0000A1Z5" ? rawGst.trim() : "";
   const paperWidth: PaperWidth = printerConfig.paperWidth || "80mm";
 
   const items = sale.items || [];
@@ -132,7 +133,7 @@ export function ThermalReceipt({
 ━━━━━━━━━━━━━━━━━━━━
 📍 *Address:* ${activeShopAddress}
 📞 *Help/Contact:* ${activeShopPhone}
-${activeShopGst ? `🏛️ *GSTIN:* ${activeShopGst}\n` : ""}━━━━━━━━━━━━━━━━━━━━
+${printerConfig.showGstin && activeShopGst ? `🏛️ *GSTIN:* ${activeShopGst}\n` : ""}━━━━━━━━━━━━━━━━━━━━
 📋 *Invoice:* #${sale.invoice_number}
 📅 *Date:* ${formatDateTime(sale.created_at || new Date().toISOString())}
 👤 *Customer:* ${custName}${custPhone ? ` (+91 ${custPhone})` : ""}

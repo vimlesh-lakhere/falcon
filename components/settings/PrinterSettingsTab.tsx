@@ -169,7 +169,11 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
               <div class="title">${config.shopName}</div>
               <div>${config.shopAddress}</div>
               <div>Tel: ${config.shopPhone}</div>
-              ${config.showGstin && config.shopGst ? `<div>GSTIN: ${config.shopGst}</div>` : ""}
+              ${
+                config.showGstin && config.shopGst && config.shopGst.trim() && config.shopGst !== "23AAAAA0000A1Z5"
+                  ? `<div>GSTIN: ${config.shopGst.trim()}</div>`
+                  : ""
+              }
               <div class="sep"></div>
               <div class="row"><span>Invoice: #TEST-001</span><span>${new Date().toLocaleDateString()}</span></div>
               <div class="row"><span>Customer: रोहित शर्मा</span><span>+91 9876543210</span></div>
@@ -751,14 +755,36 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">GSTIN (Optional)</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-gray-700">GSTIN (Optional)</label>
+              <label className="flex items-center gap-1.5 cursor-pointer text-[10px] text-gray-600 font-semibold">
+                <input
+                  type="checkbox"
+                  checked={config.showGstin && !!config.shopGst}
+                  onChange={(e) => setConfig({ ...config, showGstin: e.target.checked })}
+                  disabled={!config.shopGst}
+                  className="w-3.5 h-3.5 text-purple-600 rounded"
+                />
+                <span>Print GST on Bill</span>
+              </label>
+            </div>
             <Input
               type="text"
-              value={config.shopGst}
-              onChange={(e) => setConfig({ ...config, shopGst: e.target.value })}
-              placeholder="e.g. 23AAAAA0000A1Z5"
+              value={config.shopGst === "23AAAAA0000A1Z5" ? "" : config.shopGst}
+              onChange={(e) => {
+                const val = e.target.value.trim().toUpperCase();
+                setConfig({
+                  ...config,
+                  shopGst: val,
+                  showGstin: val.length > 0,
+                });
+              }}
+              placeholder="Leave blank if not registered"
               className="rounded-xl font-mono uppercase"
             />
+            <span className="text-[10px] text-gray-500 mt-1 block">
+              Leave empty if not registered. If empty, NO GST number will ever appear on receipts.
+            </span>
           </div>
 
           <div>
