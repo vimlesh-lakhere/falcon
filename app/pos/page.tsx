@@ -48,6 +48,7 @@ import {
   calculateDefaultUnitPrice,
   formatItemQuantityAndUnit,
   getBaseQuantity,
+  getProductPricingSummary,
 } from "@/lib/units-pricing";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
@@ -89,6 +90,9 @@ export default function PosBillingPage() {
 
   // POS Quick Add Product Modal
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+
+  // Mobile Category Sidebar Drawer
+  const [isMobileCategoryDrawerOpen, setIsMobileCategoryDrawerOpen] = useState(false);
 
   // Product Sort Mode & Sales Velocity
   const [sortMode, setSortMode] = useState<"top_selling" | "name_asc" | "price_asc" | "newest">("top_selling");
@@ -645,39 +649,38 @@ export default function PosBillingPage() {
           {/* Product Matrix & Search Area */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {/* Search Header */}
-            <div className="p-3.5 bg-white border-b border-gray-200 space-y-2.5">
+            <div className="p-3 bg-white border-b border-gray-200 space-y-2">
               <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
                 <div className="relative flex-1">
                   <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                   <input
                     ref={searchInputRef}
                     type="text"
-                    placeholder="Scan barcode or search product / SKU (Press Enter to add)..."
+                    placeholder="Scan barcode or search product / SKU..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-12 py-2 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600 focus:bg-white transition-all shadow-inner"
+                    className="w-full pl-9 pr-10 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600 focus:bg-white transition-all shadow-inner"
                     autoFocus
                   />
-                  <Barcode className="w-5 h-5 text-gray-400 absolute right-3 top-2.5" />
+                  <Barcode className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
                 </div>
 
                 {/* Quick Add Product Button */}
                 <button
                   type="button"
                   onClick={() => setIsQuickAddOpen(true)}
-                  className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
+                  className="px-2.5 sm:px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
                   title="Quick Add New Product to Inventory & Bill"
                 >
-                  <Plus className="w-4 h-4 text-emerald-200" />
-                  <span className="hidden sm:inline">+ Quick Add</span>
-                  <span className="sm:hidden">+ Add</span>
+                  <Plus className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>+ Add</span>
                 </button>
 
                 {/* Camera Scanner Trigger Button */}
                 <button
                   type="button"
                   onClick={() => setIsCameraScannerOpen(true)}
-                  className="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
+                  className="p-2 sm:px-3 sm:py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
                   title="Scan Barcode with Device Camera"
                 >
                   <Camera className="w-4 h-4 text-amber-300" />
@@ -685,27 +688,25 @@ export default function PosBillingPage() {
                 </button>
               </form>
 
-              {/* Sorting & Mobile Category Chips */}
-              <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5">
-                {/* Mobile Category Selector (md:hidden) */}
-                <div className="md:hidden flex items-center gap-1.5 shrink-0">
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="bg-gray-100 border border-gray-300 rounded-lg px-2 py-1 text-xs font-bold text-gray-800"
-                  >
-                    <option value="all">All Categories ({products.length})</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* Controls Bar: Mobile Categories Trigger + Sort Pills */}
+              <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5 no-scrollbar">
+                {/* Mobile Categories Sidebar Drawer Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsMobileCategoryDrawerOpen(true)}
+                  className="md:hidden px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+                >
+                  <Layers className="w-3.5 h-3.5 text-purple-600" />
+                  <span className="truncate max-w-[120px]">
+                    {selectedCategory === "all"
+                      ? "All Categories"
+                      : categories.find((c) => c.id === selectedCategory)?.name || "Categories"}
+                  </span>
+                </button>
 
                 {/* Sort Mode Pills */}
                 <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                  <span className="text-[11px] font-bold text-gray-500 hidden sm:inline">Sort:</span>
+                  <span className="text-[11px] font-bold text-gray-400 hidden sm:inline">Sort:</span>
                   <button
                     type="button"
                     onClick={() => setSortMode("top_selling")}
@@ -716,13 +717,13 @@ export default function PosBillingPage() {
                     }`}
                     title="Sort by highest sold items"
                   >
-                    <Flame className={`w-3.5 h-3.5 ${sortMode === "top_selling" ? "text-white" : "text-amber-500"}`} />
-                    <span>Top Selling</span>
+                    <Flame className={`w-3 h-3 ${sortMode === "top_selling" ? "text-white" : "text-amber-500"}`} />
+                    <span>Top</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setSortMode("name_asc")}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                    className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
                       sortMode === "name_asc"
                         ? "bg-purple-600 text-white shadow-xs"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -733,31 +734,31 @@ export default function PosBillingPage() {
                   <button
                     type="button"
                     onClick={() => setSortMode("price_asc")}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                    className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
                       sortMode === "price_asc"
                         ? "bg-purple-600 text-white shadow-xs"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     }`}
                   >
-                    Price ↑
+                    Price
                   </button>
                   <button
                     type="button"
                     onClick={() => setSortMode("newest")}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                    className={`px-2 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
                       sortMode === "newest"
                         ? "bg-purple-600 text-white shadow-xs"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     }`}
                   >
-                    Newest
+                    New
                   </button>
                 </div>
               </div>
             </div>
 
             {/* Product Cards Grid */}
-            <div className="flex-1 p-3 sm:p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 content-start">
+            <div className="flex-1 p-2.5 sm:p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-3 content-start">
               {filteredProducts.length === 0 ? (
                 <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white rounded-2xl border border-dashed border-gray-300 p-8 space-y-3">
                   <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
@@ -781,33 +782,33 @@ export default function PosBillingPage() {
                 filteredProducts.map((p) => {
                   const stockQty = Number(p.current_stock) || 0;
                   const inStock = stockQty > 0;
+                  const pricing = getProductPricingSummary(p);
                   const customPrice = customerPrices[p.id];
-                  const piecePrice = customPrice !== undefined ? customPrice : Number(p.selling_price);
-                  const dozenPrice = p.wholesale_price ? Number(p.wholesale_price) : Math.round(piecePrice * 12 * 0.9);
+                  const effectivePiecePrice = customPrice !== undefined ? customPrice : pricing.piecePrice;
                   const salesCount = productSalesCount[p.id] || 0;
                   const isTopSeller = salesCount > 0;
 
                   return (
                     <div
                       key={p.id}
-                      className={`bg-white rounded-2xl border border-gray-200 p-3 flex flex-col justify-between hover:border-purple-400 hover:shadow-md transition-all relative ${
+                      className={`bg-white rounded-2xl border border-gray-200 p-2.5 sm:p-3 flex flex-col justify-between hover:border-purple-400 hover:shadow-md transition-all relative ${
                         !inStock ? "opacity-60 bg-gray-50" : ""
                       }`}
                     >
-                      <div className="space-y-1.5">
+                      <div className="space-y-1">
                         {/* Top Badge Row */}
                         <div className="flex items-center justify-between gap-1">
                           {isTopSeller ? (
-                            <span className="text-[10px] font-black bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-2xs">
-                              <Flame className="w-3 h-3 text-amber-600" /> Top Seller ({salesCount})
+                            <span className="text-[9px] sm:text-[10px] font-black bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                              <Flame className="w-3 h-3 text-amber-600" /> Top ({salesCount})
                             </span>
                           ) : (
-                            <span className="text-[10px] text-gray-400 font-mono">
-                              {p.sku || p.barcode || "No SKU"}
+                            <span className="text-[9px] text-gray-400 font-mono truncate max-w-[80px]">
+                              {p.sku || p.barcode || ""}
                             </span>
                           )}
                           <span
-                            className={`text-[10px] font-bold ${
+                            className={`text-[9px] sm:text-[10px] font-bold ${
                               inStock ? "text-emerald-700" : "text-rose-600"
                             }`}
                           >
@@ -822,36 +823,42 @@ export default function PosBillingPage() {
                         </span>
                       </div>
 
-                      <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
-                        <div className="flex items-baseline justify-between">
-                          <div>
+                      <div className="mt-2.5 pt-1.5 border-t border-gray-100 space-y-1.5">
+                        {/* Pricing Line */}
+                        <div className="flex flex-col">
+                          <div className="flex items-baseline justify-between">
                             <div className="text-sm font-black text-purple-900 tabular-nums">
-                              {formatCurrency(piecePrice)}
+                              {formatCurrency(effectivePiecePrice)}
                               <span className="text-[10px] font-normal text-gray-500"> /pc</span>
                             </div>
-                            {p.wholesale_price && (
-                              <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">
-                                {formatCurrency(dozenPrice)}/doz
+                            {pricing.wholesalePerPiece > 0 && (
+                              <span className="text-[9px] text-indigo-700 font-bold bg-indigo-50 px-1 py-0.5 rounded" title="Wholesale rate per piece">
+                                ₹{pricing.wholesalePerPiece}/pc wh.
                               </span>
                             )}
+                          </div>
+
+                          {/* Full Dozen Rate info */}
+                          <div className="text-[10px] text-gray-500 font-semibold">
+                            1 Doz (12 pcs): <span className="font-bold text-indigo-900">{formatCurrency(pricing.dozenPrice)}</span>
                           </div>
                         </div>
 
                         {/* Quick Add Buttons: 1 Pc vs 1 Dozen */}
-                        <div className="flex gap-1.5 pt-1">
+                        <div className="flex gap-1.5 pt-0.5">
                           <button
                             type="button"
                             onClick={() => addToCart(p, "piece", 1)}
-                            className="flex-1 py-1.5 bg-purple-50 hover:bg-purple-600 hover:text-white text-purple-700 text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-95"
-                            title="Add 1 Piece"
+                            className="flex-1 py-1.5 bg-purple-50 hover:bg-purple-600 hover:text-white text-purple-700 text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-0.5 cursor-pointer active:scale-95"
+                            title={`Add 1 Piece (${formatCurrency(effectivePiecePrice)})`}
                           >
                             <Plus className="w-3 h-3" /> 1 Pc
                           </button>
                           <button
                             type="button"
                             onClick={() => addToCart(p, "dozen", 1)}
-                            className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-95"
-                            title="Add 1 Dozen (12 pcs) at wholesale rate"
+                            className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-0.5 cursor-pointer active:scale-95"
+                            title={`Add 1 Dozen (${formatCurrency(pricing.dozenPrice)})`}
                           >
                             <Plus className="w-3 h-3" /> 1 Doz
                           </button>
@@ -1307,6 +1314,28 @@ export default function PosBillingPage() {
           }
         }}
       />
+
+      {/* Mobile Category Sidebar Drawer Modal */}
+      <Modal
+        isOpen={isMobileCategoryDrawerOpen}
+        onClose={() => setIsMobileCategoryDrawerOpen(false)}
+        title="Select Category"
+        description="Browse categories or reorder priority"
+        maxWidth="sm"
+      >
+        <div className="h-[480px] flex flex-col -m-4">
+          <PosCategorySidebar
+            categories={categories}
+            products={products}
+            selectedCategoryId={selectedCategory}
+            onSelectCategory={(catId) => {
+              setSelectedCategory(catId);
+              setIsMobileCategoryDrawerOpen(false);
+            }}
+            shopId={SHOP_ID}
+          />
+        </div>
+      </Modal>
 
       {/* POS Quick Add Product Modal */}
       <PosQuickAddModal

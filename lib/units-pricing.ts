@@ -51,6 +51,7 @@ export const STANDARD_UNITS: Record<UnitKey, UnitDefinition> = {
 /**
  * Calculates the suggested default price for a given unit
  * based on the product's selling_price and wholesale_price.
+ * Handles both per-piece wholesale rate (e.g. ₹32/pc vs ₹35/pc) and full-pack rate.
  */
 export function calculateDefaultUnitPrice(
   product: Product,
@@ -58,33 +59,39 @@ export function calculateDefaultUnitPrice(
   customMultiplier: number = 1
 ): number {
   const piecePrice = Number(product.selling_price) || 0;
-  const wholesalePrice = Number(product.wholesale_price) || 0;
+  const wholesaleRaw = Number(product.wholesale_price) || 0;
+
+  // Determine wholesale per-piece rate and dozen rate
+  let wholesalePerPiece = 0;
+  let dozenRate = 0;
+
+  if (wholesaleRaw > 0) {
+    if (wholesaleRaw < piecePrice * 3) {
+      // It's a per-piece wholesale rate (e.g. ₹32 wholesale vs ₹35 retail)
+      wholesalePerPiece = wholesaleRaw;
+      dozenRate = wholesaleRaw * 12;
+    } else {
+      // It's a full-dozen rate (e.g. ₹384 per dozen)
+      dozenRate = wholesaleRaw;
+      wholesalePerPiece = wholesaleRaw / 12;
+    }
+  } else {
+    dozenRate = Math.round(piecePrice * 12 * 0.9); // 10% wholesale discount
+    wholesalePerPiece = dozenRate / 12;
+  }
 
   switch (unitKey) {
     case "piece":
       return piecePrice;
 
     case "half_dozen":
-      // If wholesale price exists and is lower than piece*12, use wholesale/2, otherwise piece*6 with ~5% discount
-      if (wholesalePrice > 0) {
-        return Math.round(wholesalePrice / 2);
-      }
-      return Math.round(piecePrice * 6 * 0.95);
+      return Math.round(wholesalePerPiece * 6);
 
     case "dozen":
-      // If wholesale price is set, use it directly (e.g. ₹480/dozen)
-      if (wholesalePrice > 0) {
-        return wholesalePrice;
-      }
-      // Otherwise calculate dozen as piece * 12 with ~10% bulk discount
-      return Math.round(piecePrice * 12 * 0.9);
+      return Math.round(dozenRate);
 
     case "bundle_10_doz":
-      // 10 dozen master pack: use wholesalePrice * 10 (with extra 5% bulk discount) if available
-      if (wholesalePrice > 0) {
-        return Math.round(wholesalePrice * 10 * 0.95);
-      }
-      return Math.round(piecePrice * 120 * 0.85);
+      return Math.round(dozenRate * 10 * 0.95); // extra 5% bulk discount
 
     case "custom":
       return Math.round(piecePrice * customMultiplier);
@@ -92,6 +99,38 @@ export function calculateDefaultUnitPrice(
     default:
       return piecePrice;
   }
+}
+
+/**
+ * Returns formatted summary of retail, wholesale per-piece, and full dozen prices.
+ */
+export function getProductPricingSummary(product: Product) {
+  const piecePrice = Number(product.selling_price) || 0;
+  const wholesaleRaw = Number(product.wholesale_price) || 0;
+
+  let wholesalePerPiece = 0;
+  let dozenPrice = 0;
+
+  if (wholesaleRaw > 0) {
+    if (wholesaleRaw < piecePrice * 3) {
+      wholesalePerPiece = wholesaleRaw;
+      dozenPrice = wholesaleRaw * 12;
+    } else {
+      dozenPrice = wholesaleRaw;
+      wholesalePerPiece = Math.round(wholesaleRaw / 12);
+    }
+  } else {
+    dozenPrice = Math.round(piecePrice * 12 * 0.9);
+    wholesalePerPiece = Math.round(dozenPrice / 12);
+  }
+
+  return {
+    piecePrice,
+    wholesalePerPiece: wholesaleRaw > 0 ? wholesalePerPiece : 0,
+    dozenPrice,
+    halfDozenPrice: calculateDefaultUnitPrice(product, "half_dozen"),
+    bundle10DozPrice: calculateDefaultUnitPrice(product, "bundle_10_doz"),
+  };
 }
 
 /**
