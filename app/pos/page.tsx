@@ -43,6 +43,7 @@ import { CameraBarcodeScanner, ScanFeedback } from "@/components/pos/CameraBarco
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
 import { PosCategoryRightRail } from "@/components/pos/PosCategoryRightRail";
 import { PosCategorySidebar } from "@/components/pos/PosCategorySidebar";
+import { PrinterSettingsTab } from "@/components/settings/PrinterSettingsTab";
 import {
   UnitKey,
   STANDARD_UNITS,
@@ -89,6 +90,9 @@ export default function PosBillingPage() {
   // Camera Barcode Scanner
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback | null>(null);
+
+  // Printer Settings Modal
+  const [isPrinterModalOpen, setIsPrinterModalOpen] = useState(false);
 
   // POS Quick Add Product Modal
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -580,6 +584,17 @@ export default function PosBillingPage() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Printer Setup & Test Quick Button */}
+          <button
+            type="button"
+            onClick={() => setIsPrinterModalOpen(true)}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-brand-800 hover:bg-brand-900 transition-all text-white flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer shadow-xs active:scale-95 border border-white/10"
+            title="Thermal Printer & ATPOS Setup"
+          >
+            <Printer className="w-4 h-4 text-amber-300" />
+            <span className="hidden sm:inline">Printer</span>
+          </button>
+
           {/* Mobile Cart View Toggle Button */}
           <button
             type="button"
@@ -1297,9 +1312,24 @@ export default function PosBillingPage() {
           <ThermalReceipt
             sale={completedSale}
             customer={selectedCustomer}
+            shopId={SHOP_ID}
             onDone={() => setIsReceiptModalOpen(false)}
+            onOpenPrinterSettings={() => setIsPrinterModalOpen(true)}
           />
         )}
+      </Modal>
+
+      {/* Quick Printer Setup & Hardware Modal */}
+      <Modal
+        isOpen={isPrinterModalOpen}
+        onClose={() => setIsPrinterModalOpen(false)}
+        title="🖨️ Thermal Printer & Hardware Setup"
+        description="ATPOS 80mm/58mm, Bluetooth direct ESC/POS, and test print"
+        maxWidth="xl"
+      >
+        <div className="p-1">
+          <PrinterSettingsTab shopId={SHOP_ID} />
+        </div>
       </Modal>
 
       {/* Continuous Live Camera Barcode Scanner Modal */}
