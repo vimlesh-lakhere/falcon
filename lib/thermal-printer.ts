@@ -48,8 +48,8 @@ export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {
   showCustomerInfo: true,
   showQrCode: true,
   showDynamicUpiQr: true,
-  upiId: "9340362381@paytm",
-  upiPayeeName: "AGS STORE & COSMETICS",
+  upiId: "9340362381@ybl",
+  upiPayeeName: "AGS Store",
   bankName: "State Bank of India",
   bankAccountNumber: "",
   bankIfsc: "",
@@ -63,7 +63,12 @@ export function getPrinterConfig(shopId: string): PrinterConfig {
   try {
     const saved = localStorage.getItem(`falcon_printer_config_${shopId}`);
     if (saved) {
-      return { ...DEFAULT_PRINTER_CONFIG, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      // Migrate legacy invalid default UPI ID if unchanged
+      if (parsed.upiId === "9340362381@paytm") {
+        parsed.upiId = "9340362381@ybl";
+      }
+      return { ...DEFAULT_PRINTER_CONFIG, ...parsed };
     }
   } catch (e) {
     console.warn("Could not read printer config from localStorage", e);
@@ -89,8 +94,12 @@ export function savePrinterConfig(shopId: string, config: PrinterConfig): void {
 
 /**
  * Builds a standardized NPCI UPI Intent URI for dynamic payment.
- * When scanned by Google Pay, PhonePe, Paytm, BHIM, Cred, etc.,
- * it automatically locks in the exact bill amount.
+ * Sanitizes parameters to strictly conform to NPCI specifications:
+ * - 'pa': clean VPA (no spaces or encoding)
+ * - 'pn': clean alphanumeric business name without '&' or '#'
+ * - 'am': decimal amount
+ * - 'cu': 'INR'
+ * - 'tn': transaction note without '#' (which terminates URL query string)
  */
 export function buildUpiPaymentUrl(
   upiId: string,
@@ -101,12 +110,22 @@ export function buildUpiPaymentUrl(
   if (!upiId || !upiId.includes("@")) {
     return "";
   }
-  const cleanUpi = upiId.trim();
-  const cleanName = encodeURIComponent(payeeName.trim() || "Store Payment");
-  const cleanAmt = Math.max(0, amount).toFixed(2);
-  const note = encodeURIComponent(`Bill #${invoiceNumber}`);
+  const cleanUpi = upiId.trim().replace(/\s+/g, "");
 
-  return `upi://pay?pa=${cleanUpi}&pn=${cleanName}&am=${cleanAmt}&cu=INR&tn=${note}`;
+  // NPCI spec: Payee name must not contain '&', '#', or special URL control chars
+  const cleanName = (payeeName || "AGS Store")
+    .replace(/&/g, "and")
+    .replace(/[^a-zA-Z0-9 ]/g, "")
+    .trim()
+    .slice(0, 40);
+
+  const cleanAmt = Math.max(0, amount).toFixed(2);
+
+  // Note must NOT contain '#' as '#' is the URI fragment delimiter which breaks parameter parsers
+  const cleanInvoice = invoiceNumber ? invoiceNumber.replace(/[^a-zA-Z0-9-_]/g, "") : "Bill";
+  const cleanNote = `Bill-${cleanInvoice}`;
+
+  return `upi://pay?pa=${cleanUpi}&pn=${encodeURIComponent(cleanName)}&am=${cleanAmt}&cu=INR&tn=${encodeURIComponent(cleanNote)}`;
 }
 
 // ---------------------------------------------------------------------------

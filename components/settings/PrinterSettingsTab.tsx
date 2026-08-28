@@ -497,12 +497,37 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
             <Input
               type="text"
               value={config.upiId}
-              onChange={(e) => setConfig({ ...config, upiId: e.target.value })}
-              placeholder="e.g. 9340362381@paytm or shop@okhdfcbank"
+              onChange={(e) => setConfig({ ...config, upiId: e.target.value.trim() })}
+              placeholder="e.g. 9340362381@ybl or shop@okhdfcbank"
               className="rounded-xl font-mono font-bold"
             />
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className="text-[10px] text-gray-500 font-bold">Quick Handles:</span>
+              {[
+                { label: "PhonePe (@ybl)", handle: "@ybl" },
+                { label: "PhonePe (@axl)", handle: "@axl" },
+                { label: "PhonePe (@ibl)", handle: "@ibl" },
+                { label: "Paytm (@paytm)", handle: "@paytm" },
+                { label: "GPay (@okaxis)", handle: "@okaxis" },
+                { label: "GPay (@okhdfcbank)", handle: "@okhdfcbank" },
+                { label: "GPay (@oksbi)", handle: "@oksbi" },
+                { label: "BHIM (@upi)", handle: "@upi" },
+              ].map((h) => (
+                <button
+                  key={h.handle}
+                  type="button"
+                  onClick={() => {
+                    const currentPrefix = config.upiId ? config.upiId.split("@")[0] : "9340362381";
+                    setConfig({ ...config, upiId: `${currentPrefix}${h.handle}` });
+                  }}
+                  className="px-2 py-0.5 bg-gray-100 hover:bg-purple-100 hover:text-purple-900 border border-gray-200 hover:border-purple-300 rounded-md text-[10px] font-mono font-semibold transition-all cursor-pointer"
+                >
+                  {h.handle}
+                </button>
+              ))}
+            </div>
             <span className="text-[10px] text-gray-500 mt-1 block">
-              Enter your Paytm, PhonePe, GPay merchant UPI ID
+              Enter your active merchant or personal UPI ID (e.g. 9340362381@ybl)
             </span>
           </div>
 
@@ -514,11 +539,11 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
               type="text"
               value={config.upiPayeeName}
               onChange={(e) => setConfig({ ...config, upiPayeeName: e.target.value })}
-              placeholder="e.g. AGS STORE & COSMETICS"
+              placeholder="e.g. AGS Store"
               className="rounded-xl font-bold"
             />
             <span className="text-[10px] text-gray-500 mt-1 block">
-              Name verified by UPI banking apps
+              Business name registered on your UPI app (Special characters like &amp; are automatically sanitized)
             </span>
           </div>
 
