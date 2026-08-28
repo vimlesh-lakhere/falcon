@@ -37,6 +37,7 @@ import {
   generateStandardVariants,
   CleanVariant,
 } from "@/lib/product-variants";
+import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
 
 interface UnifiedAddProductModalProps {
   isOpen: boolean;
@@ -156,6 +157,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [isQuickSuppOpen, setIsQuickSuppOpen] = useState(false);
   const [newSuppName, setNewSuppName] = useState("");
   const [newSuppPhone, setNewSuppPhone] = useState("");
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
 
   const frontFileInputRef = useRef<HTMLInputElement>(null);
   const backFileInputRef = useRef<HTMLInputElement>(null);
@@ -894,21 +896,42 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-semibold text-gray-700">Barcode (EAN-13)</label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsBarcodeScannerOpen(true)}
+                        className="text-[10px] text-purple-700 hover:text-purple-900 font-bold flex items-center gap-0.5 bg-purple-50 hover:bg-purple-100 px-1.5 py-0.5 rounded border border-purple-200 transition-colors cursor-pointer"
+                        title="Scan Barcode using Device Camera"
+                      >
+                        <Camera className="w-3 h-3 text-purple-600" />
+                        <span>📷 Scan</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAutoGenerateBarcode}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer"
+                      >
+                        ⚡ Auto-Gen
+                      </button>
+                    </div>
+                  </div>
+                  <div className="relative flex gap-1">
+                    <input
+                      type="text"
+                      value={barcode}
+                      onChange={(e) => setBarcode(e.target.value)}
+                      placeholder="Scan with camera, gun or enter EAN"
+                      className="w-full text-xs h-9 bg-white border border-gray-300 rounded-lg px-3 font-mono text-gray-900 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                    />
                     <button
                       type="button"
-                      onClick={handleAutoGenerateBarcode}
-                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold"
+                      onClick={() => setIsBarcodeScannerOpen(true)}
+                      className="px-2.5 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-lg flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                      title="Scan Barcode with Camera"
                     >
-                      ⚡ Auto-Generate
+                      <Camera className="w-4 h-4 text-purple-600" />
                     </button>
                   </div>
-                  <input
-                    type="text"
-                    value={barcode}
-                    onChange={(e) => setBarcode(e.target.value)}
-                    placeholder="Scan with gun or enter EAN"
-                    className="w-full text-xs h-9 bg-white border border-gray-300 rounded-lg px-3 font-mono text-gray-900 focus:ring-2 focus:ring-purple-600 focus:outline-none"
-                  />
                 </div>
 
                 <div>
@@ -1426,6 +1449,19 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           </div>
         </div>
       )}
+
+      {/* Live Camera Barcode Scanner Sub-Modal */}
+      <CameraBarcodeScanner
+        isOpen={isBarcodeScannerOpen}
+        onClose={() => setIsBarcodeScannerOpen(false)}
+        onScan={(scannedCode) => {
+          const clean = scannedCode.trim();
+          if (clean) {
+            setBarcode(clean);
+          }
+          setIsBarcodeScannerOpen(false);
+        }}
+      />
     </div>
   );
 };

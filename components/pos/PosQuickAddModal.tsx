@@ -12,12 +12,14 @@ import {
   Sparkles,
   Check,
   AlertCircle,
+  Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Product, Category } from "@/types/database";
 import { productsRepository } from "@/repositories/products.repo";
 import { UnitKey } from "@/lib/units-pricing";
+import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
 
 interface PosQuickAddModalProps {
   isOpen: boolean;
@@ -50,6 +52,7 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -259,16 +262,37 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Barcode / SKU</label>
-              <div className="relative">
-                <Input
-                  type="text"
-                  placeholder="Scan or enter barcode"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  className="rounded-xl text-xs font-mono pl-8"
-                />
-                <BarcodeIcon className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-gray-700">Barcode / SKU</label>
+                <button
+                  type="button"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  className="text-[10px] text-purple-700 hover:text-purple-900 font-black flex items-center gap-1 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                  title="Scan Barcode using Device Camera"
+                >
+                  <Camera className="w-3 h-3 text-purple-600" />
+                  <span>📷 Scan with Camera</span>
+                </button>
+              </div>
+              <div className="relative flex gap-1.5">
+                <div className="relative flex-1">
+                  <Input
+                    type="text"
+                    placeholder="Scan or enter barcode"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    className="rounded-xl text-xs font-mono pl-8"
+                  />
+                  <BarcodeIcon className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  className="p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl flex items-center justify-center shrink-0 cursor-pointer"
+                  title="Open Camera Scanner"
+                >
+                  <Camera className="w-4 h-4 text-purple-600" />
+                </button>
               </div>
             </div>
           </div>
@@ -399,6 +423,19 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Live Camera Barcode Scanner Sub-Modal */}
+      <CameraBarcodeScanner
+        isOpen={isCameraScannerOpen}
+        onClose={() => setIsCameraScannerOpen(false)}
+        onScan={(scannedCode) => {
+          const clean = scannedCode.trim();
+          if (clean) {
+            setBarcode(clean);
+          }
+          setIsCameraScannerOpen(false);
+        }}
+      />
     </div>
   );
 };
