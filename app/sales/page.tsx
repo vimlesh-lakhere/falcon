@@ -199,6 +199,73 @@ function SalesHistoryContent() {
           </div>
         </div>
 
+        {/* Sales & Gross Profit KPI Summary Cards */}
+        {(() => {
+          const totalRev = filteredSales.reduce((acc, s) => acc + (Number(s.total_amount) || 0), 0);
+          const totalCst = filteredSales.reduce((acc, s) => {
+            const cost = (s.items || []).reduce(
+              (sum, it: any) =>
+                sum + ((Number(it.cost_price) || Number(it.product?.purchase_price) || 0) * Number(it.quantity || 1)),
+              0
+            );
+            return acc + cost;
+          }, 0);
+          const totalPrf = totalRev - totalCst;
+          const avgMrg = totalRev > 0 ? (totalPrf / totalRev) * 100 : 0;
+
+          return (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  Total Sales Revenue
+                </span>
+                <div className="text-xl font-black text-gray-900 tabular-nums">
+                  {formatCurrency(totalRev)}
+                </div>
+                <div className="text-[11px] text-gray-500 font-medium">
+                  {filteredSales.length} Total Invoices Billed
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50/70 p-4 rounded-2xl border border-emerald-200 shadow-xs space-y-1">
+                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
+                  Total Gross Profit (कमाई)
+                </span>
+                <div className="text-xl font-black text-emerald-700 tabular-nums flex items-baseline gap-1.5">
+                  <span>+{formatCurrency(totalPrf)}</span>
+                </div>
+                <div className="text-[11px] font-bold text-emerald-800">
+                  ⚡ {avgMrg.toFixed(1)}% Overall Margin
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  Inventory Cost (COGS)
+                </span>
+                <div className="text-xl font-black text-gray-700 tabular-nums">
+                  {formatCurrency(totalCst)}
+                </div>
+                <div className="text-[11px] text-gray-500 font-medium">
+                  Product purchase costs
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  Avg. Ticket / Basket
+                </span>
+                <div className="text-xl font-black text-purple-700 tabular-nums">
+                  {formatCurrency(totalRev / (filteredSales.length || 1))}
+                </div>
+                <div className="text-[11px] text-gray-500 font-medium">
+                  Per transaction average
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Online Orders Processing Guidance Banner (Visible in online tab) */}
         {activeTab === "online" && (
           <div className="bg-gradient-to-r from-purple-900 to-indigo-900 text-white p-5 rounded-2xl shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -229,6 +296,7 @@ function SalesHistoryContent() {
                     <th className="px-5 py-3.5">Date & Time</th>
                     <th className="px-5 py-3.5">Payment</th>
                     <th className="px-5 py-3.5 text-right">Total Amount</th>
+                    <th className="px-5 py-3.5 text-right">Profit (मुनाफा)</th>
                     <th className="px-5 py-3.5 text-center">Status</th>
                     <th className="px-5 py-3.5 text-right">Fulfillment Actions</th>
                   </tr>
@@ -253,6 +321,18 @@ function SalesHistoryContent() {
                   ) : (
                     filteredSales.map((sale) => {
                       const isOnline = isOnlineOrder(sale);
+                      const items = sale.items || [];
+                      const billCost = items.reduce(
+                        (sum: number, it: any) =>
+                          sum +
+                          ((Number(it.cost_price) || Number(it.product?.purchase_price) || 0) *
+                            Number(it.quantity || 1)),
+                        0
+                      );
+                      const billTotal = Number(sale.total_amount) || Number(sale.subtotal) || 0;
+                      const billProfit = billTotal - billCost;
+                      const billMargin = billTotal > 0 ? (billProfit / billTotal) * 100 : 0;
+
                       return (
                         <tr
                           key={sale.id}
@@ -318,6 +398,16 @@ function SalesHistoryContent() {
                           {/* Total Amount */}
                           <td className="px-5 py-4 text-xs font-bold text-brand-700 text-right tabular-nums">
                             {formatCurrency(sale.total_amount)}
+                          </td>
+
+                          {/* Profit & Margin on this Bill */}
+                          <td className="px-5 py-4 text-right tabular-nums">
+                            <div className="text-xs font-black text-emerald-700">
+                              +{formatCurrency(billProfit)}
+                            </div>
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md">
+                              {billMargin.toFixed(1)}% margin
+                            </span>
                           </td>
 
                           {/* Status */}
@@ -532,7 +622,56 @@ function SalesHistoryContent() {
                 </div>
               )}
 
-              {/* Printable Invoice / Receipt View */}
+              {/* Profit Breakdown Panel for this Bill */}
+              {(() => {
+                const items = selectedSale.items || [];
+                const totalBilled = Number(selectedSale.total_amount) || Number(selectedSale.subtotal) || 0;
+                const costOfGoods = items.reduce(
+                  (sum, it: any) =>
+                    sum +
+                    ((Number(it.cost_price) || Number(it.product?.purchase_price) || 0) *
+                      Number(it.quantity || 1)),
+                  0
+                );
+                const grossProfit = totalBilled - costOfGoods;
+                const marginPct = totalBilled > 0 ? (grossProfit / totalBilled) * 100 : 0;
+
+                return (
+                  <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50/80 rounded-2xl border border-emerald-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-emerald-950 uppercase tracking-wider flex items-center gap-1">
+                        <span>💰 Bill Profit & Margin Analysis (इस बिल की शुद्ध कमाई)</span>
+                      </span>
+                      <span className="px-2 py-0.5 bg-emerald-700 text-white rounded-full text-xs font-black">
+                        {marginPct.toFixed(1)}% Gross Margin
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                      <div className="bg-white/80 p-2 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] text-gray-500 block font-semibold">Total Billed (विक्रय मूल्य)</span>
+                        <span className="text-sm font-black text-gray-900 tabular-nums">
+                          {formatCurrency(totalBilled)}
+                        </span>
+                      </div>
+                      <div className="bg-white/80 p-2 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] text-gray-500 block font-semibold">Cost of Goods (लागत मूल्य)</span>
+                        <span className="text-sm font-bold text-gray-700 tabular-nums">
+                          {formatCurrency(costOfGoods)}
+                        </span>
+                      </div>
+                      <div className="bg-emerald-600 text-white p-2 rounded-xl shadow-xs">
+                        <span className="text-[10px] text-emerald-100 block font-bold">Net Profit (शुद्ध मुनाफा)</span>
+                        <span className="text-sm font-black tabular-nums">
+                          +{formatCurrency(grossProfit)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Printable Invoice / Receipt View with per-item profit breakdown */}
               <div className="p-4 border border-gray-200 rounded-xl bg-white space-y-3 font-mono text-xs text-gray-800">
                 <div className="text-center pb-3 border-b border-dashed border-gray-300">
                   <h2 className="font-bold text-sm text-gray-900">AGS STORE</h2>
@@ -545,15 +684,27 @@ function SalesHistoryContent() {
                   <span>Channel: {isOnlineOrder(selectedSale) ? "Online Store" : "POS Billing"}</span>
                 </div>
 
-                <div className="border-t border-b border-dashed border-gray-300 py-2 space-y-1">
-                  {selectedSale.items?.map((it, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span className="truncate max-w-[220px]">{it.product?.name || "Product Item"}</span>
-                      <span className="tabular-nums">
-                        {it.quantity} × {formatCurrency(it.unit_price)}
-                      </span>
-                    </div>
-                  ))}
+                <div className="border-t border-b border-dashed border-gray-300 py-2 space-y-2">
+                  {selectedSale.items?.map((it, idx) => {
+                    const itCost = Number(it.cost_price) || Number(it.product?.purchase_price) || 0;
+                    const itSelling = Number(it.unit_price) || 0;
+                    const itProfit = (itSelling - itCost) * Number(it.quantity || 1);
+
+                    return (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="flex justify-between font-semibold">
+                          <span className="truncate max-w-[220px]">{it.product?.name || "Product Item"}</span>
+                          <span className="tabular-nums">
+                            {it.quantity} × {formatCurrency(itSelling)} = {formatCurrency(itSelling * Number(it.quantity))}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-[10px] text-gray-500 font-sans">
+                          <span>Cost: ₹{itCost.toFixed(2)} /unit</span>
+                          <span className="font-bold text-emerald-700">Profit: +₹{itProfit.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div className="space-y-1 text-right font-bold text-xs pt-1">

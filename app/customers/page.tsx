@@ -1,7 +1,18 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Users, Plus, Search, Phone, Mail, DollarSign, Sparkles } from "lucide-react";
+import {
+  Users,
+  Plus,
+  Search,
+  Phone,
+  Mail,
+  DollarSign,
+  Sparkles,
+  TrendingUp,
+  Receipt,
+  Eye,
+} from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -13,6 +24,7 @@ import { productsRepository } from "@/repositories/products.repo";
 import { Customer, Product } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
+import { CustomerLedgerModal } from "@/components/customers/CustomerLedgerModal";
 
 const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -20,10 +32,13 @@ export default function CustomersPage() {
   const currentStore = useAuthStore((state) => state.currentStore);
   const activeShopId = currentStore?.id || FALLBACK_SHOP_ID;
 
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Customer Profit Ledger Modal
+  const [selectedCustForLedger, setSelectedCustForLedger] = useState<string | null>(null);
 
   // Add Customer Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -44,7 +59,7 @@ export default function CustomersPage() {
     try {
       setLoading(true);
       const [custs, prods] = await Promise.all([
-        customersRepository.getAll(activeShopId),
+        customersRepository.getAllWithProfitSummary(activeShopId),
         productsRepository.getAll(activeShopId, { isActive: true }),
       ]);
       setCustomers(custs);
@@ -125,14 +140,77 @@ export default function CustomersPage() {
       c.phone?.includes(search)
   );
 
+  // Overall Aggregate KPIs
+  const totalLifetimeSales = customers.reduce(
+    (acc, c) => acc + (Number(c.calculatedLifetimeSpend) || 0),
+    0
+  );
+  const totalLifetimeProfit = customers.reduce(
+    (acc, c) => acc + (Number(c.calculatedLifetimeProfit) || 0),
+    0
+  );
+  const overallAvgMargin =
+    totalLifetimeSales > 0 ? (totalLifetimeProfit / totalLifetimeSales) * 100 : 0;
+
   return (
     <MainLayout
-      title="Customer Directory & Wholesale Pricing"
-      subtitle="Track customer total spend, outstanding balances, and wholesale pricing agreements"
+      title="Customer Directory & Profitability Ledger"
+      subtitle="Track customer lifetime purchases, net profit earned, and custom wholesale pricing"
     >
       <div className="space-y-6 max-w-7xl mx-auto">
+        {/* Customer Profitability Overview KPI Bar */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              Total Customers
+            </span>
+            <div className="text-xl font-black text-gray-900 tabular-nums">
+              {customers.length} Registered
+            </div>
+            <div className="text-[11px] text-gray-500 font-medium">
+              Active store buyers
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              Lifetime Customer Revenue
+            </span>
+            <div className="text-xl font-black text-gray-900 tabular-nums">
+              {formatCurrency(totalLifetimeSales)}
+            </div>
+            <div className="text-[11px] text-gray-500 font-medium">
+              Total billed across all customers
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-4 rounded-2xl border border-emerald-200 shadow-xs space-y-1">
+            <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
+              Lifetime Gross Profit (कुल मुनाफा)
+            </span>
+            <div className="text-xl font-black text-emerald-700 tabular-nums">
+              +{formatCurrency(totalLifetimeProfit)}
+            </div>
+            <div className="text-[11px] font-bold text-emerald-800">
+              ⚡ {overallAvgMargin.toFixed(1)}% Average Margin
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              Avg. Customer Value (LTV)
+            </span>
+            <div className="text-xl font-black text-purple-700 tabular-nums">
+              {formatCurrency(totalLifetimeSales / (customers.length || 1))}
+            </div>
+            <div className="text-[11px] text-gray-500 font-medium">
+              Revenue per customer
+            </div>
+          </div>
+        </div>
+
         {/* Actions Bar */}
-        <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-surface-border shadow-sm">
+        <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-surface-border shadow-xs">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
             <input
@@ -154,59 +232,107 @@ export default function CustomersPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {loading ? (
             <div className="col-span-full py-12 text-center text-gray-400 text-sm">
-              Loading customers...
+              Loading customers and profitability stats...
             </div>
           ) : filteredCustomers.length === 0 ? (
             <div className="col-span-full py-12 text-center text-gray-400 text-sm">
               No customers found.
             </div>
           ) : (
-            filteredCustomers.map((cust) => (
-              <Card key={cust.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-5 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-900">{cust.name}</h4>
-                      {cust.phone && (
-                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 text-gray-400" /> {cust.phone}
-                        </p>
-                      )}
-                    </div>
-                    <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-xs">
-                      {cust.name.slice(0, 2).toUpperCase()}
-                    </div>
-                  </div>
+            filteredCustomers.map((cust) => {
+              const spend = Number(cust.calculatedLifetimeSpend) || Number(cust.total_spend) || 0;
+              const profit = Number(cust.calculatedLifetimeProfit) || 0;
+              const margin = Number(cust.profitMarginPercent) || 0;
+              const bills = Number(cust.totalBills) || 0;
 
-                  {cust.address && (
-                    <p className="text-xs text-gray-600 line-clamp-1">{cust.address}</p>
-                  )}
-
-                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="text-gray-400 block text-[10px] uppercase font-semibold">
-                        Total Spend
-                      </span>
-                      <span className="font-bold text-gray-900 tabular-nums">
-                        {formatCurrency(cust.total_spend)}
-                      </span>
+              return (
+                <Card key={cust.id} className="hover:shadow-md transition-shadow border border-gray-200 rounded-2xl">
+                  <CardContent className="p-5 space-y-3.5">
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-black text-gray-900 truncate">{cust.name}</h4>
+                        {cust.phone && (
+                          <p className="text-xs text-gray-500 font-mono flex items-center gap-1 mt-0.5">
+                            <Phone className="w-3 h-3 text-gray-400" /> +91 {cust.phone}
+                          </p>
+                        )}
+                        {cust.address && (
+                          <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5">
+                            📍 {cust.address}
+                          </p>
+                        )}
+                      </div>
+                      <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center font-black text-xs shrink-0 shadow-2xs">
+                        {cust.name.slice(0, 2).toUpperCase()}
+                      </div>
                     </div>
 
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openPricingModal(cust)}
-                      className="text-xs font-semibold gap-1 border-brand-200 text-brand-700 hover:bg-brand-50"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                      Special Prices
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                    {/* Spend & Profit Metrics Box */}
+                    <div className="p-3 bg-gray-50/80 rounded-xl border border-gray-200 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-400 block text-[10px] uppercase font-bold">
+                          Lifetime Spend
+                        </span>
+                        <span className="font-black text-gray-900 text-sm tabular-nums">
+                          {formatCurrency(spend)}
+                        </span>
+                        <span className="text-[10px] text-gray-500 block font-medium">
+                          {bills} {bills === 1 ? "Bill" : "Bills"}
+                        </span>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-emerald-800 block text-[10px] uppercase font-bold">
+                          Profit Made (कमाई)
+                        </span>
+                        <span className="font-black text-emerald-700 text-sm tabular-nums">
+                          +{formatCurrency(profit)}
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-800 block">
+                          {margin.toFixed(1)}% margin
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="pt-1 flex items-center justify-between gap-2 text-xs">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedCustForLedger(cust.id)}
+                        className="flex-1 text-xs font-bold gap-1 text-emerald-800 border-emerald-300 hover:bg-emerald-50"
+                      >
+                        <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+                        Bills & Profit
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openPricingModal(cust)}
+                        className="text-xs font-semibold gap-1 border-purple-200 text-purple-700 hover:bg-purple-50"
+                        title="Configure wholesale locked price"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        Prices
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
           )}
         </div>
+
+        {/* Customer Lifetime Profit & Transaction Ledger Modal */}
+        {selectedCustForLedger && (
+          <CustomerLedgerModal
+            customerId={selectedCustForLedger}
+            onClose={() => setSelectedCustForLedger(null)}
+            shopId={activeShopId}
+          />
+        )}
 
         {/* Add Customer Modal */}
         <Modal
