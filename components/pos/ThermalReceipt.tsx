@@ -37,8 +37,9 @@ export function ThermalReceipt({
     .map(
       (it: any, idx: number) => {
         const pName = it.product?.name || it.product_name || it.name || it.title || "Product";
+        const unitLabel = it.unit_name ? ` (${it.unit_name})` : "";
         const lineTotal = Number(it.unit_price) * it.quantity;
-        return `${idx + 1}. *${pName}*\n   ${it.quantity} x ₹${it.unit_price} = *₹${lineTotal}*`;
+        return `${idx + 1}. *${pName}*\n   ${it.quantity}${unitLabel} x ₹${it.unit_price} = *₹${lineTotal}*`;
       }
     )
     .join("\n");
@@ -168,13 +169,14 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${sale.discount_amoun
 
             {items.map((it: any, idx: number) => {
               const pName = it.product?.name || it.product_name || it.name || it.title || "Product";
+              const unitLabel = it.unit_name ? ` ${it.unit_name}` : "";
               const total = Number(it.unit_price) * it.quantity;
               return (
                 <div key={idx} className="space-y-0.5">
                   <div className="font-bold line-clamp-1">{pName}</div>
                   <div className="flex justify-between text-[10px] text-gray-700">
                     <span>
-                      {it.quantity} x ₹{it.unit_price}
+                      {it.quantity}{unitLabel} x ₹{it.unit_price}
                     </span>
                     <span className="font-bold text-black">₹{total}</span>
                   </div>

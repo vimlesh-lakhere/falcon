@@ -16,6 +16,9 @@ export interface CheckoutPayload {
     quantity: number;
     unit_price: number;
     cost_price: number;
+    unit_name?: string;
+    unit_multiplier?: number;
+    base_quantity?: number;
     is_price_overridden?: boolean;
   }[];
   payments: {
@@ -79,17 +82,20 @@ export const posRepository = {
     const { error: paymentError } = await supabase.from("payments").insert(payments);
     if (paymentError) throw paymentError;
 
-    // 4. Insert stock movements for each item (triggers automatically deduct product current_stock)
-    const stockMovements = payload.items.map((item) => ({
-      shop_id: payload.shop_id,
-      product_id: item.product_id,
-      variant_id: item.variant_id || null,
-      movement_type: "sale",
-      quantity_delta: -Math.abs(item.quantity),
-      reference_table: "sales",
-      reference_id: sale.id,
-      notes: `POS Sale: ${invoice_number}`,
-    }));
+    // 4. Insert stock movements for each item (triggers automatically deduct product current_stock in base units)
+    const stockMovements = payload.items.map((item) => {
+      const deductionQty = item.base_quantity || (item.quantity * (item.unit_multiplier || 1));
+      return {
+        shop_id: payload.shop_id,
+        product_id: item.product_id,
+        variant_id: item.variant_id || null,
+        movement_type: "sale",
+        quantity_delta: -Math.abs(deductionQty),
+        reference_table: "sales",
+        reference_id: sale.id,
+        notes: `POS Sale: ${invoice_number}${item.unit_name ? ` (${item.quantity} ${item.unit_name})` : ""}`,
+      };
+    });
 
     const { error: stockError } = await supabase.from("stock_movements").insert(stockMovements);
     // 5. Fetch and return the fully joined sale object with products and customer

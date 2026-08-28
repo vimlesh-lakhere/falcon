@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Printer,
   Sparkles,
+  Flame,
   ArrowLeft,
   ArrowRight,
   RefreshCw,
@@ -24,11 +25,13 @@ import {
   WifiOff,
   Camera,
   CloudUpload,
+  Layers,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
+import { supabase } from "@/lib/supabase/client";
 import { productsRepository } from "@/repositories/products.repo";
 import { customersRepository } from "@/repositories/customers.repo";
 import { posRepository, CheckoutPayload } from "@/repositories/pos.repo";
@@ -37,7 +40,15 @@ import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import { offlinePosEngine } from "@/lib/offline-pos";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
 import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
-
+import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
+import { PosCategorySidebar } from "@/components/pos/PosCategorySidebar";
+import {
+  UnitKey,
+  STANDARD_UNITS,
+  calculateDefaultUnitPrice,
+  formatItemQuantityAndUnit,
+  getBaseQuantity,
+} from "@/lib/units-pricing";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -47,6 +58,9 @@ interface CartItem {
   unitPrice: number;
   originalPrice: number;
   isPriceOverridden: boolean;
+  unit: UnitKey;
+  unitName: string;
+  unitMultiplier: number;
 }
 
 interface HeldBill {
@@ -72,6 +86,13 @@ export default function PosBillingPage() {
 
   // Camera Barcode Scanner
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+
+  // POS Quick Add Product Modal
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+
+  // Product Sort Mode & Sales Velocity
+  const [sortMode, setSortMode] = useState<"top_selling" | "name_asc" | "price_asc" | "newest">("top_selling");
+  const [productSalesCount, setProductSalesCount] = useState<Record<string, number>>({});
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -130,7 +151,7 @@ export default function PosBillingPage() {
     }
   };
 
-  // Load catalog data (with offline cache fallback)
+  // Load catalog data (with offline cache fallback & sales count)
   const loadCatalog = async () => {
     try {
       const [prods, cats, custs] = await Promise.all([
@@ -145,6 +166,24 @@ export default function PosBillingPage() {
       // Cache locally for offline use
       offlinePosEngine.cacheCatalog(prods);
       offlinePosEngine.cacheCustomers(custs);
+
+      // Fetch sales stats to compute top selling items
+      try {
+        const { data: salesStats } = await supabase
+          .from("sale_items")
+          .select("product_id, quantity");
+        if (salesStats && salesStats.length > 0) {
+          const counts: Record<string, number> = {};
+          salesStats.forEach((s: any) => {
+            if (s.product_id) {
+              counts[s.product_id] = (counts[s.product_id] || 0) + Number(s.quantity || 1);
+            }
+          });
+          setProductSalesCount(counts);
+        }
+      } catch (e) {
+        console.warn("Could not load sales count stats:", e);
+      }
     } catch (err) {
       console.warn("Online catalog load failed, loading from offline cache:", err);
       const cachedProds = offlinePosEngine.getCachedCatalog();
@@ -246,41 +285,80 @@ export default function PosBillingPage() {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    // Check exact barcode match first
+    // Check exact barcode or SKU match first
     const matched = products.find(
       (p) =>
         p.barcode?.toLowerCase() === searchQuery.trim().toLowerCase() ||
-        p.sku?.toLowerCase() === searchQuery.trim().toLowerCase()
+        p.sku?.toLowerCase() === searchQuery.trim().toLowerCase() ||
+        p.name.toLowerCase() === searchQuery.trim().toLowerCase()
     );
 
     if (matched) {
-      addToCart(matched);
+      addToCart(matched, "piece", 1);
       setSearchQuery("");
+    } else {
+      // If not found, open Quick Add with pre-filled search term
+      setIsQuickAddOpen(true);
     }
   };
 
-  // Add product to cart
-  const addToCart = (product: Product) => {
-    const existingIndex = cart.findIndex((item) => item.product.id === product.id);
+  // Add product to cart with Unit support
+  const addToCart = (product: Product, unitKey: UnitKey = "piece", initialQty: number = 1) => {
+    const existingIndex = cart.findIndex((item) => item.product.id === product.id && item.unit === unitKey);
     const customPrice = customerPrices[product.id];
-    const unitPrice = customPrice !== undefined ? customPrice : Number(product.selling_price);
+    const unitPrice =
+      customPrice !== undefined && unitKey === "piece"
+        ? customPrice
+        : calculateDefaultUnitPrice(product, unitKey);
+
+    const unitDef = STANDARD_UNITS[unitKey] || STANDARD_UNITS.piece;
 
     if (existingIndex > -1) {
       const updated = [...cart];
-      updated[existingIndex].quantity += 1;
+      updated[existingIndex].quantity += initialQty;
       setCart(updated);
     } else {
       setCart([
         ...cart,
         {
           product,
-          quantity: 1,
+          quantity: initialQty,
           unitPrice,
-          originalPrice: Number(product.selling_price),
-          isPriceOverridden: customPrice !== undefined,
+          originalPrice: unitPrice,
+          isPriceOverridden: customPrice !== undefined && unitKey === "piece",
+          unit: unitKey,
+          unitName: unitDef.shortName,
+          unitMultiplier: unitDef.multiplier,
         },
       ]);
     }
+  };
+
+  // Switch unit on an existing cart item (e.g. from Piece to Dozen)
+  const updateCartItemUnit = (index: number, newUnit: UnitKey) => {
+    const updated = [...cart];
+    const item = updated[index];
+    const unitDef = STANDARD_UNITS[newUnit] || STANDARD_UNITS.piece;
+    const newPrice = calculateDefaultUnitPrice(item.product, newUnit);
+
+    updated[index] = {
+      ...item,
+      unit: newUnit,
+      unitName: unitDef.shortName,
+      unitMultiplier: unitDef.multiplier,
+      unitPrice: newPrice,
+      originalPrice: newPrice,
+      isPriceOverridden: false,
+    };
+    setCart(updated);
+  };
+
+  // Handle successful POS Quick Add
+  const handleQuickAddSuccess = (newProduct: Product, selectedUnit: UnitKey, qty: number) => {
+    setProducts((prev) => [newProduct, ...prev]);
+    offlinePosEngine.cacheCatalog([newProduct, ...products]);
+    addToCart(newProduct, selectedUnit, qty);
+    setSearchQuery("");
   };
 
   const updateQuantity = (index: number, delta: number) => {
@@ -376,6 +454,9 @@ export default function PosBillingPage() {
           quantity: it.quantity,
           unit_price: it.unitPrice,
           cost_price: Number(it.product.purchase_price || 0),
+          unit_name: it.unitName,
+          unit_multiplier: it.unitMultiplier,
+          base_quantity: getBaseQuantity(it.quantity, it.unit),
           is_price_overridden: it.isPriceOverridden,
         })),
         payments,
@@ -395,16 +476,18 @@ export default function PosBillingPage() {
         }
       }
 
-      // Ensure items have full product object attached for receipt printing & WhatsApp
+      // Ensure items have full product object & unit_name attached for receipt printing & WhatsApp
       const enrichedSale: Sale = {
         ...sale,
         customer: selectedCustomer || sale.customer,
-        items: (sale.items || []).map((saleItem) => {
-          const cartMatch = cart.find((c) => c.product.id === saleItem.product_id);
+        items: (sale.items || []).map((saleItem, idx) => {
+          const cartMatch = cart[idx] || cart.find((c) => c.product.id === saleItem.product_id);
           return {
             ...saleItem,
             product: saleItem.product || cartMatch?.product,
-          };
+            unit_name: cartMatch?.unitName,
+            unit_multiplier: cartMatch?.unitMultiplier,
+          } as any;
         }),
       };
 
@@ -423,16 +506,37 @@ export default function PosBillingPage() {
     }
   };
 
-  // Filter products by category and search
-  const filteredProducts = products.filter((p) => {
-    const matchesCategory = selectedCategory === "all" || p.category_id === selectedCategory;
-    const matchesSearch =
-      !searchQuery ||
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.barcode?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  // Filter and rank products by category, search, and sales velocity (Top Selling)
+  const filteredProducts = React.useMemo(() => {
+    const list = products.filter((p) => {
+      const matchesCategory = selectedCategory === "all" || p.category_id === selectedCategory;
+      const matchesSearch =
+        !searchQuery ||
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.barcode?.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
+
+    return list.sort((a, b) => {
+      if (sortMode === "top_selling") {
+        const salesA = productSalesCount[a.id] || 0;
+        const salesB = productSalesCount[b.id] || 0;
+        if (salesB !== salesA) return salesB - salesA;
+        return a.name.localeCompare(b.name);
+      }
+      if (sortMode === "name_asc") {
+        return a.name.localeCompare(b.name);
+      }
+      if (sortMode === "price_asc") {
+        return Number(a.selling_price) - Number(b.selling_price);
+      }
+      if (sortMode === "newest") {
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      }
+      return 0;
+    });
+  }, [products, selectedCategory, searchQuery, sortMode, productSalesCount]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans select-none">
@@ -523,119 +627,241 @@ export default function PosBillingPage() {
         {/* Left Side: Product catalog & Search (Full width on mobile when catalog active, 60% on desktop) */}
         <div
           className={cn(
-            "flex-1 flex-col bg-surface-canvas border-r border-gray-200 overflow-hidden",
+            "flex-1 bg-surface-canvas border-r border-gray-200 overflow-hidden flex",
             mobileTab === "catalog" ? "flex" : "hidden lg:flex"
           )}
         >
-          {/* Search & Category Header */}
-          <div className="p-4 bg-white border-b border-gray-200 space-y-3">
-            <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Scan barcode (camera/scanner) or search product name / SKU..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-12 py-2 text-sm bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white transition-all shadow-inner"
-                  autoFocus
-                />
-                <Barcode className="w-5 h-5 text-gray-400 absolute right-3 top-2.5" />
-              </div>
-
-              {/* Camera Scanner Trigger Button */}
-              <button
-                type="button"
-                onClick={() => setIsCameraScannerOpen(true)}
-                className="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
-                title="Scan Barcode with Device Camera"
-              >
-                <Camera className="w-4 h-4 text-amber-300" />
-                <span className="hidden sm:inline">Camera Scan</span>
-              </button>
-            </form>
-
-            {/* Category Filter Chips */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              <button
-                onClick={() => setSelectedCategory("all")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
-                  selectedCategory === "all"
-                    ? "bg-brand-600 text-white shadow-sm"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                All Products ({products.length})
-              </button>
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
-                    selectedCategory === cat.id
-                      ? "bg-brand-600 text-white shadow-sm"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+          {/* Vertical Category Sidebar (desktop/tablet) */}
+          <div className="hidden md:flex shrink-0">
+            <PosCategorySidebar
+              categories={categories}
+              products={products}
+              selectedCategoryId={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              shopId={SHOP_ID}
+            />
           </div>
 
-          {/* Product Cards Grid */}
-          <div className="flex-1 p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 content-start">
-            {filteredProducts.map((p) => {
-              const inStock = Number(p.current_stock) > 0;
-              const customPrice = customerPrices[p.id];
-              const effectivePrice = customPrice !== undefined ? customPrice : Number(p.selling_price);
-
-              return (
-                <div
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  className={`bg-white rounded-xl border border-gray-200 p-3 flex flex-col justify-between hover:border-brand-500 hover:shadow-md cursor-pointer transition-all active:scale-[0.98] ${
-                    !inStock ? "opacity-60 bg-gray-50" : ""
-                  }`}
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-start justify-between gap-1">
-                      <span className="text-xs font-bold text-gray-900 line-clamp-2 leading-tight">
-                        {p.name}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-gray-500">
-                      <span className="font-mono">{p.sku || p.barcode || "No SKU"}</span>
-                      <span
-                        className={`font-semibold ${
-                          inStock ? "text-emerald-700" : "text-red-600"
-                        }`}
-                      >
-                        {inStock ? `${p.current_stock} in stock` : "Out of Stock"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-bold text-brand-700 tabular-nums">
-                        {formatCurrency(effectivePrice)}
-                      </div>
-                      {customPrice !== undefined && (
-                        <span className="text-[10px] text-brand-600 font-semibold flex items-center gap-0.5">
-                          <Sparkles className="w-2.5 h-2.5" /> Special Price
-                        </span>
-                      )}
-                    </div>
-                    <button className="w-7 h-7 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center hover:bg-brand-600 hover:text-white transition-colors">
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
+          {/* Product Matrix & Search Area */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {/* Search Header */}
+            <div className="p-3.5 bg-white border-b border-gray-200 space-y-2.5">
+              <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Scan barcode or search product / SKU (Press Enter to add)..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-12 py-2 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600 focus:bg-white transition-all shadow-inner"
+                    autoFocus
+                  />
+                  <Barcode className="w-5 h-5 text-gray-400 absolute right-3 top-2.5" />
                 </div>
-              );
-            })}
+
+                {/* Quick Add Product Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAddOpen(true)}
+                  className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
+                  title="Quick Add New Product to Inventory & Bill"
+                >
+                  <Plus className="w-4 h-4 text-emerald-200" />
+                  <span className="hidden sm:inline">+ Quick Add</span>
+                  <span className="sm:hidden">+ Add</span>
+                </button>
+
+                {/* Camera Scanner Trigger Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  className="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
+                  title="Scan Barcode with Device Camera"
+                >
+                  <Camera className="w-4 h-4 text-amber-300" />
+                  <span className="hidden sm:inline">Camera</span>
+                </button>
+              </form>
+
+              {/* Sorting & Mobile Category Chips */}
+              <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5">
+                {/* Mobile Category Selector (md:hidden) */}
+                <div className="md:hidden flex items-center gap-1.5 shrink-0">
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="bg-gray-100 border border-gray-300 rounded-lg px-2 py-1 text-xs font-bold text-gray-800"
+                  >
+                    <option value="all">All Categories ({products.length})</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sort Mode Pills */}
+                <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                  <span className="text-[11px] font-bold text-gray-500 hidden sm:inline">Sort:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSortMode("top_selling")}
+                    className={`px-2.5 py-1 text-[11px] font-black rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                      sortMode === "top_selling"
+                        ? "bg-amber-500 text-white shadow-xs"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                    title="Sort by highest sold items"
+                  >
+                    <Flame className={`w-3.5 h-3.5 ${sortMode === "top_selling" ? "text-white" : "text-amber-500"}`} />
+                    <span>Top Selling</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortMode("name_asc")}
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                      sortMode === "name_asc"
+                        ? "bg-purple-600 text-white shadow-xs"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    A-Z
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortMode("price_asc")}
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                      sortMode === "price_asc"
+                        ? "bg-purple-600 text-white shadow-xs"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    Price ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortMode("newest")}
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                      sortMode === "newest"
+                        ? "bg-purple-600 text-white shadow-xs"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    Newest
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Product Cards Grid */}
+            <div className="flex-1 p-3 sm:p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 content-start">
+              {filteredProducts.length === 0 ? (
+                <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white rounded-2xl border border-dashed border-gray-300 p-8 space-y-3">
+                  <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
+                    <Sparkles className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-800">
+                    {searchQuery ? `No product matching "${searchQuery}"` : "No products in this category"}
+                  </h3>
+                  <p className="text-xs text-gray-500 max-w-sm">
+                    Add this new item instantly to your catalog and continue billing without delay.
+                  </p>
+                  <Button
+                    onClick={() => setIsQuickAddOpen(true)}
+                    className="bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white text-xs font-bold gap-1.5 shadow-md"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Quick Add {searchQuery ? `"${searchQuery}"` : "New Product"} to Bill</span>
+                  </Button>
+                </div>
+              ) : (
+                filteredProducts.map((p) => {
+                  const stockQty = Number(p.current_stock) || 0;
+                  const inStock = stockQty > 0;
+                  const customPrice = customerPrices[p.id];
+                  const piecePrice = customPrice !== undefined ? customPrice : Number(p.selling_price);
+                  const dozenPrice = p.wholesale_price ? Number(p.wholesale_price) : Math.round(piecePrice * 12 * 0.9);
+                  const salesCount = productSalesCount[p.id] || 0;
+                  const isTopSeller = salesCount > 0;
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`bg-white rounded-2xl border border-gray-200 p-3 flex flex-col justify-between hover:border-purple-400 hover:shadow-md transition-all relative ${
+                        !inStock ? "opacity-60 bg-gray-50" : ""
+                      }`}
+                    >
+                      <div className="space-y-1.5">
+                        {/* Top Badge Row */}
+                        <div className="flex items-center justify-between gap-1">
+                          {isTopSeller ? (
+                            <span className="text-[10px] font-black bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-2xs">
+                              <Flame className="w-3 h-3 text-amber-600" /> Top Seller ({salesCount})
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-gray-400 font-mono">
+                              {p.sku || p.barcode || "No SKU"}
+                            </span>
+                          )}
+                          <span
+                            className={`text-[10px] font-bold ${
+                              inStock ? "text-emerald-700" : "text-rose-600"
+                            }`}
+                          >
+                            {inStock
+                              ? `${stockQty} pcs ${stockQty >= 12 ? `(${Math.floor(stockQty / 12)}d)` : ""}`
+                              : "Out"}
+                          </span>
+                        </div>
+
+                        <span className="text-xs font-bold text-gray-900 line-clamp-2 leading-tight block">
+                          {p.name}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
+                        <div className="flex items-baseline justify-between">
+                          <div>
+                            <div className="text-sm font-black text-purple-900 tabular-nums">
+                              {formatCurrency(piecePrice)}
+                              <span className="text-[10px] font-normal text-gray-500"> /pc</span>
+                            </div>
+                            {p.wholesale_price && (
+                              <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">
+                                {formatCurrency(dozenPrice)}/doz
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Quick Add Buttons: 1 Pc vs 1 Dozen */}
+                        <div className="flex gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => addToCart(p, "piece", 1)}
+                            className="flex-1 py-1.5 bg-purple-50 hover:bg-purple-600 hover:text-white text-purple-700 text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                            title="Add 1 Piece"
+                          >
+                            <Plus className="w-3 h-3" /> 1 Pc
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => addToCart(p, "dozen", 1)}
+                            className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                            title="Add 1 Dozen (12 pcs) at wholesale rate"
+                          >
+                            <Plus className="w-3 h-3" /> 1 Doz
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           {/* Mobile Floating Cart Summary Bar (appears when catalog is active and cart has items) */}
@@ -725,53 +951,143 @@ export default function PosBillingPage() {
                 </p>
               </div>
             ) : (
-              cart.map((item, index) => (
-                <div key={item.product.id} className="p-2.5 flex items-center justify-between gap-2 group hover:bg-gray-50 rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-gray-900 truncate">
-                      {item.product.name}
+              cart.map((item, index) => {
+                const stock = Number(item.product.current_stock) || 0;
+                const baseQtyNeeded = getBaseQuantity(item.quantity, item.unit);
+                const isOverStock = baseQtyNeeded > stock;
+
+                return (
+                  <div
+                    key={`${item.product.id}-${item.unit}-${index}`}
+                    className={`p-3 space-y-2 group hover:bg-gray-50/80 rounded-xl transition-all border border-transparent hover:border-gray-200 ${
+                      isOverStock ? "bg-amber-50/40 border-amber-200" : ""
+                    }`}
+                  >
+                    {/* Top Row: Name & Remove */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-gray-900 truncate">
+                          {item.product.name}
+                        </div>
+                        <div className="text-[10px] text-gray-400 font-mono">
+                          {item.product.barcode || item.product.sku || "No Barcode"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(index)}
+                        className="text-gray-300 hover:text-rose-600 p-1 transition-colors rounded-lg hover:bg-rose-50"
+                        title="Remove item from bill"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex items-center border border-gray-300 rounded bg-white">
+
+                    {/* Unit Selector Pills */}
+                    <div className="flex items-center gap-1 bg-gray-100/80 p-0.5 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => updateCartItemUnit(index, "piece")}
+                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
+                          item.unit === "piece"
+                            ? "bg-white text-purple-700 shadow-xs"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                        title="Sell in single pieces"
+                      >
+                        Pc (1)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateCartItemUnit(index, "half_dozen")}
+                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
+                          item.unit === "half_dozen"
+                            ? "bg-white text-purple-700 shadow-xs"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                        title="Sell in half-dozen pack (6 pcs)"
+                      >
+                        1/2 Doz (6)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateCartItemUnit(index, "dozen")}
+                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
+                          item.unit === "dozen"
+                            ? "bg-white text-indigo-700 shadow-xs"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                        title="Sell in dozen wholesale pack (12 pcs)"
+                      >
+                        Dozen (12)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateCartItemUnit(index, "bundle_10_doz")}
+                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
+                          item.unit === "bundle_10_doz"
+                            ? "bg-white text-emerald-700 shadow-xs"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                        title="Sell in 10 Dozen Master Pack (120 pcs)"
+                      >
+                        10 Doz (120)
+                      </button>
+                    </div>
+
+                    {/* Bottom Row: Quantity Stepper, Unit Price Input, and Line Total */}
+                    <div className="flex items-center justify-between gap-2 pt-0.5">
+                      {/* Quantity Stepper */}
+                      <div className="flex items-center border border-gray-300 rounded-lg bg-white shadow-2xs">
                         <button
+                          type="button"
                           onClick={() => updateQuantity(index, -1)}
-                          className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                          className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-l-lg transition-colors"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
-                        <span className="px-2 text-xs font-bold text-gray-900">{item.quantity}</span>
+                        <span className="px-2.5 text-xs font-black text-gray-900 tabular-nums">
+                          {item.quantity}
+                        </span>
                         <button
+                          type="button"
                           onClick={() => updateQuantity(index, 1)}
-                          className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                          className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-r-lg transition-colors"
                         >
                           <Plus className="w-3 h-3" />
                         </button>
                       </div>
 
-                      <span className="text-xs text-gray-500">×</span>
-                      <input
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={(e) => updatePriceOverride(index, parseFloat(e.target.value) || 0)}
-                        className="w-16 px-1.5 py-0.5 text-xs border border-gray-200 rounded font-semibold text-gray-800 text-right focus:outline-none focus:ring-1 focus:ring-brand-600"
-                        title="Edit price override"
-                      />
-                    </div>
-                  </div>
+                      {/* Unit Price input with unit badge */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] font-bold text-gray-400">₹</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={item.unitPrice}
+                          onChange={(e) => updatePriceOverride(index, parseFloat(e.target.value) || 0)}
+                          className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded-lg font-black text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white shadow-2xs"
+                          title="Click to override rate per unit"
+                        />
+                        <span className="text-[10px] text-gray-500 font-semibold">/{item.unitName}</span>
+                      </div>
 
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-gray-900 tabular-nums">
-                      {formatCurrency(item.unitPrice * item.quantity)}
+                      {/* Line Total */}
+                      <div className="text-right min-w-[65px]">
+                        <div className="text-xs font-black text-gray-900 tabular-nums">
+                          {formatCurrency(item.unitPrice * item.quantity)}
+                        </div>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => removeItem(index)}
-                      className="text-gray-300 hover:text-red-600 p-1 transition-colors mt-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+
+                    {isOverStock && (
+                      <div className="text-[10px] text-amber-700 font-bold flex items-center gap-1 bg-amber-100/60 px-2 py-0.5 rounded">
+                        <span>⚠️ Stock low: Need {baseQtyNeeded} pcs, only {stock} pcs available</span>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -984,11 +1300,22 @@ export default function PosBillingPage() {
           );
 
           if (matched) {
-            addToCart(matched);
+            addToCart(matched, "piece", 1);
           } else {
             setSearchQuery(cleanCode);
+            setIsQuickAddOpen(true);
           }
         }}
+      />
+
+      {/* POS Quick Add Product Modal */}
+      <PosQuickAddModal
+        isOpen={isQuickAddOpen}
+        onClose={() => setIsQuickAddOpen(false)}
+        onSuccess={handleQuickAddSuccess}
+        shopId={SHOP_ID}
+        categories={categories}
+        initialSearchQuery={searchQuery}
       />
     </div>
   );

@@ -92,6 +92,8 @@ export const offlinePosEngine = {
           quantity: it.quantity,
           unit_price: it.unit_price,
           cost_price: it.cost_price,
+          unit_name: it.unit_name,
+          unit_multiplier: it.unit_multiplier,
           is_price_overridden: it.is_price_overridden || false,
           overridden_by: null,
           product: cachedProd,
