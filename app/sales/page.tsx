@@ -29,6 +29,7 @@ import { posRepository } from "@/repositories/pos.repo";
 import { createClient } from "@/lib/supabase/client";
 import { Sale } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -40,6 +41,7 @@ function SalesHistoryContent() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [whatsAppSale, setWhatsAppSale] = useState<Sale | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "online" | "pos">(initialTab);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -378,6 +380,17 @@ function SalesHistoryContent() {
                               <Button
                                 size="sm"
                                 variant="outline"
+                                onClick={() => setWhatsAppSale(sale)}
+                                className="text-xs font-semibold h-7 gap-1 text-emerald-700 hover:bg-emerald-50 border-emerald-300"
+                                title="Share Cash Bill via WhatsApp"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="hidden sm:inline">WhatsApp</span>
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 onClick={() => setSelectedSale(sale)}
                                 className="text-xs font-medium h-7 gap-1"
                               >
@@ -556,7 +569,15 @@ function SalesHistoryContent() {
               </div>
 
               {/* Modal Actions */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  onClick={() => setWhatsAppSale(selectedSale)}
+                  className="flex-1 gap-1.5 text-xs font-bold text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                >
+                  <MessageCircle className="w-4 h-4 text-emerald-600" />
+                  Send WhatsApp Bill
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => window.print()}
@@ -576,6 +597,17 @@ function SalesHistoryContent() {
             </div>
           )}
         </Modal>
+
+        {/* WhatsApp Invoice Modal */}
+        {whatsAppSale && (
+          <WhatsAppInvoiceModal
+            isOpen={!!whatsAppSale}
+            onClose={() => setWhatsAppSale(null)}
+            sale={whatsAppSale}
+            customer={whatsAppSale.customer}
+            shopId={SHOP_ID}
+          />
+        )}
       </div>
     </MainLayout>
   );

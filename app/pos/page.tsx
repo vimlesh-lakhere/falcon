@@ -39,6 +39,8 @@ import { Product, Category, Customer, Sale } from "@/types/database";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import { offlinePosEngine } from "@/lib/offline-pos";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
+import { PosCustomerSelector } from "@/components/pos/PosCustomerSelector";
+import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 import { CameraBarcodeScanner, ScanFeedback } from "@/components/pos/CameraBarcodeScanner";
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
 import { PosCategoryRightRail } from "@/components/pos/PosCategoryRightRail";
@@ -969,35 +971,16 @@ export default function PosBillingPage() {
             </span>
           </div>
 
-          {/* Customer Selection bar */}
-          <div className="p-4 border-b border-gray-200 bg-gray-50/70 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              <User className="w-4 h-4 text-gray-400 shrink-0" />
-              <select
-                value={selectedCustomer?.id || ""}
-                onChange={(e) => {
-                  const cust = customers.find((c) => c.id === e.target.value) || null;
-                  setSelectedCustomer(cust);
-                }}
-                className="w-full text-xs bg-white border border-gray-300 rounded-md py-1.5 px-2 focus:outline-none focus:ring-1 focus:ring-brand-600 text-gray-900 font-medium"
-              >
-                <option value="">Walk-in Customer (Standard Retail)</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.phone ? `(${c.phone})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {selectedCustomer && (
-              <button
-                onClick={() => setSelectedCustomer(null)}
-                className="text-[11px] text-gray-400 hover:text-gray-700"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+          {/* Enhanced Customer Contact Selector with Native Mobile Contact Picker */}
+          <PosCustomerSelector
+            customers={customers}
+            selectedCustomer={selectedCustomer}
+            onSelectCustomer={(cust) => setSelectedCustomer(cust)}
+            onCustomerCreated={(newCust) => {
+              setCustomers((prev) => [newCust, ...prev.filter((c) => c.id !== newCust.id)]);
+            }}
+            shopId={SHOP_ID}
+          />
 
           {/* Cart Items List */}
           <div className="flex-1 overflow-y-auto divide-y divide-gray-100 p-2">
@@ -1449,6 +1432,31 @@ export default function PosBillingPage() {
         categories={categories}
         initialSearchQuery={searchQuery}
       />
+
+      {/* POS Bill Success & Thermal / WhatsApp Receipt Modal */}
+      {completedSale && (
+        <Modal
+          isOpen={isReceiptModalOpen}
+          onClose={() => {
+            setIsReceiptModalOpen(false);
+            setCompletedSale(null);
+          }}
+          title={`🧾 Cash Bill & Invoice #${completedSale.invoice_number}`}
+          description="Thermal printing, WhatsApp invoice sharing, and billing receipt"
+          maxWidth="lg"
+        >
+          <ThermalReceipt
+            sale={completedSale}
+            customer={selectedCustomer || completedSale.customer}
+            shopId={SHOP_ID}
+            onDone={() => {
+              setIsReceiptModalOpen(false);
+              setCompletedSale(null);
+            }}
+            onOpenPrinterSettings={() => setIsPrinterModalOpen(true)}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

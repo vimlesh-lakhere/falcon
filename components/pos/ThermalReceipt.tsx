@@ -19,6 +19,7 @@ import {
 import QRCode from "qrcode";
 import { Sale, Customer } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 import {
   PrinterConfig,
   getPrinterConfig,
@@ -56,6 +57,7 @@ export function ThermalReceipt({
   onOpenPrinterSettings,
 }: ThermalReceiptProps) {
   const [copiedText, setCopiedText] = useState(false);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [printerConfig, setPrinterConfig] = useState<PrinterConfig>(() => getPrinterConfig(shopId));
   const [isBluetoothPrinting, setIsBluetoothPrinting] = useState(false);
   const [printStatus, setPrintStatus] = useState<string>("");
@@ -255,15 +257,15 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
             <span>{isBluetoothPrinting ? "Printing..." : "🖨️ Print Thermal Bill"}</span>
           </button>
 
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+          <button
+            type="button"
+            onClick={() => setIsWhatsAppModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+            title="Send WhatsApp Invoice or Share with Mobile Apps"
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            <span>WhatsApp Bill</span>
-          </a>
+            <span>💬 WhatsApp Bill</span>
+          </button>
         </div>
       </div>
 
@@ -448,6 +450,15 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
           </div>
         </div>
       </div>
+
+      {/* WhatsApp Invoice Modal */}
+      <WhatsAppInvoiceModal
+        isOpen={isWhatsAppModalOpen}
+        onClose={() => setIsWhatsAppModalOpen(false)}
+        sale={sale}
+        customer={customer}
+        shopId={shopId || "a0000000-0000-0000-0000-000000000001"}
+      />
 
       {/* Done Button */}
       {onDone && (
