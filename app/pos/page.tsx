@@ -1360,10 +1360,17 @@ export default function PosBillingPage() {
 
           if (matched) {
             addToCart(matched, "piece", 1);
+            const existingInCart = cart.find((i) => i.product.id === matched.id && i.unit === "piece");
+            const newQty = (existingInCart ? existingInCart.quantity : 0) + 1;
+            const lineTotal = Number(matched.selling_price) * newQty;
+
             setScanFeedback({
               type: "success",
-              title: `✓ Added: ${matched.name}`,
-              subtitle: `${formatCurrency(matched.selling_price)} /pc • Added to bill!`,
+              title: newQty > 1 ? `⚡ ${matched.name} (Qty: ${newQty})` : `✓ Added: ${matched.name}`,
+              subtitle:
+                newQty > 1
+                  ? `+1 Added • Total: ${formatCurrency(lineTotal)} (${newQty} pcs)`
+                  : `${formatCurrency(matched.selling_price)} /pc • Added to bill!`,
               barcode: cleanCode,
               timestamp: Date.now(),
             });
@@ -1371,7 +1378,7 @@ export default function PosBillingPage() {
             setScanFeedback({
               type: "error",
               title: `⚠️ Unknown Barcode: ${cleanCode}`,
-              subtitle: "Product not in inventory",
+              subtitle: "Product not in inventory • Tap Quick Add",
               barcode: cleanCode,
               timestamp: Date.now(),
             });

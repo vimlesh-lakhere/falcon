@@ -221,20 +221,20 @@ export function CameraBarcodeScanner({
     if (!isScanningRef.current) return;
 
     const now = Date.now();
-    // Cooldown logic: 1.2s debounce for exact same code, 0ms for different codes
-    if (
-      lastScannedCodeRef.current === barcode &&
-      now - lastScannedTimeRef.current < 1200
-    ) {
+    // Continuous Hold-to-Increment Interval: 800ms for exact same barcode, 0ms for different barcode
+    const isSameCode = lastScannedCodeRef.current === barcode;
+    const timeSinceLastScan = now - lastScannedTimeRef.current;
+
+    if (isSameCode && timeSinceLastScan < 800) {
       return;
     }
 
     lastScannedCodeRef.current = barcode;
     lastScannedTimeRef.current = now;
 
-    // Visual HUD flash & audio beep
+    // Visual HUD flash & audio beep feedback
     setJustScannedFlash(true);
-    setTimeout(() => setJustScannedFlash(false), 400);
+    setTimeout(() => setJustScannedFlash(false), 350);
 
     playSuccessBeep();
     setScanCountSession((prev) => prev + 1);
