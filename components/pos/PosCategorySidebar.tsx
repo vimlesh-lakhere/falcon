@@ -12,9 +12,11 @@ import {
   Tag,
   Grid,
   ChevronRight,
+  LayoutGrid,
 } from "lucide-react";
 import { Category, Product } from "@/types/database";
 import { Button } from "@/components/ui/Button";
+import { resolveCategoryVisual } from "@/lib/category-icons";
 
 interface PosCategorySidebarProps {
   categories: Category[];
@@ -32,14 +34,21 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
   shopId,
 }) => {
   const [orderedCategories, setOrderedCategories] = useState<Category[]>([]);
+  const [customIcons, setCustomIcons] = useState<Record<string, string>>({});
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
 
-  const storageKey = `falcon_pos_cat_order_${shopId}`;
+  const orderStorageKey = `falcon_pos_cat_order_${shopId}`;
+  const iconStorageKey = `falcon_cat_icons_${shopId}`;
 
-  // Load custom category order
+  // Load custom category order & custom emojis
   useEffect(() => {
     try {
-      const savedOrder = localStorage.getItem(storageKey);
+      const savedIcons = localStorage.getItem(iconStorageKey);
+      if (savedIcons) {
+        setCustomIcons(JSON.parse(savedIcons));
+      }
+
+      const savedOrder = localStorage.getItem(orderStorageKey);
       if (savedOrder) {
         const orderIds: string[] = JSON.parse(savedOrder);
         const map = new Map(categories.map((c) => [c.id, c]));
@@ -62,7 +71,7 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
       console.warn("Failed to load category order:", e);
     }
     setOrderedCategories(categories);
-  }, [categories, storageKey]);
+  }, [categories, shopId, orderStorageKey, iconStorageKey]);
 
   // Compute product count per category
   const productCountMap = React.useMemo(() => {
@@ -88,7 +97,7 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
     setOrderedCategories(updated);
     try {
       const orderIds = updated.map((c) => c.id);
-      localStorage.setItem(storageKey, JSON.stringify(orderIds));
+      localStorage.setItem(orderStorageKey, JSON.stringify(orderIds));
     } catch (e) {
       console.error(e);
     }
@@ -96,7 +105,7 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
 
   return (
     <>
-      <aside className="w-48 xl:w-52 bg-gray-50/90 border-r border-gray-200 flex flex-col shrink-0 h-full overflow-hidden select-none">
+      <aside className="w-full sm:w-56 bg-gray-50/90 border-r border-gray-200 flex flex-col shrink-0 h-full overflow-hidden select-none">
         {/* Header & Reorder Trigger */}
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-white/60">
           <div className="flex items-center gap-1.5 text-xs font-black text-gray-800">
@@ -107,14 +116,14 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
             type="button"
             onClick={() => setIsReorderModalOpen(true)}
             className="p-1 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
-            title="Reorder Category Order"
+            title="Reorder Category Priority"
           >
             <ArrowUpDown className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {/* Categories Vertical List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
           {/* All Products Item */}
           <button
             type="button"
@@ -126,7 +135,7 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
             }`}
           >
             <div className="flex items-center gap-2 truncate">
-              <Grid className={`w-3.5 h-3.5 ${selectedCategoryId === "all" ? "text-amber-300" : "text-gray-400"}`} />
+              <LayoutGrid className={`w-4 h-4 ${selectedCategoryId === "all" ? "text-amber-300" : "text-purple-600"}`} />
               <span className="truncate">All Products</span>
             </div>
             <span
@@ -144,6 +153,7 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
           {orderedCategories.map((cat) => {
             const isSelected = selectedCategoryId === cat.id;
             const count = productCountMap[cat.id] || 0;
+            const visual = resolveCategoryVisual(cat.id, cat.name, customIcons);
 
             return (
               <button
@@ -156,8 +166,14 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
                     : "text-gray-700 hover:bg-white hover:text-gray-900 border border-transparent hover:border-gray-200"
                 }`}
               >
-                <div className="flex items-center gap-2 truncate min-w-0">
-                  <Tag className={`w-3.5 h-3.5 shrink-0 ${isSelected ? "text-amber-300" : "text-gray-400"}`} />
+                <div className="flex items-center gap-2.5 truncate min-w-0">
+                  {visual.type === "emoji" ? (
+                    <span className="text-base leading-none shrink-0">{visual.value}</span>
+                  ) : (
+                    <visual.icon
+                      className={`w-4 h-4 shrink-0 ${isSelected ? "text-amber-300" : "text-purple-600"}`}
+                    />
+                  )}
                   <span className="truncate">{cat.name}</span>
                 </div>
                 <span
@@ -196,40 +212,48 @@ export const PosCategorySidebar: React.FC<PosCategorySidebarProps> = ({
             </div>
 
             <div className="p-4 overflow-y-auto space-y-2 flex-1 divide-y divide-gray-100">
-              {orderedCategories.map((cat, idx) => (
-                <div
-                  key={cat.id}
-                  className="pt-2 first:pt-0 flex items-center justify-between gap-2 p-2 hover:bg-gray-50 rounded-xl"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-xs font-black flex items-center justify-center shrink-0">
-                      {idx + 1}
-                    </span>
-                    <span className="text-xs font-bold text-gray-800 truncate">{cat.name}</span>
-                  </div>
+              {orderedCategories.map((cat, idx) => {
+                const visual = resolveCategoryVisual(cat.id, cat.name, customIcons);
+                return (
+                  <div
+                    key={cat.id}
+                    className="pt-2 first:pt-0 flex items-center justify-between gap-2 p-2 hover:bg-gray-50 rounded-xl"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-xs font-black flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      {visual.type === "emoji" ? (
+                        <span className="text-base leading-none">{visual.value}</span>
+                      ) : (
+                        <visual.icon className="w-4 h-4 text-purple-600 shrink-0" />
+                      )}
+                      <span className="text-xs font-bold text-gray-800 truncate">{cat.name}</span>
+                    </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      disabled={idx === 0}
-                      onClick={() => moveCategory(idx, "up")}
-                      className="p-1.5 bg-gray-100 hover:bg-purple-100 hover:text-purple-700 disabled:opacity-30 disabled:pointer-events-none rounded-lg text-gray-600 transition-all cursor-pointer"
-                      title="Move Up"
-                    >
-                      <MoveUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={idx === orderedCategories.length - 1}
-                      onClick={() => moveCategory(idx, "down")}
-                      className="p-1.5 bg-gray-100 hover:bg-purple-100 hover:text-purple-700 disabled:opacity-30 disabled:pointer-events-none rounded-lg text-gray-600 transition-all cursor-pointer"
-                      title="Move Down"
-                    >
-                      <MoveDown className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => moveCategory(idx, "up")}
+                        className="p-1.5 bg-gray-100 hover:bg-purple-100 hover:text-purple-700 disabled:opacity-30 disabled:pointer-events-none rounded-lg text-gray-600 transition-all cursor-pointer"
+                        title="Move Up"
+                      >
+                        <MoveUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === orderedCategories.length - 1}
+                        onClick={() => moveCategory(idx, "down")}
+                        className="p-1.5 bg-gray-100 hover:bg-purple-100 hover:text-purple-700 disabled:opacity-30 disabled:pointer-events-none rounded-lg text-gray-600 transition-all cursor-pointer"
+                        title="Move Down"
+                      >
+                        <MoveDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end">
