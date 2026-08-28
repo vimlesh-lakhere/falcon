@@ -141,7 +141,7 @@ export const PosCategoryRightRail: React.FC<PosCategoryRightRailProps> = ({
   return (
     <>
       {/* Right Slim Category Rail */}
-      <aside className="w-14 sm:w-16 bg-white border-l border-gray-200 flex flex-col items-center py-2 h-full select-none shrink-0 shadow-xs z-10 overscroll-contain touch-pan-y">
+      <aside className="w-14 sm:w-16 bg-white border-l border-gray-200 flex flex-col items-center py-2 h-full min-h-0 select-none shrink-0 shadow-xs z-10">
         {/* Settings Button */}
         <button
           type="button"
@@ -152,11 +152,8 @@ export const PosCategoryRightRail: React.FC<PosCategoryRightRailProps> = ({
           <Settings className="w-4 h-4 group-hover:rotate-45 transition-transform" />
         </button>
 
-        {/* Scrollable Icons Container with isolated scrolling */}
-        <div
-          className="flex-1 w-full overflow-y-auto overscroll-contain space-y-2 px-1.5 flex flex-col items-center no-scrollbar touch-pan-y"
-          onWheel={(e) => e.stopPropagation()}
-        >
+        {/* Scrollable Icons Container with independent smooth scrolling */}
+        <div className="flex-1 w-full overflow-y-auto min-h-0 space-y-2 px-1.5 flex flex-col items-center no-scrollbar overscroll-contain">
           {/* ALL Products Icon */}
           <button
             type="button"

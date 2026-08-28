@@ -689,7 +689,7 @@ export default function PosBillingPage() {
           {/* Content Row: Catalog Area on Left + Slim Category Icon Rail on Right */}
           <div className="flex-1 flex min-h-0 h-full overflow-hidden">
             {/* Product Matrix & Search Area */}
-            <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
               {/* Search Header */}
               <div className="p-3 bg-white border-b border-gray-200 space-y-2 shrink-0">
                 <form onSubmit={handleSearchSubmit} className="relative flex items-center gap-2">
@@ -799,11 +799,8 @@ export default function PosBillingPage() {
                 </div>
               </div>
 
-              {/* Product Cards Grid with isolated independent scrolling */}
-              <div
-                className="flex-1 p-2.5 sm:p-4 overflow-y-auto overscroll-contain touch-pan-y grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-3 content-start scrollbar-thin"
-                onWheel={(e) => e.stopPropagation()}
-              >
+              {/* Product Cards Grid with independent smooth scrolling */}
+              <div className="flex-1 p-2.5 sm:p-4 overflow-y-auto min-h-0 grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-3 content-start scrollbar-thin overscroll-contain">
                 {filteredProducts.length === 0 ? (
                   <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white rounded-2xl border border-dashed border-gray-300 p-8 space-y-3">
                     <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
