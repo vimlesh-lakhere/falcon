@@ -401,7 +401,28 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
       let saved: Product;
       if (editingProduct) {
+        payload.current_stock = currentStock;
         saved = await productsRepository.update(editingProduct.id, payload);
+
+        // If stock changed during edit, log stock movement
+        const prevStock = Number(editingProduct.current_stock) || 0;
+        const delta = currentStock - prevStock;
+        if (delta !== 0) {
+          try {
+            const { supabase } = await import("@/lib/supabase/client");
+            await supabase.from("stock_movements").insert([
+              {
+                shop_id: shopId,
+                product_id: editingProduct.id,
+                movement_type: "adjustment",
+                quantity_delta: delta,
+                notes: `Stock updated in Product Edit (${prevStock} -> ${currentStock})`,
+              },
+            ]);
+          } catch (e) {
+            console.warn("Could not log stock movement on edit:", e);
+          }
+        }
       } else {
         payload.current_stock = currentStock;
         saved = await productsRepository.create(payload);
@@ -1023,7 +1044,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   <div>
                     <Input
                       type="number"
-                      label="Opening Stock"
+                      label={editingProduct ? "Current Stock (Units) *" : "Opening Stock (Units) *"}
+                      required
                       value={currentStock}
                       onChange={(e) => setCurrentStock(parseInt(e.target.value) || 0)}
                     />

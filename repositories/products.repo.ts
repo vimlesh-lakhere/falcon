@@ -55,6 +55,40 @@ export const productsRepository = {
     return data as Product;
   },
 
+  async updateStock(id: string, newStock: number, reason: string = "Stock adjustment", shopId?: string) {
+    const currentProd = await this.getById(id);
+    const prevStock = Number(currentProd.current_stock) || 0;
+    const delta = newStock - prevStock;
+
+    const { data, error } = await supabase
+      .from("products")
+      .update({ current_stock: Math.max(0, newStock) })
+      .eq("id", id)
+      .select("*, category:categories(*), supplier:suppliers(*)")
+      .single();
+
+    if (error) throw error;
+
+    // Log movement in stock_movements ledger if delta != 0
+    if (delta !== 0 && (shopId || currentProd.shop_id)) {
+      try {
+        await supabase.from("stock_movements").insert([
+          {
+            shop_id: shopId || currentProd.shop_id,
+            product_id: id,
+            movement_type: delta > 0 ? "adjustment" : "adjustment",
+            quantity_delta: delta,
+            notes: `${reason} (${prevStock} -> ${newStock})`,
+          },
+        ]);
+      } catch (logErr) {
+        console.warn("Could not log stock movement:", logErr);
+      }
+    }
+
+    return data as Product;
+  },
+
   async delete(id: string) {
     const { error } = await supabase.from("products").update({ is_active: false }).eq("id", id);
     if (error) throw error;
