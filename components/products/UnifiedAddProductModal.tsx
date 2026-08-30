@@ -1017,8 +1017,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       type="number"
                       label="Cost Price (₹) *"
                       required
-                      value={purchasePrice}
-                      onChange={(e) => setPurchasePrice(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                      value={purchasePrice === 0 ? "" : purchasePrice}
+                      onChange={(e) => setPurchasePrice(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                     />
                   </div>
 
@@ -1027,8 +1028,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       type="number"
                       label="Selling / MRP (₹) *"
                       required
-                      value={sellingPrice}
-                      onChange={(e) => setSellingPrice(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                      value={sellingPrice === 0 ? "" : sellingPrice}
+                      onChange={(e) => setSellingPrice(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                     />
                   </div>
 
@@ -1036,8 +1038,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     <Input
                       type="number"
                       label="Wholesale (₹)"
-                      value={wholesalePrice}
-                      onChange={(e) => setWholesalePrice(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                      value={wholesalePrice === 0 ? "" : wholesalePrice}
+                      onChange={(e) => setWholesalePrice(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                     />
                   </div>
 
@@ -1046,8 +1049,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       type="number"
                       label={editingProduct ? "Current Stock (Units) *" : "Opening Stock (Units) *"}
                       required
-                      value={currentStock}
-                      onChange={(e) => setCurrentStock(parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                      value={currentStock === 0 ? "" : currentStock}
+                      onChange={(e) => setCurrentStock(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                     />
                   </div>
                 </div>
@@ -1181,9 +1185,11 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                             <td className="py-2 px-3">
                               <input
                                 type="number"
-                                value={v.mrp}
+                                placeholder="0.00"
+                                value={v.mrp === 0 ? "" : v.mrp}
+                                onFocus={(e) => e.currentTarget.select()}
                                 onChange={(e) =>
-                                  handleUpdateVariant(idx, "mrp", parseFloat(e.target.value) || 0)
+                                  handleUpdateVariant(idx, "mrp", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
                                 }
                                 className="w-20 px-2 py-1.5 text-xs font-semibold text-gray-700 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
                               />
@@ -1191,9 +1197,11 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                             <td className="py-2 px-3">
                               <input
                                 type="number"
-                                value={v.price}
+                                placeholder="0.00"
+                                value={v.price === 0 ? "" : v.price}
+                                onFocus={(e) => e.currentTarget.select()}
                                 onChange={(e) =>
-                                  handleUpdateVariant(idx, "price", parseFloat(e.target.value) || 0)
+                                  handleUpdateVariant(idx, "price", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
                                 }
                                 className="w-20 px-2 py-1.5 text-xs font-black text-purple-900 border border-purple-400 rounded-lg focus:border-purple-600 focus:outline-none bg-purple-50/50"
                               />
@@ -1201,12 +1209,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                             <td className="py-2 px-3">
                               <input
                                 type="number"
-                                value={v.purchasePrice ?? 0}
+                                placeholder="0.00"
+                                value={!v.purchasePrice ? "" : v.purchasePrice}
+                                onFocus={(e) => e.currentTarget.select()}
                                 onChange={(e) =>
                                   handleUpdateVariant(
                                     idx,
                                     "purchasePrice",
-                                    parseFloat(e.target.value) || 0
+                                    e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
                                   )
                                 }
                                 className="w-20 px-2 py-1.5 text-xs font-semibold text-gray-600 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
@@ -1215,12 +1225,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                             <td className="py-2 px-3">
                               <input
                                 type="number"
-                                value={v.stock ?? 10}
+                                placeholder="0"
+                                value={v.stock === 0 ? "" : (v.stock ?? 10)}
+                                onFocus={(e) => e.currentTarget.select()}
                                 onChange={(e) =>
                                   handleUpdateVariant(
                                     idx,
                                     "stock",
-                                    parseInt(e.target.value) || 0
+                                    e.target.value === "" ? 0 : parseInt(e.target.value) || 0
                                   )
                                 }
                                 className="w-16 px-2 py-1.5 text-xs font-semibold text-gray-700 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"

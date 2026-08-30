@@ -971,11 +971,12 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     <input
                       type="number"
                       placeholder="999"
-                      value={promptFormData.mrp}
+                      value={promptFormData.mrp === 0 ? "" : promptFormData.mrp}
+                      onFocus={(e) => e.currentTarget.select()}
                       onChange={(e) =>
                         setPromptFormData({
                           ...promptFormData,
-                          mrp: parseFloat(e.target.value) || 0,
+                          mrp: e.target.value === "" ? 0 : parseFloat(e.target.value) || 0,
                         })
                       }
                       className="w-full text-xs font-bold border border-gray-300 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
@@ -1857,8 +1858,10 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                         </div>
                         <input
                           type="number"
-                          value={formData.mrp}
-                          onChange={(e) => handleMrpChange(parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                          value={formData.mrp === 0 ? "" : formData.mrp}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onChange={(e) => handleMrpChange(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                           className="w-full text-xs font-black text-gray-900 bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
                         />
                       </div>
@@ -1870,9 +1873,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                           </label>
                           <input
                             type="number"
-                            value={formData.purchase_price}
+                            placeholder="0.00"
+                            value={formData.purchase_price === 0 ? "" : formData.purchase_price}
+                            onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) =>
-                              handlePurchasePriceChange(parseFloat(e.target.value) || 0)
+                              handlePurchasePriceChange(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
                             }
                             className="w-full text-xs font-bold text-gray-900 bg-white border border-gray-300 rounded-lg px-2 py-1.5"
                           />
@@ -1884,9 +1889,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                           </label>
                           <input
                             type="number"
-                            value={formData.selling_price}
+                            placeholder="0.00"
+                            value={formData.selling_price === 0 ? "" : formData.selling_price}
+                            onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) =>
-                              handleSellingPriceChange(parseFloat(e.target.value) || 0)
+                              handleSellingPriceChange(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
                             }
                             className="w-full text-xs font-bold text-gray-900 bg-white border border-gray-300 rounded-lg px-2 py-1.5"
                           />
@@ -2015,11 +2022,13 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       </label>
                       <input
                         type="number"
-                        value={formData.current_stock}
+                        placeholder="0"
+                        value={formData.current_stock === 0 ? "" : formData.current_stock}
+                        onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) =>
                           setFormData({
                             ...formData,
-                            current_stock: parseFloat(e.target.value) || 0,
+                            current_stock: e.target.value === "" ? 0 : parseFloat(e.target.value) || 0,
                           })
                         }
                         className="w-full text-xs font-bold bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900"
@@ -2032,11 +2041,13 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       </label>
                       <input
                         type="number"
-                        value={formData.minimum_stock}
+                        placeholder="0"
+                        value={formData.minimum_stock === 0 ? "" : formData.minimum_stock}
+                        onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) =>
                           setFormData({
                             ...formData,
-                            minimum_stock: parseFloat(e.target.value) || 0,
+                            minimum_stock: e.target.value === "" ? 0 : parseFloat(e.target.value) || 0,
                           })
                         }
                         className="w-full text-xs bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-800"

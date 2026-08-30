@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "@/styles/globals.css";
 import { PwaRegister } from "@/components/pwa/PwaRegister";
+import { GlobalInputEnhancer } from "@/components/ui/GlobalInputEnhancer";
 
 export const metadata: Metadata = {
   title: "Falcon ERP - AGS Store Management System",
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body className="bg-surface-canvas min-h-screen text-gray-900 antialiased selection:bg-purple-500 selection:text-white">
         {children}
         <PwaRegister />
+        <GlobalInputEnhancer />
       </body>
     </html>
   );

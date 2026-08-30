@@ -1341,8 +1341,10 @@ export default function PosBillingPage() {
                         <input
                           type="number"
                           step="any"
-                          value={item.unitPrice}
-                          onChange={(e) => updatePriceOverride(index, parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                          value={item.unitPrice === 0 ? "" : item.unitPrice}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onChange={(e) => updatePriceOverride(index, e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                           className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded-lg font-black text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white shadow-2xs"
                           title="Click to override rate per unit"
                         />
@@ -1382,8 +1384,10 @@ export default function PosBillingPage() {
                   <span>- ₹</span>
                   <input
                     type="number"
-                    value={discountAmount}
-                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    value={discountAmount === 0 ? "" : discountAmount}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) => setDiscountAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                     className="w-16 px-1.5 py-0.5 text-xs border border-gray-200 rounded font-semibold text-gray-800 text-right focus:outline-none focus:ring-1 focus:ring-brand-600 bg-white"
                   />
                 </div>
@@ -1492,8 +1496,10 @@ export default function PosBillingPage() {
                 <span className="font-semibold text-gray-700">Cash Portion:</span>
                 <input
                   type="number"
-                  value={cashAmount}
-                  onChange={(e) => setCashAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  value={cashAmount === 0 ? "" : cashAmount}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => setCashAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                   className="w-28 p-1.5 border border-gray-300 rounded font-semibold text-right"
                 />
               </div>
@@ -1501,8 +1507,10 @@ export default function PosBillingPage() {
                 <span className="font-semibold text-gray-700">UPI Portion:</span>
                 <input
                   type="number"
-                  value={upiAmount}
-                  onChange={(e) => setUpiAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  value={upiAmount === 0 ? "" : upiAmount}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => setUpiAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                   className="w-28 p-1.5 border border-gray-300 rounded font-semibold text-right"
                 />
               </div>
@@ -1510,8 +1518,10 @@ export default function PosBillingPage() {
                 <span className="font-semibold text-gray-700">Card Portion:</span>
                 <input
                   type="number"
-                  value={cardAmount}
-                  onChange={(e) => setCardAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  value={cardAmount === 0 ? "" : cardAmount}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => setCardAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                   className="w-28 p-1.5 border border-gray-300 rounded font-semibold text-right"
                 />
               </div>

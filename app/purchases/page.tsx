@@ -303,11 +303,12 @@ export default function PurchasesPage() {
                   <input
                     type="number"
                     min="1"
-                    placeholder="Qty"
-                    value={item.quantity}
+                    placeholder="1"
+                    value={item.quantity === 0 ? "" : item.quantity}
+                    onFocus={(e) => e.currentTarget.select()}
                     onChange={(e) => {
                       const updated = [...poItems];
-                      updated[idx].quantity = parseFloat(e.target.value) || 1;
+                      updated[idx].quantity = e.target.value === "" ? 0 : parseFloat(e.target.value) || 0;
                       setPoItems(updated);
                     }}
                     className="w-20 text-xs h-9 border border-gray-300 rounded-md px-2 font-semibold text-right"
@@ -315,11 +316,12 @@ export default function PurchasesPage() {
 
                   <input
                     type="number"
-                    placeholder="Cost (₹)"
-                    value={item.unitPrice}
+                    placeholder="0.00"
+                    value={item.unitPrice === 0 ? "" : item.unitPrice}
+                    onFocus={(e) => e.currentTarget.select()}
                     onChange={(e) => {
                       const updated = [...poItems];
-                      updated[idx].unitPrice = parseFloat(e.target.value) || 0;
+                      updated[idx].unitPrice = e.target.value === "" ? 0 : parseFloat(e.target.value) || 0;
                       setPoItems(updated);
                     }}
                     className="w-24 text-xs h-9 border border-gray-300 rounded-md px-2 font-semibold text-right"
@@ -383,11 +385,13 @@ export default function PurchasesPage() {
                     <span className="text-gray-500">Receive:</span>
                     <input
                       type="number"
+                      placeholder="0"
                       value={receiveQuantities[it.id] ?? it.quantity_ordered}
+                      onFocus={(e) => e.currentTarget.select()}
                       onChange={(e) =>
                         setReceiveQuantities({
                           ...receiveQuantities,
-                          [it.id]: parseFloat(e.target.value) || 0,
+                          [it.id]: e.target.value === "" ? 0 : parseFloat(e.target.value) || 0,
                         })
                       }
                       className="w-20 text-xs p-1.5 border border-gray-300 rounded font-bold text-right"

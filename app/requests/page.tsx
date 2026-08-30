@@ -264,9 +264,10 @@ export default function CustomerRequestsPage() {
               <Input
                 type="number"
                 min="1"
+                placeholder="1"
                 label="Quantity Needed"
-                value={quantity}
-                onChange={(e) => setQuantity(parseFloat(e.target.value) || 1)}
+                value={quantity === 0 ? "" : quantity}
+                onChange={(e) => setQuantity(e.target.value === "" ? 0 : parseFloat(e.target.value) || 1)}
               />
               <Input
                 type="number"

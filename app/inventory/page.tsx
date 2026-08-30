@@ -274,8 +274,8 @@ export default function InventoryPage() {
               type="number"
               label="Quantity Delta (+ for stock in, - for stock out) *"
               required
-              value={qtyDelta}
-              onChange={(e) => setQtyDelta(parseFloat(e.target.value) || 0)}
+              value={qtyDelta === 0 ? "" : qtyDelta}
+              onChange={(e) => setQtyDelta(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
               placeholder="e.g. 10 or -5"
             />
 

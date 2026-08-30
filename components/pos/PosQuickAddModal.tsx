@@ -368,8 +368,9 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
               <Input
                 type="number"
                 min="0"
-                value={currentStock}
-                onChange={(e) => setCurrentStock(Number(e.target.value))}
+                placeholder="12"
+                value={currentStock === 0 ? "" : currentStock}
+                onChange={(e) => setCurrentStock(e.target.value === "" ? 0 : Number(e.target.value))}
                 className="rounded-xl text-xs font-bold"
               />
             </div>
