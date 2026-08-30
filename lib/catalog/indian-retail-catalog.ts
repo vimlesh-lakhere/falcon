@@ -477,33 +477,45 @@ export const INDIAN_RETAIL_CATALOG: MasterCatalogProduct[] = [
 ];
 
 /**
+ * Multi-Result Search for Master Indian Retail Catalog
+ */
+export function searchIndianRetailCatalog(
+  query: string,
+  limit: number = 8
+): MasterCatalogProduct[] {
+  if (!query || !query.trim()) return [];
+  const q = query.trim().toLowerCase();
+  const digitsOnly = q.replace(/[^0-9]/g, "");
+
+  const results: MasterCatalogProduct[] = [];
+
+  for (const item of INDIAN_RETAIL_CATALOG) {
+    if (digitsOnly.length >= 4 && item.barcode && item.barcode.includes(digitsOnly)) {
+      results.push(item);
+      continue;
+    }
+    if (item.name.toLowerCase().includes(q)) {
+      results.push(item);
+      continue;
+    }
+    if (item.brand.toLowerCase().includes(q)) {
+      results.push(item);
+      continue;
+    }
+    if (item.keywords && item.keywords.some((k) => k.includes(q) || q.includes(k))) {
+      results.push(item);
+      continue;
+    }
+    if (results.length >= limit) break;
+  }
+
+  return results.slice(0, limit);
+}
+
+/**
  * Instant 0.01s Offline Matcher
  */
 export function findInIndianRetailCatalog(queryOrBarcode: string): MasterCatalogProduct | null {
-  if (!queryOrBarcode || !queryOrBarcode.trim()) return null;
-  const q = queryOrBarcode.trim().toLowerCase();
-  const digitsOnly = q.replace(/[^0-9]/g, "");
-
-  // 1. Direct Exact Barcode Match
-  if (digitsOnly.length >= 6) {
-    const matchedByBarcode = INDIAN_RETAIL_CATALOG.find(
-      (p) => p.barcode && p.barcode.includes(digitsOnly)
-    );
-    if (matchedByBarcode) return matchedByBarcode;
-  }
-
-  // 2. Exact Title Match
-  const exactNameMatch = INDIAN_RETAIL_CATALOG.find(
-    (p) => p.name.toLowerCase() === q || p.name.toLowerCase().includes(q)
-  );
-  if (exactNameMatch) return exactNameMatch;
-
-  // 3. Brand + Keyword Search
-  const keywordMatch = INDIAN_RETAIL_CATALOG.find((p) => {
-    if (p.brand.toLowerCase().includes(q)) return true;
-    if (p.keywords && p.keywords.some((k) => q.includes(k) || k.includes(q))) return true;
-    return false;
-  });
-
-  return keywordMatch || null;
+  const matches = searchIndianRetailCatalog(queryOrBarcode, 1);
+  return matches.length > 0 ? matches[0] : null;
 }

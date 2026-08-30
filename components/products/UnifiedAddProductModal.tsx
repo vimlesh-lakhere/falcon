@@ -29,7 +29,7 @@ import { Product, Category, Supplier, Unit } from "@/types/database";
 import { productsRepository } from "@/repositories/products.repo";
 import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { aiImageEnhancer } from "@/lib/ai/image-enhancer";
-import { findInIndianRetailCatalog } from "@/lib/catalog/indian-retail-catalog";
+import { findInIndianRetailCatalog, searchIndianRetailCatalog } from "@/lib/catalog/indian-retail-catalog";
 
 import {
   extractProductVariants,
@@ -171,9 +171,50 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     setIsNameSuggestionsOpen(false);
   };
 
-  // AI Web Search & Official Image Auto-Fetch
+  // AI Web Search & Master Indian Retail Catalog
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
+  const [isCatalogDropdownOpen, setIsCatalogDropdownOpen] = useState(false);
+
+  const liveCatalogMatches = useMemo(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) return [];
+    return searchIndianRetailCatalog(searchQuery.trim(), 8);
+  }, [searchQuery]);
+
+  const handleSelectCatalogItem = (item: any) => {
+    if (item.name) setName(item.name);
+    if (item.brand) setBrand(item.brand);
+    if (item.barcode) setBarcode(item.barcode);
+    if (item.mrp > 0) setSellingPrice(item.mrp);
+    if (item.purchasePrice > 0) setPurchasePrice(item.purchasePrice);
+    if (item.wholesalePrice > 0) setWholesalePrice(item.wholesalePrice);
+    if (item.description) setDescription(item.description);
+
+    if (item.category && categories.length > 0) {
+      const match = categories.find(
+        (c) =>
+          c.name.toLowerCase().includes(item.category.toLowerCase()) ||
+          item.category.toLowerCase().includes(c.name.toLowerCase())
+      );
+      if (match) setCategoryId(match.id);
+    }
+
+    const isLiquid =
+      item.name.toLowerCase().includes("oil") ||
+      item.name.toLowerCase().includes("ml") ||
+      item.name.toLowerCase().includes("shampoo");
+    const generatedVars = generateStandardVariants(
+      item.name,
+      item.mrp,
+      isLiquid ? "liquid" : "weight"
+    );
+    setVariants(generatedVars);
+
+    setAiSuccessMsg(
+      `⚡ Loaded from Master Catalog: "${item.name}" • MRP: ₹${item.mrp}`
+    );
+    setIsCatalogDropdownOpen(false);
+  };
 
   const handleSearchCatalog = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -781,14 +822,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         {/* ========================================================================= */}
         {/* ⚡ INSTANT AI AUTO-FETCH BY PRODUCT NAME (e.g. Vicco Turmeric Cream 50g)  */}
         {/* ========================================================================= */}
-        <div className="bg-gradient-to-r from-purple-50 via-indigo-50/50 to-slate-50 border-b border-purple-100 px-6 py-2.5">
+        <div className="bg-gradient-to-r from-purple-50 via-indigo-50/50 to-slate-50 border-b border-purple-100 px-6 py-2.5 space-y-2">
           <form onSubmit={handleSearchCatalog} className="flex items-center gap-2">
             <div className="relative flex-1">
               <input
                 type="text"
-                placeholder="Type item name (e.g. Vicco Turmeric Cream 50g, Parachute 100ml, Dettol Soap 75g)..."
+                placeholder="Type item or brand (e.g. Maggi, Dettol, Fortune, Parachute, Colgate, Surf Excel)..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsCatalogDropdownOpen(true);
+                }}
+                onFocus={() => setIsCatalogDropdownOpen(true)}
                 className="w-full text-xs bg-white border border-purple-200 rounded-xl pl-8 pr-3 py-1.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs font-medium"
               />
               <Sparkles className="w-3.5 h-3.5 text-purple-600 absolute left-2.5 top-2" />
@@ -802,16 +847,88 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
               {isSearchingCatalog ? (
                 <>
                   <RefreshCw className="w-3 h-3 animate-spin mr-1" />
-                  Auto-Fetching...
+                  Searching...
                 </>
               ) : (
                 <>
                   <Sparkles className="w-3 h-3 text-amber-300 mr-1" />
-                  AI Auto-Fetch Image & Data
+                  Auto-Fill Product
                 </>
               )}
             </Button>
           </form>
+
+          {/* Quick FMCG Brand Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5 text-[11px]">
+            <span className="text-gray-500 font-bold shrink-0 flex items-center gap-1">
+              📚 Master Catalog:
+            </span>
+            {["Maggi", "Parachute", "Dettol", "Fortune", "Tata Salt", "Colgate", "Surf Excel", "Amul", "Vicco"].map((brandTag) => (
+              <button
+                key={brandTag}
+                type="button"
+                onClick={() => {
+                  setSearchQuery(brandTag);
+                  setIsCatalogDropdownOpen(true);
+                }}
+                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 border border-purple-200 text-purple-900 font-semibold shrink-0 transition-colors shadow-2xs cursor-pointer"
+              >
+                {brandTag}
+              </button>
+            ))}
+          </div>
+
+          {/* Master Catalog Instant Suggestions Dropdown */}
+          {isCatalogDropdownOpen && searchQuery.trim().length >= 2 && (
+            <div className="relative">
+              <div className="absolute top-1 left-0 right-0 z-50 bg-white border border-purple-200 rounded-xl shadow-xl p-2 max-h-64 overflow-y-auto space-y-1">
+                <div className="flex items-center justify-between px-2 py-1 text-[11px] font-bold text-gray-500 border-b border-gray-100">
+                  <span>Found in Master Indian Retail Catalog ({liveCatalogMatches.length})</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsCatalogDropdownOpen(false)}
+                    className="text-gray-400 hover:text-gray-700 cursor-pointer"
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+                {liveCatalogMatches.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-gray-500">
+                    No matching item in offline catalog. Click &ldquo;Auto-Fill Product&rdquo; for online search.
+                  </div>
+                ) : (
+                  liveCatalogMatches.map((item, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => handleSelectCatalogItem(item)}
+                      className="p-2 rounded-lg hover:bg-purple-50 cursor-pointer border border-transparent hover:border-purple-200 transition-all flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="text-xs font-bold text-gray-900">{item.name}</div>
+                        <div className="text-[10px] text-gray-500 flex items-center gap-2">
+                          <span className="font-semibold text-purple-700">{item.brand}</span>
+                          <span>•</span>
+                          <span>{item.category}</span>
+                          {item.barcode && (
+                            <>
+                              <span>•</span>
+                              <span className="font-mono text-gray-400">{item.barcode}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs font-black text-emerald-700">MRP ₹{item.mrp}</div>
+                        <span className="text-[10px] bg-purple-600 text-white font-bold px-2 py-0.5 rounded shadow-2xs">
+                          Use This
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ========================================================================= */}

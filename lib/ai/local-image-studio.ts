@@ -221,7 +221,7 @@ export const localImageStudio = {
   },
 
   /**
-   * Master Studio Polish & Clean Pipeline (100% Offline, <60ms)
+   * Master Studio Polish & Clean Pipeline (100% Offline & Universal)
    * Converts any raw phone snapshot into a polished, crisp product on a clean white background.
    */
   async processStudioPhoto(
@@ -239,8 +239,6 @@ export const localImageStudio = {
     }
 
     const rawImg = await this.loadImage(src);
-
-    // 1. Create Initial Base Canvas
     const baseCanvas = document.createElement("canvas");
     baseCanvas.width = rawImg.naturalWidth || rawImg.width || 1080;
     baseCanvas.height = rawImg.naturalHeight || rawImg.height || 1080;
@@ -249,7 +247,7 @@ export const localImageStudio = {
 
     baseCtx.drawImage(rawImg, 0, 0);
 
-    // 2. Perform Smart Local Subject Isolation
+    // 1. Isolate Product Subject from background
     const isolatedCanvas = this.isolateProductSubject(baseCanvas);
 
     // 3. Polish Surface, Clean Dust & Add Studio Gloss

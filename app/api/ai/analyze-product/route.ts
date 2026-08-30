@@ -179,35 +179,16 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
     }
 
     // -------------------------------------------------------------
-    // Option C: SMART LOCAL CATALOG & RETAIL VISION OCR FALLBACK
+    // No API Key or Cloud AI Unavailable
     // -------------------------------------------------------------
-    // If no API key is available or external AI call fails, return reliable product structure
-    return NextResponse.json({
-      success: true,
-      provider: "Falcon Retail OCR Engine",
-      data: {
-        product_name: "Parachute 100% Pure Coconut Oil 100ml",
-        brand: "Parachute",
-        category_name: "Hair Care",
-        packaging_shape: "Cylindrical bottle with flip top cap",
-        cap_color_and_type: "Blue flip cap",
-        container_color_material: "Deep blue plastic bottle",
-        label_design_and_colors: "Blue bottle with white typography",
-        exact_label_text: "PARACHUTE 100% PURE COCONUT OIL 100ml",
-        net_weight: "100 ml",
-        barcode: "8901088001004",
-        mrp: 46,
-        suggested_purchase_price: 35,
-        suggested_retail_price: 46,
-        suggested_wholesale_price: 40,
-        ingredients: ["100% Pure Coconut Oil"],
-        directions: "Apply gently on scalp and hair length",
-        benefits: ["100% Pure & natural", "Nourishes roots", "Long lasting freshness"],
-        short_description: "Parachute 100% Pure Coconut Oil 100ml made from naturally sun-dried coconuts.",
-        storage_instructions: "Store in a cool dry place.",
-        seo_tags: ["parachute coconut oil", "hair oil", "pure coconut oil"]
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Gemini/OpenAI API Key is not configured or rate-limited. Please add your key in AI Center or search directly from the Indian Retail Catalog.",
       },
-    });
+      { status: 400 }
+    );
   } catch (error: any) {
     console.error("AI Vision analysis error:", error);
     return NextResponse.json(
