@@ -7,11 +7,18 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { image } = body;
+    const { image, apiKey, hfToken } = body;
 
     if (!image) {
       return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
+
+    const token =
+      hfToken ||
+      apiKey ||
+      process.env.HF_TOKEN ||
+      process.env.NEXT_PUBLIC_HF_TOKEN ||
+      process.env.HUGGINGFACE_API_KEY;
 
     // Extract base64 payload
     const base64Data = image.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
@@ -27,9 +34,7 @@ export async function POST(req: NextRequest) {
           method: "POST",
           headers: {
             "Content-Type": "application/octet-stream",
-            ...(process.env.HF_TOKEN
-              ? { Authorization: `Bearer ${process.env.HF_TOKEN}` }
-              : {}),
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: imageBuffer,
         }

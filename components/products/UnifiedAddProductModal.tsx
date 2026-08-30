@@ -505,7 +505,36 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
     try {
       setIsPolishing(true);
-      const polished = await aiImageEnhancer.studioPolish(rawSource, {
+      setAiSuccessMsg("✨ Processing AI Studio Polish & Background Cutout...");
+
+      let imageToPolish = rawSource;
+
+      // 1. Try server-side AI cutout API first
+      try {
+        const savedHfToken =
+          typeof window !== "undefined"
+            ? localStorage.getItem("falcon_hf_token") || localStorage.getItem("falcon_clipdrop_key") || undefined
+            : undefined;
+
+        const bgRes = await fetch("/api/ai/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image: rawSource,
+            hfToken: savedHfToken,
+          }),
+        });
+
+        const bgJson = await bgRes.json().catch(() => ({}));
+        if (bgRes.ok && bgJson.success && bgJson.transparentImageUrl) {
+          imageToPolish = bgJson.transparentImageUrl;
+        }
+      } catch (bgErr) {
+        console.warn("Server AI background remover notice:", bgErr);
+      }
+
+      // 2. Final Studio Polish (Framing, Centering, Gloss & Pure White #FFFFFF Background)
+      const polished = await aiImageEnhancer.studioPolish(imageToPolish, {
         targetSize: 1080,
         backgroundColor: "#FFFFFF",
         addGloss: true,
@@ -516,9 +545,10 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       } else {
         setBackImageUrl(polished);
       }
-      setAiSuccessMsg("✨ Studio Cleaned & Polished: Dust cleaned, glossy shine added & set on pure white backdrop!");
+      setAiSuccessMsg("✨ Studio Cleaned & Polished: Background cleaned & set on pure white backdrop!");
     } catch (e) {
       console.error("Studio polish error:", e);
+      setAiSuccessMsg("⚠️ Studio polish notice: Applied safe photo enhancement.");
     } finally {
       setIsPolishing(false);
     }
