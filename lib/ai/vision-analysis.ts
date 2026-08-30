@@ -23,11 +23,11 @@ export const aiVisionService = {
       storeCategories?: { id: string; name: string }[];
     }
   ): Promise<AiProductAnalysisResult> {
-    // 1. Process and enhance front image
-    const frontEnhancement = await aiImageEnhancer.enhanceImage(payload.frontImage, {
-      targetSize: 1080,
-      backgroundColor: "#FFFFFF",
-    });
+    // 1. Ultra-fast canvas compression (<40ms) for high-speed API transit
+    const frontCompressed = await aiImageEnhancer.fastCompress(payload.frontImage, 1080, 0.85);
+    const backCompressed = payload.backImage
+      ? await aiImageEnhancer.fastCompress(payload.backImage, 1080, 0.85)
+      : undefined;
 
     // 2. Call Multimodal Vision AI API (OpenAI GPT-4o / Gemini)
     let aiData: any = null;
@@ -42,12 +42,8 @@ export const aiVisionService = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          frontImage: frontEnhancement.originalUrl,
-          backImage: payload.backImage
-            ? typeof payload.backImage === "string"
-              ? payload.backImage
-              : await aiImageEnhancer.fileToDataUrl(payload.backImage)
-            : undefined,
+          frontImage: frontCompressed,
+          backImage: backCompressed,
           apiKey: savedApiKey,
         }),
       });
@@ -67,13 +63,9 @@ export const aiVisionService = {
     const { barcodeImageScanner } = await import("./barcode-scanner");
     let opticalBarcode: string | null = null;
     try {
-      opticalBarcode = await barcodeImageScanner.scanBarcodeFromImage(frontEnhancement.originalUrl);
-      if (!opticalBarcode && payload.backImage) {
-        opticalBarcode = await barcodeImageScanner.scanBarcodeFromImage(
-          typeof payload.backImage === "string"
-            ? payload.backImage
-            : await aiImageEnhancer.fileToDataUrl(payload.backImage)
-        );
+      opticalBarcode = await barcodeImageScanner.scanBarcodeFromImage(frontCompressed);
+      if (!opticalBarcode && backCompressed) {
+        opticalBarcode = await barcodeImageScanner.scanBarcodeFromImage(backCompressed);
       }
     } catch (bcErr) {
       console.warn("Barcode scan skip:", bcErr);

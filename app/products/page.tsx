@@ -29,6 +29,8 @@ import {
   SlidersHorizontal,
   Flame,
   Minus,
+  Camera,
+  Image as ImageIcon,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -553,10 +555,33 @@ export default function ProductsPage() {
 
                       return (
                         <tr key={p.id} className="hover:bg-purple-50/30 transition-colors group">
-                          {/* 1. Name & Brand */}
+                          {/* 1. Name & Brand & Image Thumbnail */}
                           <td className="px-5 py-3.5">
-                            <div className="font-black text-gray-900 text-xs sm:text-sm">{p.name}</div>
-                            {p.brand && <div className="text-[11px] text-gray-500 font-medium">{p.brand}</div>}
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(p)}
+                                className="w-11 h-11 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden shrink-0 hover:ring-2 hover:ring-purple-500 transition-all cursor-pointer relative group/img shadow-2xs"
+                                title="Click to view or change product photo"
+                              >
+                                {p.image_url ? (
+                                  <img
+                                    src={p.image_url.split("|||")[0]}
+                                    alt={p.name}
+                                    className="w-full h-full object-contain p-0.5"
+                                  />
+                                ) : (
+                                  <div className="flex flex-col items-center justify-center text-gray-400 group-hover/img:text-purple-600 transition-colors">
+                                    <Camera className="w-4 h-4" />
+                                    <span className="text-[8px] font-black uppercase mt-0.5">+Photo</span>
+                                  </div>
+                                )}
+                              </button>
+                              <div className="min-w-0">
+                                <div className="font-black text-gray-900 text-xs sm:text-sm truncate max-w-xs">{p.name}</div>
+                                {p.brand && <div className="text-[11px] text-gray-500 font-medium">{p.brand}</div>}
+                              </div>
+                            </div>
                           </td>
 
                           {/* 2. Category */}
@@ -630,6 +655,16 @@ export default function ProductsPage() {
                           {/* 8. Actions */}
                           <td className="px-5 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              {/* Quick Photo Upload / Edit Button */}
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(p)}
+                                className="p-1.5 rounded-lg text-purple-700 hover:bg-purple-50 transition-colors"
+                                title="Add / Change Photo"
+                              >
+                                <Camera className="w-4 h-4" />
+                              </button>
+
                               {/* Quick Stock Adjust Button */}
                               <button
                                 type="button"

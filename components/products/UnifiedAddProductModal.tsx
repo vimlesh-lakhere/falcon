@@ -100,6 +100,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState("");
   const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
+  const [autoScanWithAi, setAutoScanWithAi] = useState(false);
 
   // Existing Product Duplicate Detection & 1-Click Variant Autofill State
   const [isNameSuggestionsOpen, setIsNameSuggestionsOpen] = useState(true);
@@ -314,87 +315,111 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     if (!sku) setSku(skuCode);
   };
 
-  // Process Image Data URL (From Live Camera Snapshot or File Upload) with AI White-Background & OCR
-  const handleProcessImageDataUrl = async (rawDataUrl: string, target: "front" | "back" = "front") => {
+  // Trigger Vision AI / OCR Extraction on demand or when auto-scan is enabled
+  const handleTriggerAiOcr = async (customFront?: string, customBack?: string) => {
+    const frontToScan = customFront || imageUrl;
+    const backToScan = customBack || backImageUrl;
+
+    if (!frontToScan && !backToScan) {
+      alert("Please upload or click a product photo first.");
+      return;
+    }
+
     try {
       setIsAnalyzing(true);
       setAiSuccessMsg("");
 
-      // Clean real product isolation on pure white background
-      let finalUrl = rawDataUrl;
-      try {
-        const enhanced = await aiImageEnhancer.enhanceImage(rawDataUrl, {
-          targetSize: 1080,
-          backgroundColor: "#FFFFFF",
-        });
-        finalUrl = enhanced.enhancedUrl || rawDataUrl;
-      } catch {
-        finalUrl = rawDataUrl;
+      const res = await fetch("/api/ai/analyze-product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          frontImage: frontToScan || backToScan,
+          backImage: backToScan && backToScan !== frontToScan ? backToScan : undefined,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success && json.data) {
+        const aiData = json.data;
+        const extractedMrp = Number(aiData.mrp || 0) || 0;
+        const suggestedCost =
+          Number(aiData.suggested_purchase_price || 0) || (extractedMrp > 0 ? Math.round(extractedMrp * 0.72) : 0);
+
+        if (aiData.product_name) setName(aiData.product_name);
+        if (aiData.brand) setBrand(aiData.brand);
+        if (extractedMrp > 0) setSellingPrice(extractedMrp);
+        if (suggestedCost > 0) setPurchasePrice(suggestedCost);
+        if (aiData.suggested_wholesale_price > 0) setWholesalePrice(aiData.suggested_wholesale_price);
+        if (aiData.barcode) setBarcode(String(aiData.barcode));
+        if (aiData.short_description) setDescription(aiData.short_description);
+
+        // Match Category
+        if (aiData.category_name && categories.length > 0) {
+          const match = categories.find(
+            (c) =>
+              c.name.toLowerCase().includes(String(aiData.category_name).toLowerCase()) ||
+              String(aiData.category_name).toLowerCase().includes(c.name.toLowerCase())
+          );
+          if (match) setCategoryId(match.id);
+        }
+
+        setAiSuccessMsg(`✓ Extracted: ${aiData.product_name || "Product"} ${extractedMrp > 0 ? `• MRP: ₹${extractedMrp}` : ""}`);
+      } else {
+        setAiSuccessMsg("✓ Photo attached! (Enter details or adjust above)");
       }
+    } catch (err) {
+      console.warn("Vision auto-read notice:", err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Process Image Data URL (From Live Camera Snapshot or File Upload)
+  const handleProcessImageDataUrl = async (rawDataUrl: string, target: "front" | "back" = "front") => {
+    try {
+      // 1. Fast client-side canvas compression (~30ms) - reduces 10MB to ~120KB
+      const fastCompressedUrl = await aiImageEnhancer.fastCompress(rawDataUrl, 1080, 0.85);
 
       if (target === "front") {
-        setImageUrl(finalUrl);
+        setImageUrl(fastCompressedUrl);
       } else {
-        setBackImageUrl(finalUrl);
+        setBackImageUrl(fastCompressedUrl);
       }
 
-      // Call Vision AI / OCR to extract real packaging text
-      try {
-        const res = await fetch("/api/ai/analyze-product", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            frontImage: target === "front" ? rawDataUrl : imageUrl || rawDataUrl,
-            backImage: target === "back" ? rawDataUrl : backImageUrl || undefined,
-          }),
-        });
+      // 2. IF EDITING EXISTING PRODUCT: Do NOT run OCR, do NOT overwrite details
+      if (editingProduct) {
+        setAiSuccessMsg("✓ Photo updated! Click 'Update Product' below to save.");
+        return;
+      }
 
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && json.success && json.data) {
-          const aiData = json.data;
-          const extractedMrp = Number(aiData.mrp || 0) || 46;
-          const suggestedCost =
-            Number(aiData.suggested_purchase_price || 0) || Math.round(extractedMrp * 0.72);
-
-          if (aiData.product_name) setName(aiData.product_name);
-          if (aiData.brand) setBrand(aiData.brand);
-          if (extractedMrp > 0) setSellingPrice(extractedMrp);
-          if (suggestedCost > 0) setPurchasePrice(suggestedCost);
-          if (aiData.suggested_wholesale_price > 0) setWholesalePrice(aiData.suggested_wholesale_price);
-          if (aiData.barcode) setBarcode(String(aiData.barcode));
-          if (aiData.short_description) setDescription(aiData.short_description);
-
-          // Match Category
-          if (aiData.category_name && categories.length > 0) {
-            const match = categories.find(
-              (c) =>
-                c.name.toLowerCase().includes(String(aiData.category_name).toLowerCase()) ||
-                String(aiData.category_name).toLowerCase().includes(c.name.toLowerCase())
-            );
-            if (match) setCategoryId(match.id);
-          }
-
-          setAiSuccessMsg(`✓ Extracted: ${aiData.product_name} • MRP: ₹${extractedMrp}`);
-        }
-      } catch (err) {
-        console.warn("Vision auto-read notice:", err);
-      } finally {
-        setIsAnalyzing(false);
+      // 3. IF NEW PRODUCT & AUTO-SCAN ENABLED: Run fast AI analysis
+      if (autoScanWithAi) {
+        const frontToScan = target === "front" ? fastCompressedUrl : imageUrl || fastCompressedUrl;
+        const backToScan = target === "back" ? fastCompressedUrl : backImageUrl;
+        await handleTriggerAiOcr(frontToScan, backToScan);
+      } else {
+        setAiSuccessMsg("✓ Photo attached! Click 'Scan with AI' if you want automatic details extraction.");
       }
     } catch (e) {
       console.error(e);
-      setIsAnalyzing(false);
+      if (target === "front") setImageUrl(rawDataUrl);
+      else setBackImageUrl(rawDataUrl);
     }
   };
 
   // Handle Photo Upload from Gallery / File picker
   const handlePhotoSelected = async (file: File, target: "front" | "back" = "front") => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const rawDataUrl = reader.result as string;
-      handleProcessImageDataUrl(rawDataUrl, target);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const fastCompressedUrl = await aiImageEnhancer.fastCompress(file, 1080, 0.85);
+      handleProcessImageDataUrl(fastCompressedUrl, target);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const rawDataUrl = reader.result as string;
+        handleProcessImageDataUrl(rawDataUrl, target);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Quick Category Creation
@@ -897,6 +922,35 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     Use
                   </Button>
                 </div>
+              )}
+
+              {/* AI OCR & Instant Controls */}
+              {(imageUrl || backImageUrl) && (
+                <div className="space-y-1.5 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleTriggerAiOcr()}
+                    isLoading={isAnalyzing}
+                    className="w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-brand-600 hover:from-purple-700 hover:to-brand-700 text-white font-bold text-xs shadow-xs active:scale-95 transition-all"
+                    title="Read printed product packaging, MRP, barcode and title"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-300" />
+                    <span>✨ Auto-Fill Details with AI (Scan Packaging)</span>
+                  </Button>
+                </div>
+              )}
+
+              {!editingProduct && (
+                <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer pt-0.5 select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoScanWithAi}
+                    onChange={(e) => setAutoScanWithAi(e.target.checked)}
+                    className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                  />
+                  <span>Auto-extract product details when photo is selected</span>
+                </label>
               )}
 
               {/* Side-by-Side Dual Thumbnail Previews */}
