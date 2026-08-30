@@ -101,6 +101,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [aiSuccessMsg, setAiSuccessMsg] = useState("");
   const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
   const [autoScanWithAi, setAutoScanWithAi] = useState(false);
+  const [isPolishing, setIsPolishing] = useState(false);
 
   // Existing Product Duplicate Detection & 1-Click Variant Autofill State
   const [isNameSuggestionsOpen, setIsNameSuggestionsOpen] = useState(true);
@@ -371,6 +372,35 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       console.warn("Vision auto-read notice:", err);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  // Instant Studio Polish & Clean Handler (Dust cleaning + Gloss + White BG)
+  const handleStudioPolishPhoto = async () => {
+    const currentUrl = activeImageTab === "front" ? imageUrl : backImageUrl;
+    if (!currentUrl) {
+      alert("Please upload or capture a photo first.");
+      return;
+    }
+
+    try {
+      setIsPolishing(true);
+      const polished = await aiImageEnhancer.studioPolish(currentUrl, {
+        targetSize: 1080,
+        backgroundColor: "#FFFFFF",
+        addGloss: true,
+      });
+
+      if (activeImageTab === "front") {
+        setImageUrl(polished);
+      } else {
+        setBackImageUrl(polished);
+      }
+      setAiSuccessMsg("✨ Studio Cleaned & Polished: Dust cleaned, glossy shine added & set on pure white backdrop!");
+    } catch (e) {
+      console.error("Studio polish error:", e);
+    } finally {
+      setIsPolishing(false);
     }
   };
 
@@ -924,20 +954,37 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 </div>
               )}
 
-              {/* AI OCR & Instant Controls */}
+              {/* Studio Polish & AI Controls */}
               {(imageUrl || backImageUrl) && (
                 <div className="space-y-1.5 pt-1">
+                  {/* 1. Studio Clean & Polish Button (Works for BOTH existing and new products) */}
                   <Button
                     type="button"
                     size="sm"
-                    onClick={() => handleTriggerAiOcr()}
-                    isLoading={isAnalyzing}
-                    className="w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-brand-600 hover:from-purple-700 hover:to-brand-700 text-white font-bold text-xs shadow-xs active:scale-95 transition-all"
-                    title="Read printed product packaging, MRP, barcode and title"
+                    onClick={handleStudioPolishPhoto}
+                    isLoading={isPolishing}
+                    className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-xs active:scale-95 transition-all"
+                    title="Clean dust, boost lighting, add glossy reflections and place on pure white background"
                   >
-                    <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-300" />
-                    <span>✨ Auto-Fill Details with AI (Scan Packaging)</span>
+                    <Sparkles className="w-3.5 h-3.5 mr-1 text-yellow-300 animate-pulse" />
+                    <span>✨ Studio Polish (Clean Dust, Shine & White BG)</span>
                   </Button>
+
+                  {/* 2. AI Auto-fill (Only when creating a new product) */}
+                  {!editingProduct && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleTriggerAiOcr()}
+                      isLoading={isAnalyzing}
+                      className="w-full border-purple-300 text-purple-700 hover:bg-purple-50 font-bold text-xs shadow-xs transition-all"
+                      title="Read printed product packaging, MRP, barcode and title"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1 text-purple-600" />
+                      <span>🤖 Scan Packaging & MRP with AI</span>
+                    </Button>
+                  )}
                 </div>
               )}
 
