@@ -57,6 +57,12 @@ import {
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
+// Persistent LocalStorage keys for POS state resilience across page navigation/refresh
+const POS_CART_STORAGE_KEY = "falcon_pos_active_cart";
+const POS_CUSTOMER_STORAGE_KEY = "falcon_pos_active_customer";
+const POS_DISCOUNT_STORAGE_KEY = "falcon_pos_active_discount";
+const POS_HELD_BILLS_STORAGE_KEY = "falcon_pos_held_bills";
+
 interface CartItem {
   product: Product;
   quantity: number;
@@ -106,11 +112,13 @@ export default function PosBillingPage() {
   const [sortMode, setSortMode] = useState<"top_selling" | "name_asc" | "price_asc" | "newest">("top_selling");
   const [productSalesCount, setProductSalesCount] = useState<Record<string, number>>({});
 
-  // Cart state
+  // Cart state & Persistence
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(0); // e.g. 0% or 18%
   const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
+  const [isRestoredToast, setIsRestoredToast] = useState<boolean>(false);
+  const isHydratedRef = useRef(false);
 
   // Checkout modal
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
@@ -129,6 +137,108 @@ export default function PosBillingPage() {
   const [mobileTab, setMobileTab] = useState<"catalog" | "cart">("catalog");
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // 1. Restore Cart & POS State from LocalStorage on mount
+  useEffect(() => {
+    try {
+      const savedCart = localStorage.getItem(POS_CART_STORAGE_KEY);
+      if (savedCart) {
+        const parsed = JSON.parse(savedCart);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCart(parsed);
+          setIsRestoredToast(true);
+          setTimeout(() => setIsRestoredToast(false), 4500);
+        }
+      }
+      const savedCust = localStorage.getItem(POS_CUSTOMER_STORAGE_KEY);
+      if (savedCust) {
+        setSelectedCustomer(JSON.parse(savedCust));
+      }
+      const savedDisc = localStorage.getItem(POS_DISCOUNT_STORAGE_KEY);
+      if (savedDisc) {
+        setDiscountAmount(Number(savedDisc) || 0);
+      }
+      const savedHeld = localStorage.getItem(POS_HELD_BILLS_STORAGE_KEY);
+      if (savedHeld) {
+        const parsedHeld = JSON.parse(savedHeld);
+        if (Array.isArray(parsedHeld)) {
+          setHeldBills(parsedHeld);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load POS session from localStorage:", e);
+    } finally {
+      isHydratedRef.current = true;
+    }
+  }, []);
+
+  // 2. Auto-save Cart to LocalStorage on changes
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    try {
+      if (cart.length > 0) {
+        localStorage.setItem(POS_CART_STORAGE_KEY, JSON.stringify(cart));
+      } else {
+        localStorage.removeItem(POS_CART_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn("Failed to auto-save POS cart:", e);
+    }
+  }, [cart]);
+
+  // 3. Auto-save Customer to LocalStorage on changes
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    try {
+      if (selectedCustomer) {
+        localStorage.setItem(POS_CUSTOMER_STORAGE_KEY, JSON.stringify(selectedCustomer));
+      } else {
+        localStorage.removeItem(POS_CUSTOMER_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn("Failed to auto-save POS customer:", e);
+    }
+  }, [selectedCustomer]);
+
+  // 4. Auto-save Discount to LocalStorage
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    try {
+      if (discountAmount > 0) {
+        localStorage.setItem(POS_DISCOUNT_STORAGE_KEY, discountAmount.toString());
+      } else {
+        localStorage.removeItem(POS_DISCOUNT_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn("Failed to auto-save POS discount:", e);
+    }
+  }, [discountAmount]);
+
+  // 5. Auto-save Held Bills to LocalStorage
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    try {
+      if (heldBills.length > 0) {
+        localStorage.setItem(POS_HELD_BILLS_STORAGE_KEY, JSON.stringify(heldBills));
+      } else {
+        localStorage.removeItem(POS_HELD_BILLS_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn("Failed to auto-save POS held bills:", e);
+    }
+  }, [heldBills]);
+
+  // 6. Warn if user attempts to close browser tab with items in cart
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (cart.length > 0) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [cart.length]);
 
   // Network listener & offline sync count
   useEffect(() => {
@@ -435,6 +545,13 @@ export default function PosBillingPage() {
     setCart([]);
     setDiscountAmount(0);
     setSelectedCustomer(null);
+    try {
+      localStorage.removeItem(POS_CART_STORAGE_KEY);
+      localStorage.removeItem(POS_CUSTOMER_STORAGE_KEY);
+      localStorage.removeItem(POS_DISCOUNT_STORAGE_KEY);
+    } catch (e) {
+      console.warn("Could not clear POS cart from storage:", e);
+    }
   };
 
   // Hold & Resume bill
@@ -488,9 +605,12 @@ export default function PosBillingPage() {
         if (cardAmount > 0) payments.push({ method: "card", amount: cardAmount });
       }
 
+      // Snapshot customer before state reset
+      const customerSnapshot = selectedCustomer;
+
       const payload: CheckoutPayload = {
         shop_id: SHOP_ID,
-        customer_id: selectedCustomer?.id || null,
+        customer_id: customerSnapshot?.id || null,
         subtotal,
         discount_amount: discountAmount,
         tax_amount: taxAmount,
@@ -522,17 +642,37 @@ export default function PosBillingPage() {
         }
       }
 
-      // Ensure items have full product object & unit_name attached for receipt printing & WhatsApp
+      // Ensure customer & items have complete product objects attached for Thermal receipt & WhatsApp
+      const resolvedCustomer = customerSnapshot || sale.customer || (payload.customer_id ? customers.find((c) => c.id === payload.customer_id) : null) || null;
+
+      const rawItems = sale.items && sale.items.length > 0 ? sale.items : payload.items.map((it, idx) => {
+        const cartMatch = cart[idx] || cart.find((c) => c.product.id === it.product_id);
+        return {
+          id: `item-${Date.now()}-${idx}`,
+          sale_id: sale.id,
+          product_id: it.product_id,
+          variant_id: it.variant_id || null,
+          quantity: it.quantity,
+          unit_price: it.unit_price,
+          cost_price: it.cost_price,
+          is_price_overridden: it.is_price_overridden || false,
+          overridden_by: null,
+          product: cartMatch?.product,
+          unit_name: it.unit_name || cartMatch?.unitName,
+          unit_multiplier: it.unit_multiplier || cartMatch?.unitMultiplier,
+        };
+      });
+
       const enrichedSale: Sale = {
         ...sale,
-        customer: selectedCustomer || sale.customer,
-        items: (sale.items || []).map((saleItem, idx) => {
+        customer: resolvedCustomer || undefined,
+        items: rawItems.map((saleItem, idx) => {
           const cartMatch = cart[idx] || cart.find((c) => c.product.id === saleItem.product_id);
           return {
             ...saleItem,
             product: saleItem.product || cartMatch?.product,
-            unit_name: cartMatch?.unitName,
-            unit_multiplier: cartMatch?.unitMultiplier,
+            unit_name: (saleItem as any).unit_name || cartMatch?.unitName,
+            unit_multiplier: (saleItem as any).unit_multiplier || cartMatch?.unitMultiplier,
           } as any;
         }),
       };
@@ -956,6 +1096,24 @@ export default function PosBillingPage() {
             mobileTab === "cart" ? "flex" : "hidden lg:flex"
           )}
         >
+          {/* Restored Cart Banner Notification */}
+          {isRestoredToast && (
+            <div className="bg-emerald-600 text-white text-xs font-bold px-3 py-2 flex items-center justify-between shadow-md shrink-0 animate-in slide-in-from-top duration-200">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Active cart restored from previous session!</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRestoredToast(false)}
+                className="text-white/80 hover:text-white text-xs px-1"
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Mobile Back to Products Bar */}
           <div className="lg:hidden p-2.5 bg-brand-50 border-b border-brand-100 flex items-center justify-between shrink-0">
             <button
@@ -1310,24 +1468,6 @@ export default function PosBillingPage() {
         </div>
       </Modal>
 
-      {/* Receipt & Thermal Invoice Modal with WhatsApp Sharing */}
-      <Modal
-        isOpen={isReceiptModalOpen && !!completedSale}
-        onClose={() => setIsReceiptModalOpen(false)}
-        title="🧾 Billing Invoice & Thermal Receipt"
-        maxWidth="md"
-      >
-        {completedSale && (
-          <ThermalReceipt
-            sale={completedSale}
-            customer={selectedCustomer}
-            shopId={SHOP_ID}
-            onDone={() => setIsReceiptModalOpen(false)}
-            onOpenPrinterSettings={() => setIsPrinterModalOpen(true)}
-          />
-        )}
-      </Modal>
-
       {/* Quick Printer Setup & Hardware Modal */}
       <Modal
         isOpen={isPrinterModalOpen}
@@ -1447,7 +1587,7 @@ export default function PosBillingPage() {
         >
           <ThermalReceipt
             sale={completedSale}
-            customer={selectedCustomer || completedSale.customer}
+            customer={completedSale.customer}
             shopId={SHOP_ID}
             onDone={() => {
               setIsReceiptModalOpen(false);
