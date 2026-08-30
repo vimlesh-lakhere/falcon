@@ -38,6 +38,7 @@ import {
   CleanVariant,
 } from "@/lib/product-variants";
 import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
+import { ProductPhotoCameraModal } from "@/components/products/ProductPhotoCameraModal";
 
 interface UnifiedAddProductModalProps {
   isOpen: boolean;
@@ -98,6 +99,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [customImageUrlInput, setCustomImageUrlInput] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState("");
+  const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
 
   // Existing Product Duplicate Detection & 1-Click Variant Autofill State
   const [isNameSuggestionsOpen, setIsNameSuggestionsOpen] = useState(true);
@@ -312,83 +314,87 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     if (!sku) setSku(skuCode);
   };
 
-  // Handle Photo Upload & Label OCR for Front / Back
-  const handlePhotoSelected = async (file: File, target: "front" | "back" = "front") => {
+  // Process Image Data URL (From Live Camera Snapshot or File Upload) with AI White-Background & OCR
+  const handleProcessImageDataUrl = async (rawDataUrl: string, target: "front" | "back" = "front") => {
     try {
       setIsAnalyzing(true);
       setAiSuccessMsg("");
 
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const rawDataUrl = reader.result as string;
+      // Clean real product isolation on pure white background
+      let finalUrl = rawDataUrl;
+      try {
+        const enhanced = await aiImageEnhancer.enhanceImage(rawDataUrl, {
+          targetSize: 1080,
+          backgroundColor: "#FFFFFF",
+        });
+        finalUrl = enhanced.enhancedUrl || rawDataUrl;
+      } catch {
+        finalUrl = rawDataUrl;
+      }
 
-        // Clean real product isolation on pure white background
-        let finalUrl = rawDataUrl;
-        try {
-          const enhanced = await aiImageEnhancer.enhanceImage(rawDataUrl, {
-            targetSize: 1080,
-            backgroundColor: "#FFFFFF",
-          });
-          finalUrl = enhanced.enhancedUrl || rawDataUrl;
-        } catch {
-          finalUrl = rawDataUrl;
-        }
+      if (target === "front") {
+        setImageUrl(finalUrl);
+      } else {
+        setBackImageUrl(finalUrl);
+      }
 
-        if (target === "front") {
-          setImageUrl(finalUrl);
-        } else {
-          setBackImageUrl(finalUrl);
-        }
+      // Call Vision AI / OCR to extract real packaging text
+      try {
+        const res = await fetch("/api/ai/analyze-product", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            frontImage: target === "front" ? rawDataUrl : imageUrl || rawDataUrl,
+            backImage: target === "back" ? rawDataUrl : backImageUrl || undefined,
+          }),
+        });
 
-        // Call Vision AI / OCR to extract real packaging text
-        try {
-          const res = await fetch("/api/ai/analyze-product", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              frontImage: target === "front" ? rawDataUrl : imageUrl || rawDataUrl,
-              backImage: target === "back" ? rawDataUrl : backImageUrl || undefined,
-            }),
-          });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.success && json.data) {
+          const aiData = json.data;
+          const extractedMrp = Number(aiData.mrp || 0) || 46;
+          const suggestedCost =
+            Number(aiData.suggested_purchase_price || 0) || Math.round(extractedMrp * 0.72);
 
-          const json = await res.json().catch(() => ({}));
-          if (res.ok && json.success && json.data) {
-            const aiData = json.data;
-            const extractedMrp = Number(aiData.mrp || 0) || 46;
-            const suggestedCost =
-              Number(aiData.suggested_purchase_price || 0) || Math.round(extractedMrp * 0.72);
+          if (aiData.product_name) setName(aiData.product_name);
+          if (aiData.brand) setBrand(aiData.brand);
+          if (extractedMrp > 0) setSellingPrice(extractedMrp);
+          if (suggestedCost > 0) setPurchasePrice(suggestedCost);
+          if (aiData.suggested_wholesale_price > 0) setWholesalePrice(aiData.suggested_wholesale_price);
+          if (aiData.barcode) setBarcode(String(aiData.barcode));
+          if (aiData.short_description) setDescription(aiData.short_description);
 
-            if (aiData.product_name) setName(aiData.product_name);
-            if (aiData.brand) setBrand(aiData.brand);
-            if (extractedMrp > 0) setSellingPrice(extractedMrp);
-            if (suggestedCost > 0) setPurchasePrice(suggestedCost);
-            if (aiData.suggested_wholesale_price > 0) setWholesalePrice(aiData.suggested_wholesale_price);
-            if (aiData.barcode) setBarcode(String(aiData.barcode));
-            if (aiData.short_description) setDescription(aiData.short_description);
-
-            // Match Category
-            if (aiData.category_name && categories.length > 0) {
-              const match = categories.find(
-                (c) =>
-                  c.name.toLowerCase().includes(String(aiData.category_name).toLowerCase()) ||
-                  String(aiData.category_name).toLowerCase().includes(c.name.toLowerCase())
-              );
-              if (match) setCategoryId(match.id);
-            }
-
-            setAiSuccessMsg(`✓ Extracted: ${aiData.product_name} • MRP: ₹${extractedMrp}`);
+          // Match Category
+          if (aiData.category_name && categories.length > 0) {
+            const match = categories.find(
+              (c) =>
+                c.name.toLowerCase().includes(String(aiData.category_name).toLowerCase()) ||
+                String(aiData.category_name).toLowerCase().includes(c.name.toLowerCase())
+            );
+            if (match) setCategoryId(match.id);
           }
-        } catch (err) {
-          console.warn("Vision auto-read notice:", err);
-        } finally {
-          setIsAnalyzing(false);
+
+          setAiSuccessMsg(`✓ Extracted: ${aiData.product_name} • MRP: ₹${extractedMrp}`);
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.warn("Vision auto-read notice:", err);
+      } finally {
+        setIsAnalyzing(false);
+      }
     } catch (e) {
       console.error(e);
       setIsAnalyzing(false);
     }
+  };
+
+  // Handle Photo Upload from Gallery / File picker
+  const handlePhotoSelected = async (file: File, target: "front" | "back" = "front") => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rawDataUrl = reader.result as string;
+      handleProcessImageDataUrl(rawDataUrl, target);
+    };
+    reader.readAsDataURL(file);
   };
 
   // Quick Category Creation
@@ -804,8 +810,21 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 )}
               </div>
 
-              {/* Visual Action Buttons for Active Tab */}
-              <div className="flex items-center gap-2">
+              {/* Visual Action Buttons for Active Tab (Direct Camera Click + Gallery Upload) */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* 1. Direct Live Camera Capture Button */}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setIsCameraCaptureOpen(true)}
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
+                  title="Click photo using device camera"
+                >
+                  <Camera className="w-3.5 h-3.5 mr-1" />
+                  <span>📷 Click Camera</span>
+                </Button>
+
+                {/* 2. Gallery / File Upload Button */}
                 <Button
                   type="button"
                   variant="outline"
@@ -818,15 +837,10 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     }
                   }}
                   className="flex-1 text-xs font-bold border-gray-300 hover:border-purple-500 hover:bg-purple-50"
+                  title="Choose image from phone gallery or files"
                 >
-                  <Upload className="w-3.5 h-3.5 text-purple-600 mr-1.5" />
-                  {activeImageTab === "front"
-                    ? imageUrl
-                      ? "Change Front"
-                      : "Upload Front"
-                    : backImageUrl
-                    ? "Change Back"
-                    : "Upload Back"}
+                  <Upload className="w-3.5 h-3.5 text-purple-600 mr-1" />
+                  <span>🖼️ Gallery</span>
                 </Button>
 
                 <Button
@@ -834,7 +848,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={() => setShowUrlInput(!showUrlInput)}
-                  className="text-xs border-gray-300 hover:bg-gray-50 px-2.5"
+                  className="text-xs border-gray-300 hover:bg-gray-50 px-2"
                   title="Paste direct image URL"
                 >
                   <LinkIcon className="w-3.5 h-3.5 text-gray-600" />
@@ -849,7 +863,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       if (activeImageTab === "front") setImageUrl("");
                       else setBackImageUrl("");
                     }}
-                    className="text-xs border-gray-300 text-red-600 hover:bg-red-50 px-2.5"
+                    className="text-xs border-gray-300 text-red-600 hover:bg-red-50 px-2"
                     title="Remove active angle image"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1676,6 +1690,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           }
           setIsBarcodeScannerOpen(false);
         }}
+      />
+
+      {/* Live Camera Product Photo Snapshot Sub-Modal */}
+      <ProductPhotoCameraModal
+        isOpen={isCameraCaptureOpen}
+        onClose={() => setIsCameraCaptureOpen(false)}
+        onCapture={(photoDataUrl) => handleProcessImageDataUrl(photoDataUrl, activeImageTab)}
+        targetAngle={activeImageTab}
       />
     </div>
   );
