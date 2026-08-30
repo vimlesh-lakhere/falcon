@@ -29,6 +29,7 @@ import { Product, Category, Supplier, Unit } from "@/types/database";
 import { productsRepository } from "@/repositories/products.repo";
 import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { aiImageEnhancer } from "@/lib/ai/image-enhancer";
+import { findInIndianRetailCatalog } from "@/lib/catalog/indian-retail-catalog";
 
 import {
   extractProductVariants,
@@ -182,6 +183,45 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       setIsSearchingCatalog(true);
       setAiSuccessMsg("");
 
+      // 1. Check 100% Offline Master Indian Retail Catalog (0.01s instant match)
+      const localMatch = findInIndianRetailCatalog(searchQuery.trim());
+      if (localMatch) {
+        if (localMatch.name) setName(localMatch.name);
+        if (localMatch.brand) setBrand(localMatch.brand);
+        if (localMatch.barcode) setBarcode(localMatch.barcode);
+        if (localMatch.mrp > 0) setSellingPrice(localMatch.mrp);
+        if (localMatch.purchasePrice > 0) setPurchasePrice(localMatch.purchasePrice);
+        if (localMatch.wholesalePrice > 0) setWholesalePrice(localMatch.wholesalePrice);
+        if (localMatch.description) setDescription(localMatch.description);
+
+        if (localMatch.category && categories.length > 0) {
+          const match = categories.find(
+            (c) =>
+              c.name.toLowerCase().includes(localMatch.category.toLowerCase()) ||
+              localMatch.category.toLowerCase().includes(c.name.toLowerCase())
+          );
+          if (match) setCategoryId(match.id);
+        }
+
+        const isLiquid =
+          localMatch.name.toLowerCase().includes("oil") ||
+          localMatch.name.toLowerCase().includes("ml") ||
+          localMatch.name.toLowerCase().includes("shampoo");
+        const generatedVars = generateStandardVariants(
+          localMatch.name,
+          localMatch.mrp,
+          isLiquid ? "liquid" : "weight"
+        );
+        setVariants(generatedVars);
+
+        setAiSuccessMsg(
+          `⚡ Instant Offline Match: "${localMatch.name}" • MRP: ₹${localMatch.mrp} (${generatedVars.length} variants)`
+        );
+        setIsSearchingCatalog(false);
+        return;
+      }
+
+      // 2. Fallback to online catalog search if not in local database
       const res = await fetch("/api/ai/search-product-catalog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -314,6 +354,32 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     const skuCode = (brand?.slice(0, 3) || "SKU").toUpperCase() + "-" + Date.now().toString().slice(-4);
     setBarcode(randomEan);
     if (!sku) setSku(skuCode);
+  };
+
+  // 100% Offline Barcode Auto-Fill from Master Indian Retail Catalog
+  const handleBarcodeAutoFill = (barcodeVal: string) => {
+    setBarcode(barcodeVal);
+    if (!editingProduct && barcodeVal && barcodeVal.length >= 6) {
+      const localMatch = findInIndianRetailCatalog(barcodeVal);
+      if (localMatch) {
+        if (!name || name.trim() === "") setName(localMatch.name);
+        if (!brand || brand.trim() === "") setBrand(localMatch.brand);
+        if (localMatch.mrp > 0 && sellingPrice === 0) setSellingPrice(localMatch.mrp);
+        if (localMatch.purchasePrice > 0 && purchasePrice === 0) setPurchasePrice(localMatch.purchasePrice);
+        if (localMatch.wholesalePrice > 0 && wholesalePrice === 0) setWholesalePrice(localMatch.wholesalePrice);
+        if (localMatch.description && !description) setDescription(localMatch.description);
+
+        if (localMatch.category && categories.length > 0 && (!categoryId || categoryId === categories[0]?.id)) {
+          const match = categories.find(
+            (c) =>
+              c.name.toLowerCase().includes(localMatch.category.toLowerCase()) ||
+              localMatch.category.toLowerCase().includes(c.name.toLowerCase())
+          );
+          if (match) setCategoryId(match.id);
+        }
+        setAiSuccessMsg(`⚡ Instant Offline Barcode Match: ${localMatch.name} • MRP: ₹${localMatch.mrp}`);
+      }
+    }
   };
 
   // Trigger Vision AI / OCR Extraction on demand or when auto-scan is enabled
@@ -1247,7 +1313,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     <input
                       type="text"
                       value={barcode}
-                      onChange={(e) => setBarcode(e.target.value)}
+                      onChange={(e) => handleBarcodeAutoFill(e.target.value)}
                       placeholder="Scan with camera, gun or enter EAN"
                       className="w-full text-xs h-9 bg-white border border-gray-300 rounded-lg px-3 font-mono text-gray-900 focus:ring-2 focus:ring-purple-600 focus:outline-none"
                     />
@@ -1798,7 +1864,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         onScan={(scannedCode) => {
           const clean = scannedCode.trim();
           if (clean) {
-            setBarcode(clean);
+            handleBarcodeAutoFill(clean);
           }
           setIsBarcodeScannerOpen(false);
         }}

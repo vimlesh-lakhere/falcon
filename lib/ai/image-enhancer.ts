@@ -1,4 +1,5 @@
 import { AiImageEnhancementResult } from "./types";
+import { localImageStudio } from "./local-image-studio";
 
 export interface StudioEnhanceOptions {
   targetSize?: number;
@@ -394,7 +395,7 @@ export const aiImageEnhancer = {
   },
 
   /**
-   * Complete Studio Polish & AI Background Removal Engine:
+   * Complete 100% Offline Studio Polish & Background Cutout Engine:
    * 1. Extracts real product cutout (removes room, wall, table background)
    * 2. Eliminates dust, smudges, and dull indoor lighting
    * 3. Auto-corrects color vibrancy, contrasts, and white balance
@@ -410,122 +411,16 @@ export const aiImageEnhancer = {
     } = {}
   ): Promise<string> {
     try {
-      const targetSize = options.targetSize || 1080;
-      const backgroundColor = options.backgroundColor || "#FFFFFF";
-      const addGloss = options.addGloss !== false;
-
-      let src = "";
-      if (typeof dataUrlOrFile === "string") {
-        src = dataUrlOrFile;
-      } else {
-        src = await this.fileToDataUrl(dataUrlOrFile);
-      }
-
-      // 1. Fast AI Background Cutout Isolation (Remove room/table)
-      let transparentSrc = src;
-      try {
-        const bgRes = await fetch("/api/ai/remove-background", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: src }),
-        });
-        const bgJson = await bgRes.json().catch(() => ({}));
-        if (bgRes.ok && bgJson.transparentImageUrl) {
-          transparentSrc = bgJson.transparentImageUrl;
-        }
-      } catch (bgErr) {
-        console.warn("Background removal notice:", bgErr);
-      }
-
-      const img = await this.loadImage(transparentSrc);
-      const canvas = document.createElement("canvas");
-      canvas.width = targetSize;
-      canvas.height = targetSize;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return src;
-
-      // 2. Fill clean studio background
-      ctx.fillStyle = backgroundColor;
-      ctx.fillRect(0, 0, targetSize, targetSize);
-
-      // 3. Calculate aspect-fitted product position (centered, 82% scale)
-      const imgAspect = img.width / img.height;
-      let drawW = targetSize * 0.82;
-      let drawH = targetSize * 0.82;
-      if (imgAspect > 1) {
-        drawH = drawW / imgAspect;
-      } else {
-        drawW = drawH * imgAspect;
-      }
-      const drawX = (targetSize - drawW) / 2;
-      const drawY = (targetSize - drawH) / 2 + 10;
-
-      // 4. Ground Soft Ambient Shadow
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(
-        targetSize / 2,
-        drawY + drawH - 6,
-        drawW * 0.42,
-        12,
-        0,
-        0,
-        2 * Math.PI
-      );
-      ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
-      ctx.filter = "blur(14px)";
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.ellipse(
-        targetSize / 2,
-        drawY + drawH - 2,
-        drawW * 0.32,
-        5,
-        0,
-        0,
-        2 * Math.PI
-      );
-      ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
-      ctx.filter = "blur(4px)";
-      ctx.fill();
-      ctx.restore();
-
-      // 4. Render product with Dust/Blemish Clarity & Rich Color Restoration Filter
-      ctx.save();
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      // Cleans up dull shadows, sharpens details, and enriches colors
-      ctx.filter = "contrast(114%) brightness(105%) saturate(115%)";
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
-      ctx.restore();
-
-      // 5. Specular Studio Gloss Highlights
-      if (addGloss) {
-        ctx.save();
-        // Left Rim Light
-        const leftRim = ctx.createLinearGradient(drawX, drawY, drawX + drawW * 0.3, drawY);
-        leftRim.addColorStop(0, "rgba(255, 255, 255, 0.38)");
-        leftRim.addColorStop(0.5, "rgba(255, 255, 255, 0.12)");
-        leftRim.addColorStop(1, "rgba(255, 255, 255, 0)");
-        ctx.fillStyle = leftRim;
-        ctx.fillRect(drawX, drawY, drawW * 0.3, drawH);
-
-        // Body Center Soft Reflection
-        const bodyGlow = ctx.createLinearGradient(drawX + drawW * 0.25, drawY, drawX + drawW * 0.55, drawY);
-        bodyGlow.addColorStop(0, "rgba(255, 255, 255, 0)");
-        bodyGlow.addColorStop(0.5, "rgba(255, 255, 255, 0.22)");
-        bodyGlow.addColorStop(1, "rgba(255, 255, 255, 0)");
-        ctx.fillStyle = bodyGlow;
-        ctx.fillRect(drawX + drawW * 0.2, drawY, drawW * 0.4, drawH);
-
-        ctx.restore();
-      }
-
-      return canvas.toDataURL("image/jpeg", 0.92);
-    } catch (err) {
-      console.warn("Studio polish fallback:", err);
-      return typeof dataUrlOrFile === "string" ? dataUrlOrFile : await this.fileToDataUrl(dataUrlOrFile);
+      return await localImageStudio.processStudioPhoto(dataUrlOrFile, {
+        targetSize: options.targetSize || 1080,
+        backgroundColor: options.backgroundColor || "#FFFFFF",
+        addGlossShine: options.addGloss !== false,
+      });
+    } catch (e) {
+      console.warn("Studio polish local fallback:", e);
+      return typeof dataUrlOrFile === "string"
+        ? dataUrlOrFile
+        : await this.fileToDataUrl(dataUrlOrFile);
     }
   },
 };
