@@ -786,8 +786,13 @@ export default function PosBillingPage() {
   const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount);
 
   // Open checkout modal
-  const handleOpenCheckout = (method: "cash" | "upi" | "card" | "split" = "cash") => {
+  const handleOpenCheckout = (methodOrEvent?: "cash" | "upi" | "card" | "split" | React.MouseEvent) => {
     if (cart.length === 0) return;
+    const method: "cash" | "upi" | "card" | "split" =
+      typeof methodOrEvent === "string" && ["cash", "upi", "card", "split"].includes(methodOrEvent)
+        ? (methodOrEvent as "cash" | "upi" | "card" | "split")
+        : "cash";
+
     setPaymentMethod(method);
     if (method === "cash") {
       setCashAmount(totalAmount);
@@ -1735,7 +1740,7 @@ export default function PosBillingPage() {
             {/* Primary Checkout Button */}
             <Button
               size="lg"
-              onClick={handleOpenCheckout}
+              onClick={() => handleOpenCheckout("cash")}
               disabled={cart.length === 0}
               className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold text-base shadow-md h-12"
             >
