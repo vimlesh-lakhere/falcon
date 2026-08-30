@@ -221,20 +221,20 @@ export const AartiBillOfSupplyImage = forwardRef<HTMLDivElement, AartiBillOfSupp
             {/* Payment QR Code */}
             {qrCodeDataUrl && (
               <div className="flex items-center gap-3 pt-2">
-                <div className="p-1 border border-gray-300 rounded-lg bg-white shadow-xs">
+                <div className="p-1.5 border-2 border-gray-800 rounded-xl bg-white shadow-xs">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={qrCodeDataUrl}
                     alt="Payment QR Code"
-                    className="w-20 h-20 object-contain"
+                    className="w-28 h-28 object-contain"
                   />
                 </div>
                 <div className="space-y-1">
-                  <div className="font-bold text-[11px] text-gray-800">Payment QR Code</div>
+                  <div className="font-bold text-xs text-gray-900">Scan & Pay via UPI</div>
                   <div className="flex items-center gap-1.5 text-[9px] font-bold text-purple-700">
                     <span>PhonePe</span> • <span>GPay</span> • <span>Paytm</span> • <span>UPI</span>
                   </div>
-                  <div className="text-[10px] font-mono font-semibold text-gray-600">
+                  <div className="text-[10px] font-mono font-bold text-gray-700">
                     UPI ID: {printerConfig.upiId || "9424970040@axl"}
                   </div>
                 </div>

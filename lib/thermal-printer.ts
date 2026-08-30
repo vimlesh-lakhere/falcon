@@ -356,7 +356,7 @@ export async function buildRasterGraphicsReceipt(
     if (upiUrl) {
       try {
         const qrDataUrl = await QRCode.toDataURL(upiUrl, {
-          width: is80mm ? 200 : 160,
+          width: is80mm ? 260 : 200,
           margin: 1,
           errorCorrectionLevel: "M",
           color: { dark: "#000000", light: "#ffffff" },

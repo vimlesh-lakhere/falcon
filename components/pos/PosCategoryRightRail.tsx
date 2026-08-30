@@ -366,7 +366,7 @@ export const PosCategoryRightRail: React.FC<PosCategoryRightRailProps> = ({
                           Type or Paste Any Emoji from Your Keyboard
                         </label>
                         <p className="text-[11px] text-gray-500 mb-2">
-                          Press <kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono text-[10px]">Win + .</kbd> (on Windows) or use your phone's emoji keyboard to type any emoji.
+                          Press <kbd className="px-1.5 py-0.5 bg-gray-200 rounded font-mono text-[10px]">Win + .</kbd> (on Windows) or use your phone&apos;s emoji keyboard to type any emoji.
                         </p>
                         <div className="flex items-center gap-2">
                           <input

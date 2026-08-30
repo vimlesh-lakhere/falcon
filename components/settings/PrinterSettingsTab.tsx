@@ -74,7 +74,7 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
       );
       if (sampleUpiUrl) {
         QRCode.toDataURL(sampleUpiUrl, {
-          width: 160,
+          width: 240,
           margin: 1,
           errorCorrectionLevel: "M",
           color: { dark: "#000000", light: "#ffffff" },
@@ -485,7 +485,7 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
           <QrIcon className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
           <div className="text-xs text-emerald-900 space-y-1">
             <p className="font-bold">
-              Dynamic UPI QR code automatically sets the exact bill total on the customer's phone!
+              Dynamic UPI QR code automatically sets the exact bill total on the customer&apos;s phone!
             </p>
             <p className="text-emerald-800 text-[11px]">
               When the customer scans the QR code using PhonePe, Google Pay, Paytm, or BHIM, the exact bill amount (e.g. ₹450) is locked in automatically so there are no typing errors.

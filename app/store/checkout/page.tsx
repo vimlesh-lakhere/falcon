@@ -63,7 +63,7 @@ export default function StoreCheckoutPage() {
   const phonePeUrl = `phonepe://pay?pa=${STORE_UPI_ID}&pn=${encodeURIComponent(STORE_PAYEE_NAME)}&am=${subtotal}&cu=INR&tn=${encodeURIComponent(`Order Payment AGS Store`)}`;
   const gpayUrl = `gpay://upi/pay?pa=${STORE_UPI_ID}&pn=${encodeURIComponent(STORE_PAYEE_NAME)}&am=${subtotal}&cu=INR&tn=${encodeURIComponent(`Order Payment AGS Store`)}`;
   const paytmUrl = `paytmmp://pay?pa=${STORE_UPI_ID}&pn=${encodeURIComponent(STORE_PAYEE_NAME)}&am=${subtotal}&cu=INR&tn=${encodeURIComponent(`Order Payment AGS Store`)}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(upiUrl)}&margin=8`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(upiUrl)}&margin=4`;
 
   const copyUpiId = () => {
     navigator.clipboard.writeText(STORE_UPI_ID);
@@ -496,9 +496,9 @@ export default function StoreCheckoutPage() {
                     <img
                       src={qrCodeUrl}
                       alt="UPI Payment QR Code"
-                      width={180}
-                      height={180}
-                      className="w-44 h-44 rounded-xl object-contain mx-auto"
+                      width={240}
+                      height={240}
+                      className="w-56 h-56 sm:w-60 sm:h-60 rounded-xl object-contain mx-auto"
                     />
                     <div className="mt-1.5 text-center">
                       <span className="text-[9px] font-black text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full uppercase tracking-wider">

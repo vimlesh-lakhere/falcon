@@ -80,7 +80,7 @@ export function ThermalReceipt({
       );
       if (upiUrl) {
         QRCode.toDataURL(upiUrl, {
-          width: cfg.paperWidth === "80mm" ? 220 : 160,
+          width: cfg.paperWidth === "80mm" ? 280 : 220,
           margin: 1,
           errorCorrectionLevel: "M",
           color: { dark: "#000000", light: "#ffffff" },
@@ -419,12 +419,12 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
               <p className="font-bold text-[11px]">Exact Amount: ₹{Number(sale.total_amount).toFixed(2)}</p>
 
               {qrCodeDataUrl ? (
-                <div className="flex justify-center py-1">
+                <div className="flex justify-center py-1.5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={qrCodeDataUrl}
                     alt="UPI Dynamic Payment QR"
-                    className="w-32 h-32 border border-gray-300 rounded p-0.5"
+                    className="w-44 h-44 border-2 border-black rounded-lg p-1 bg-white object-contain"
                   />
                 </div>
               ) : (

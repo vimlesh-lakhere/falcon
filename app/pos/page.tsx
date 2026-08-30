@@ -26,6 +26,9 @@ import {
   Camera,
   CloudUpload,
   Layers,
+  Mic,
+  MicOff,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -76,9 +79,13 @@ interface CartItem {
 
 interface HeldBill {
   id: string;
+  label: string;
   customer: Customer | null;
   items: CartItem[];
-  timestamp: Date;
+  discountAmount: number;
+  subtotal: number;
+  totalAmount: number;
+  timestamp: number;
 }
 
 export default function PosBillingPage() {
@@ -104,6 +111,10 @@ export default function PosBillingPage() {
 
   // POS Quick Add Product Modal
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+
+  // Held Bills Modal
+  const [isHeldBillsModalOpen, setIsHeldBillsModalOpen] = useState(false);
+  const [heldBillToast, setHeldBillToast] = useState<string>("");
 
   // Mobile Category Sidebar Drawer
   const [isMobileCategoryDrawerOpen, setIsMobileCategoryDrawerOpen] = useState(false);
@@ -136,7 +147,76 @@ export default function PosBillingPage() {
   // Mobile Active Tab (Catalog vs Cart)
   const [mobileTab, setMobileTab] = useState<"catalog" | "cart">("catalog");
 
+  // Voice Search State
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const toggleVoiceSearch = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {}
+      }
+      setIsListening(false);
+      return;
+    }
+
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Voice search is not supported in this browser. Please use Chrome browser.");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "hi-IN"; // Supports Hindi and Indian English product names
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const spokenText = event.results?.[0]?.[0]?.transcript;
+        if (spokenText) {
+          const clean = spokenText.trim();
+          setSearchQuery(clean);
+
+          // If single exact match is found, add directly
+          const matched = products.find(
+            (p) =>
+              p.name.toLowerCase() === clean.toLowerCase() ||
+              p.barcode?.toLowerCase() === clean.toLowerCase()
+          );
+          if (matched) {
+            addToCart(matched, "piece", 1);
+          }
+        }
+      };
+
+      recognition.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.warn("Could not start speech recognition", err);
+      setIsListening(false);
+    }
+  };
 
   // 1. Restore Cart & POS State from LocalStorage on mount
   useEffect(() => {
@@ -496,6 +576,13 @@ export default function PosBillingPage() {
 
   // Add product to cart with Unit support (Atomic functional state update)
   const addToCart = (product: Product, unitKey: UnitKey = "piece", initialQty: number = 1) => {
+    // Subtle mobile haptic feedback on add
+    if (typeof window !== "undefined" && typeof navigator !== "undefined" && navigator.vibrate) {
+      try {
+        navigator.vibrate(20);
+      } catch {}
+    }
+
     setCart((prevCart) => {
       const existingIndex = prevCart.findIndex(
         (item) => item.product.id === product.id && item.unit === unitKey
@@ -616,23 +703,81 @@ export default function PosBillingPage() {
     }
   };
 
-  // Hold & Resume bill
-  const handleHoldBill = () => {
+  // Hold & Park Current Bill
+  const handleHoldBill = (customLabel?: string) => {
     if (cart.length === 0) return;
+
+    const billSubtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const billTax = (billSubtotal - discountAmount) * (taxRate / 100);
+    const billTotal = Math.max(0, billSubtotal - discountAmount + billTax);
+    const totalItems = cart.reduce((s, i) => s + i.quantity, 0);
+    const label =
+      customLabel ||
+      (selectedCustomer?.name
+        ? `${selectedCustomer.name}`
+        : `Bill #${heldBills.length + 1} (${totalItems} items)`);
+
     const newHeld: HeldBill = {
       id: Date.now().toString(),
+      label,
       customer: selectedCustomer,
       items: cart,
-      timestamp: new Date(),
+      discountAmount,
+      subtotal: billSubtotal,
+      totalAmount: billTotal,
+      timestamp: Date.now(),
     };
-    setHeldBills([...heldBills, newHeld]);
+
+    setHeldBills((prev) => [newHeld, ...prev]);
     clearCart();
+    setHeldBillToast(`⏸️ "${label}" parked (₹${billTotal.toFixed(2)})`);
+    setTimeout(() => setHeldBillToast(""), 4500);
+    if (mobileTab === "cart") {
+      setMobileTab("catalog");
+    }
   };
 
+  // Resume or Switch to a Held Bill (Auto-parks current active cart if it has items!)
   const handleResumeBill = (held: HeldBill) => {
+    // If current cart has items, park it first so user doesn't lose anything
+    if (cart.length > 0) {
+      const currentSubtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      const currentTax = (currentSubtotal - discountAmount) * (taxRate / 100);
+      const currentTotal = Math.max(0, currentSubtotal - discountAmount + currentTax);
+      const currentItems = cart.reduce((s, i) => s + i.quantity, 0);
+      const currentLabel = selectedCustomer?.name
+        ? `${selectedCustomer.name}`
+        : `Parked Bill (${currentItems} items)`;
+
+      const currentHeld: HeldBill = {
+        id: (Date.now() + 1).toString(),
+        label: currentLabel,
+        customer: selectedCustomer,
+        items: cart,
+        discountAmount,
+        subtotal: currentSubtotal,
+        totalAmount: currentTotal,
+        timestamp: Date.now(),
+      };
+
+      setHeldBills((prev) => [currentHeld, ...prev.filter((b) => b.id !== held.id)]);
+    } else {
+      setHeldBills((prev) => prev.filter((b) => b.id !== held.id));
+    }
+
     setCart(held.items);
     setSelectedCustomer(held.customer);
-    setHeldBills(heldBills.filter((b) => b.id !== held.id));
+    setDiscountAmount(held.discountAmount || 0);
+    setIsHeldBillsModalOpen(false);
+
+    setHeldBillToast(`▶️ Resumed: "${held.label}" (₹${(held.totalAmount || 0).toFixed(2)})`);
+    setTimeout(() => setHeldBillToast(""), 4500);
+  };
+
+  // Discard a Held Bill
+  const handleDeleteHeldBill = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setHeldBills((prev) => prev.filter((b) => b.id !== id));
   };
 
   // Calculations
@@ -641,11 +786,22 @@ export default function PosBillingPage() {
   const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount);
 
   // Open checkout modal
-  const handleOpenCheckout = () => {
+  const handleOpenCheckout = (method: "cash" | "upi" | "card" | "split" = "cash") => {
     if (cart.length === 0) return;
-    setCashAmount(totalAmount);
-    setUpiAmount(0);
-    setCardAmount(0);
+    setPaymentMethod(method);
+    if (method === "cash") {
+      setCashAmount(totalAmount);
+      setUpiAmount(0);
+      setCardAmount(0);
+    } else if (method === "upi") {
+      setUpiAmount(totalAmount);
+      setCashAmount(0);
+      setCardAmount(0);
+    } else {
+      setCashAmount(totalAmount);
+      setUpiAmount(0);
+      setCardAmount(0);
+    }
     setIsCheckoutModalOpen(true);
   };
 
@@ -866,23 +1022,17 @@ export default function PosBillingPage() {
             </Button>
           )}
 
-          {/* Held Bills dropdown/button */}
+          {/* Held Bills Badge & Trigger Button (Mobile & Desktop) */}
           {heldBills.length > 0 && (
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-xs text-amber-200 font-semibold">{heldBills.length} Held</span>
-              {heldBills.map((b, idx) => (
-                <Button
-                  key={b.id}
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleResumeBill(b)}
-                  className="bg-amber-500 hover:bg-amber-600 text-white border-none text-xs gap-1"
-                >
-                  <PlayCircle className="w-3.5 h-3.5" />
-                  #{idx + 1}
-                </Button>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsHeldBillsModalOpen(true)}
+              className="px-2.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer ring-2 ring-amber-300/40 animate-pulse shrink-0"
+              title="View all held customer bills"
+            >
+              <PauseCircle className="w-4 h-4 text-amber-900" />
+              <span>{heldBills.length} Held</span>
+            </button>
           )}
 
           <Button
@@ -895,6 +1045,72 @@ export default function PosBillingPage() {
           </Button>
         </div>
       </header>
+
+      {/* Held Bill Toast Alert Banner */}
+      {heldBillToast && (
+        <div className="bg-amber-500 text-amber-950 text-xs font-black px-4 py-2 flex items-center justify-between shadow-md shrink-0 animate-in slide-in-from-top duration-200">
+          <div className="flex items-center gap-2">
+            <PauseCircle className="w-4 h-4 text-amber-950" />
+            <span>{heldBillToast}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHeldBillToast("")}
+            className="text-amber-950/70 hover:text-amber-950 font-bold text-xs"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Multi-Customer Bill Quick Tabs Bar (Shown whenever any bill is held) */}
+      {heldBills.length > 0 && (
+        <div className="bg-slate-900 text-white px-3 py-1.5 flex items-center justify-between gap-2 overflow-x-auto shrink-0 border-b border-slate-800 text-xs no-scrollbar">
+          <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto">
+            {/* Active Current Bill Tab */}
+            <div className="px-3 py-1 bg-brand-600 text-white rounded-lg font-black flex items-center gap-1.5 shadow-xs shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>Active Bill ({cart.reduce((s, i) => s + i.quantity, 0)} items • {formatCurrency(totalAmount)})</span>
+            </div>
+
+            {/* Held Bills Quick Switch Chips */}
+            {heldBills.map((hb, idx) => (
+              <button
+                key={hb.id}
+                type="button"
+                onClick={() => handleResumeBill(hb)}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 hover:border-amber-400 rounded-lg font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer active:scale-95"
+                title={`Switch to "${hb.label}" (${formatCurrency(hb.totalAmount)})`}
+              >
+                <PlayCircle className="w-3.5 h-3.5 text-amber-400" />
+                <span className="max-w-[130px] truncate">#{idx + 1} {hb.label}</span>
+                <span className="text-[10px] text-amber-200 font-mono font-black">{formatCurrency(hb.totalAmount)}</span>
+              </button>
+            ))}
+
+            {/* Park Current & Start Fresh Bill */}
+            {cart.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleHoldBill()}
+                className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg font-bold flex items-center gap-1 shrink-0 transition-all cursor-pointer"
+                title="Park current bill and open a blank bill for the next customer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Hold & Start New</span>
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsHeldBillsModalOpen(true)}
+            className="text-[11px] text-amber-300 hover:text-amber-200 underline font-bold shrink-0 ml-auto"
+          >
+            Manage All ({heldBills.length})
+          </button>
+        </div>
+      )}
 
       {/* Main Split Interface */}
       <div className="flex-1 flex overflow-hidden">
@@ -917,14 +1133,33 @@ export default function PosBillingPage() {
                     <input
                       ref={searchInputRef}
                       type="text"
-                      placeholder="Scan barcode or search product / SKU..."
+                      placeholder={isListening ? "Listening... बोलकर खोजें..." : "Scan barcode or search product / SKU..."}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-10 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600 focus:bg-white transition-all shadow-inner"
+                      className={`w-full pl-9 pr-10 py-2 text-xs sm:text-sm bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 focus:bg-white transition-all shadow-inner ${
+                        isListening
+                          ? "border-rose-500 ring-2 ring-rose-500/30 bg-rose-50/20"
+                          : "border-gray-300 focus:ring-purple-600"
+                      }`}
                       autoFocus
                     />
                     <Barcode className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
                   </div>
+
+                  {/* Voice Search Mic Button */}
+                  <button
+                    type="button"
+                    onClick={toggleVoiceSearch}
+                    className={`p-2 sm:px-2.5 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer ${
+                      isListening
+                        ? "bg-rose-600 hover:bg-rose-700 text-white animate-pulse ring-2 ring-rose-400"
+                        : "bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300"
+                    }`}
+                    title={isListening ? "Listening... Tap to stop" : "Voice Search (बोलकर खोजें)"}
+                  >
+                    {isListening ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4 text-purple-700" />}
+                    <span className="hidden sm:inline">{isListening ? "Listening..." : "Voice"}</span>
+                  </button>
 
                   {/* Quick Add Product Button */}
                   <button
@@ -1049,17 +1284,34 @@ export default function PosBillingPage() {
                     const salesCount = productSalesCount[p.id] || 0;
                     const isTopSeller = salesCount > 0;
 
+                    // In-Cart quantities for this specific product
+                    const cartPieceIndex = cart.findIndex((i) => i.product.id === p.id && i.unit === "piece");
+                    const inCartPieceQty = cartPieceIndex > -1 ? cart[cartPieceIndex].quantity : 0;
+
+                    const cartDozenIndex = cart.findIndex((i) => i.product.id === p.id && i.unit === "dozen");
+                    const inCartDozenQty = cartDozenIndex > -1 ? cart[cartDozenIndex].quantity : 0;
+
+                    const totalInCart = inCartPieceQty + inCartDozenQty;
+
                     return (
                       <div
                         key={p.id}
-                        className={`bg-white rounded-2xl border border-gray-200 p-2.5 sm:p-3 flex flex-col justify-between hover:border-purple-400 hover:shadow-md transition-all relative ${
-                          !inStock ? "opacity-60 bg-gray-50" : ""
-                        }`}
+                        onClick={() => addToCart(p, "piece", 1)}
+                        className={`rounded-2xl border-2 p-2.5 sm:p-3 flex flex-col justify-between transition-all relative select-none cursor-pointer active:scale-[0.97] touch-manipulation group ${
+                          totalInCart > 0
+                            ? "bg-purple-50/50 border-purple-600 shadow-md ring-2 ring-purple-600/10"
+                            : "bg-white border-gray-200 hover:border-purple-400 hover:shadow-md"
+                        } ${!inStock ? "opacity-60 bg-gray-50" : ""}`}
+                        title="Tap anywhere to add 1 piece to bill"
                       >
                         <div className="space-y-1">
                           {/* Top Badge Row */}
                           <div className="flex items-center justify-between gap-1">
-                            {isTopSeller ? (
+                            {totalInCart > 0 ? (
+                              <span className="text-[9px] sm:text-[10px] font-black bg-purple-600 text-white px-2 py-0.5 rounded-md flex items-center gap-1 shadow-xs animate-in zoom-in-75">
+                                <span>⚡ In Bill: {inCartPieceQty ? `${inCartPieceQty} pc` : ""}{inCartPieceQty && inCartDozenQty ? " + " : ""}{inCartDozenQty ? `${inCartDozenQty} d` : ""}</span>
+                              </span>
+                            ) : isTopSeller ? (
                               <span className="text-[9px] sm:text-[10px] font-black bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
                                 <Flame className="w-3 h-3 text-amber-600" /> Top ({salesCount})
                               </span>
@@ -1079,7 +1331,7 @@ export default function PosBillingPage() {
                             </span>
                           </div>
 
-                          <span className="text-xs font-bold text-gray-900 line-clamp-2 leading-tight block">
+                          <span className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-2 leading-tight block">
                             {p.name}
                           </span>
                         </div>
@@ -1100,29 +1352,61 @@ export default function PosBillingPage() {
                             </div>
 
                             {/* Full Dozen Rate info */}
-                            <div className="text-[10px] text-gray-500 font-semibold">
-                              1 Doz (12 pcs): <span className="font-bold text-indigo-900">{formatCurrency(pricing.dozenPrice)}</span>
-                            </div>
+                            {pricing.dozenPrice > 0 && (
+                              <div className="text-[10px] text-gray-500 font-semibold truncate">
+                                1 Doz: <span className="font-bold text-indigo-900">{formatCurrency(pricing.dozenPrice)}</span>
+                              </div>
+                            )}
                           </div>
 
-                          {/* Quick Add Buttons: 1 Pc vs 1 Dozen */}
-                          <div className="flex gap-1.5 pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => addToCart(p, "piece", 1)}
-                              className="flex-1 py-1.5 bg-purple-50 hover:bg-purple-600 hover:text-white text-purple-700 text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-0.5 cursor-pointer active:scale-95"
-                              title={`Add 1 Piece (${formatCurrency(effectivePiecePrice)})`}
-                            >
-                              <Plus className="w-3 h-3" /> 1 Pc
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => addToCart(p, "dozen", 1)}
-                              className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors flex items-center justify-center gap-0.5 cursor-pointer active:scale-95"
-                              title={`Add 1 Dozen (${formatCurrency(pricing.dozenPrice)})`}
-                            >
-                              <Plus className="w-3 h-3" /> 1 Doz
-                            </button>
+                          {/* Quick Add Actions: 1-Tap Piece + Inline Counter or Add Pill */}
+                          <div className="flex items-center gap-1.5 pt-0.5">
+                            {inCartPieceQty > 0 ? (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="flex-1 flex items-center justify-between bg-purple-600 text-white rounded-xl p-1 shadow-xs"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => updateQuantity(cartPieceIndex, -1)}
+                                  className="w-6 h-6 flex items-center justify-center bg-purple-700 hover:bg-purple-800 active:scale-90 rounded-lg text-white font-bold cursor-pointer transition-transform"
+                                  title="Decrease quantity"
+                                >
+                                  <Minus className="w-3.5 h-3.5" />
+                                </button>
+                                <span className="text-xs font-black px-1.5 tabular-nums">
+                                  {inCartPieceQty} pc
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => addToCart(p, "piece", 1)}
+                                  className="w-6 h-6 flex items-center justify-center bg-purple-700 hover:bg-purple-800 active:scale-90 rounded-lg text-white font-bold cursor-pointer transition-transform"
+                                  title="Add one more piece"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex-1 py-1.5 bg-purple-50 group-hover:bg-purple-600 group-hover:text-white text-purple-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition-colors">
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>1-Tap Add</span>
+                              </div>
+                            )}
+
+                            {/* Secondary Dozen Quick Chip if available */}
+                            {pricing.dozenPrice > 0 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToCart(p, "dozen", 1);
+                                }}
+                                className="py-1.5 px-2 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors shrink-0 cursor-pointer active:scale-95 border border-indigo-100"
+                                title={`Add 1 Dozen (${formatCurrency(pricing.dozenPrice)})`}
+                              >
+                                +1 Doz
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1144,24 +1428,49 @@ export default function PosBillingPage() {
 
           {/* Mobile Floating Cart Summary Bar (appears docked at bottom of catalog view when cart has items) */}
           {cart.length > 0 && (
-            <div className="lg:hidden p-3 bg-white border-t border-gray-200 shadow-xl flex items-center justify-between gap-3 shrink-0">
-              <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 font-medium">
+            <div className="lg:hidden p-2.5 bg-white border-t border-gray-200 shadow-xl flex items-center justify-between gap-2 shrink-0">
+              <div className="flex flex-col min-w-0 pr-1">
+                <span className="text-[10px] text-gray-500 font-bold truncate">
                   {cart.reduce((s, i) => s + i.quantity, 0)} items in bill
                 </span>
-                <span className="text-base font-extrabold text-brand-700">
-                  {formatCurrency(subtotal)}
+                <span className="text-base font-black text-purple-900 leading-tight tabular-nums">
+                  {formatCurrency(totalAmount)}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => changeMobileTab("cart")}
-                className="px-4 py-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                <span>View Cart & Pay</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* 1-Tap Fast Cash */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenCheckout("cash")}
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-md cursor-pointer transition-all"
+                  title="Instant Cash Payment & Print"
+                >
+                  <Banknote className="w-3.5 h-3.5" />
+                  <span>Cash</span>
+                </button>
+
+                {/* 1-Tap UPI QR */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenCheckout("upi")}
+                  className="px-3 py-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-md cursor-pointer transition-all"
+                  title="Instant UPI Payment QR"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>UPI</span>
+                </button>
+
+                {/* View Full Cart Drawer */}
+                <button
+                  type="button"
+                  onClick={() => changeMobileTab("cart")}
+                  className="p-2 bg-gray-100 hover:bg-gray-200 active:scale-95 text-gray-700 rounded-xl text-xs font-bold flex items-center shadow-xs cursor-pointer border border-gray-300"
+                  title="View and edit cart items"
+                >
+                  <ShoppingCart className="w-4 h-4 text-gray-700" />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1403,21 +1712,23 @@ export default function PosBillingPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleHoldBill}
+                onClick={() => handleHoldBill()}
                 disabled={cart.length === 0}
-                className="text-xs font-medium gap-1 text-gray-700"
+                className="text-xs font-bold gap-1 text-amber-800 border-amber-300 bg-amber-50 hover:bg-amber-100 cursor-pointer"
+                title="Park current bill and start a fresh bill for the next customer"
               >
-                <PauseCircle className="w-3.5 h-3.5" />
-                Hold Bill
+                <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                <span>Hold Bill {heldBills.length > 0 ? `(${heldBills.length})` : ""}</span>
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={clearCart}
                 disabled={cart.length === 0}
-                className="text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700"
+                className="text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer"
               >
-                Clear Cart
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                <span>Clear Cart</span>
               </Button>
             </div>
 
@@ -1685,6 +1996,126 @@ export default function PosBillingPage() {
           />
         </Modal>
       )}
+
+      {/* Pending / Held Customer Bills Modal */}
+      <Modal
+        isOpen={isHeldBillsModalOpen}
+        onClose={() => setIsHeldBillsModalOpen(false)}
+        title="⏸️ Pending / Held Customer Bills (पेंडिंग बिल्स)"
+        description="Switch between active customer carts or restore parked orders"
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          {heldBills.length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center p-6 space-y-2 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+              <PauseCircle className="w-10 h-10 text-gray-300 stroke-[1.5]" />
+              <h4 className="text-sm font-bold text-gray-700">No Held Bills</h4>
+              <p className="text-xs text-gray-400 max-w-xs">
+                When a customer needs time to pick more items, click &quot;Hold Bill&quot; in the cart to park their order and bill the next person.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+              {heldBills.map((hb, idx) => {
+                const itemCount = hb.items.reduce((s, i) => s + i.quantity, 0);
+                const timeAgo = Math.max(1, Math.round((Date.now() - hb.timestamp) / 60000));
+
+                return (
+                  <div
+                    key={hb.id}
+                    className="p-3.5 bg-white border border-gray-200 hover:border-purple-400 rounded-2xl shadow-xs space-y-2.5 transition-all"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-900 font-black text-xs rounded-lg">
+                          #{idx + 1}
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-purple-600" />
+                            <span>{hb.customer?.name || hb.label}</span>
+                          </h4>
+                          {hb.customer?.phone && (
+                            <p className="text-[10px] text-gray-500 font-mono">
+                              Phone: {hb.customer.phone}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-sm font-black text-purple-900 tabular-nums">
+                          {formatCurrency(hb.totalAmount)}
+                        </span>
+                        <span className="text-[10px] text-gray-400 block font-medium">
+                          {timeAgo}m ago • {itemCount} items
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Items preview */}
+                    <div className="bg-gray-50 p-2 rounded-xl text-[11px] text-gray-700 space-y-0.5">
+                      <div className="font-semibold text-gray-500 text-[10px] uppercase">
+                        Items in bill:
+                      </div>
+                      <div className="line-clamp-2 leading-relaxed">
+                        {hb.items.map((it, i) => (
+                          <span key={i} className="inline-block mr-2">
+                            • {it.product.name} ({it.quantity} {it.unitName})
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteHeldBill(hb.id, e)}
+                        className="px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Delete this parked bill"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Discard Bill</span>
+                      </button>
+
+                      <Button
+                        size="sm"
+                        onClick={() => handleResumeBill(hb)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1 shadow-xs cursor-pointer active:scale-95"
+                      >
+                        <PlayCircle className="w-3.5 h-3.5" />
+                        <span>Resume & Open Bill (बिल खोलें)</span>
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+            <span className="text-xs text-gray-500 font-semibold">
+              Total {heldBills.length} parked {heldBills.length === 1 ? "bill" : "bills"}
+            </span>
+
+            {cart.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  handleHoldBill();
+                  setIsHeldBillsModalOpen(false);
+                }}
+                className="text-xs font-bold gap-1 text-purple-700 border-purple-200 hover:bg-purple-50"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Park Current Bill ({cart.reduce((s, i) => s + i.quantity, 0)} items)</span>
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

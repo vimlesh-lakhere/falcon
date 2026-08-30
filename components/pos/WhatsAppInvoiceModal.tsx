@@ -72,7 +72,7 @@ export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
       const total = Number(sale.total_amount) || 0;
       const upiUrl = buildUpiPaymentUrl(upiId, payee, total, sale.invoice_number);
 
-      QRCode.toDataURL(upiUrl, { margin: 1, width: 140 })
+      QRCode.toDataURL(upiUrl, { margin: 1, width: 240 })
         .then((url) => setQrCodeDataUrl(url))
         .catch((err) => console.warn("Failed generating QR code for invoice image", err));
     }
