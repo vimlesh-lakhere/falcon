@@ -240,6 +240,68 @@ export default function PosBillingPage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [cart.length]);
 
+  // 7. Mobile Tab Switching with History State Management (Prevents app exit on Android/Browser Back)
+  const changeMobileTab = (tab: "catalog" | "cart") => {
+    if (tab === mobileTab) return;
+    if (tab === "cart") {
+      try {
+        window.history.pushState({ posView: "cart" }, "");
+      } catch (e) {
+        console.warn("Could not push history state:", e);
+      }
+    } else {
+      if (window.history.state?.posView === "cart") {
+        window.history.back();
+        return;
+      }
+    }
+    setMobileTab(tab);
+  };
+
+  // 8. Handle Android/Browser Back Button (popstate) to return to Products rather than exiting app
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // If any modal is open, close modal first
+      if (isCheckoutModalOpen) {
+        setIsCheckoutModalOpen(false);
+        return;
+      }
+      if (isCameraScannerOpen) {
+        setIsCameraScannerOpen(false);
+        return;
+      }
+      if (isMobileCategoryDrawerOpen) {
+        setIsMobileCategoryDrawerOpen(false);
+        return;
+      }
+      if (isQuickAddOpen) {
+        setIsQuickAddOpen(false);
+        return;
+      }
+      if (isPrinterModalOpen) {
+        setIsPrinterModalOpen(false);
+        return;
+      }
+      if (isReceiptModalOpen) {
+        setIsReceiptModalOpen(false);
+        return;
+      }
+
+      // If user was on Cart view on mobile, safely return to product catalog matrix
+      setMobileTab("catalog");
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [
+    isCheckoutModalOpen,
+    isCameraScannerOpen,
+    isMobileCategoryDrawerOpen,
+    isQuickAddOpen,
+    isPrinterModalOpen,
+    isReceiptModalOpen,
+  ]);
+
   // Network listener & offline sync count
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -729,9 +791,24 @@ export default function PosBillingPage() {
       {/* POS Top Bar */}
       <header className="h-14 bg-brand-700 text-white px-3 sm:px-4 flex items-center justify-between shadow-md shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Link href="/" className="p-1.5 rounded-lg bg-brand-800 hover:bg-brand-900 transition-colors text-white shrink-0">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
+          {mobileTab === "cart" ? (
+            <button
+              type="button"
+              onClick={() => changeMobileTab("catalog")}
+              className="p-1.5 rounded-lg bg-brand-800 hover:bg-brand-900 transition-colors text-white shrink-0 flex items-center gap-1 cursor-pointer"
+              title="Back to Product Catalog"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          ) : (
+            <Link
+              href="/"
+              className="p-1.5 rounded-lg bg-brand-800 hover:bg-brand-900 transition-colors text-white shrink-0"
+              title="Home"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+          )}
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <span className="font-bold text-sm sm:text-base tracking-wide truncate">POS Terminal</span>
             <Badge variant="neutral" className="hidden sm:inline-flex bg-white/20 text-white border-white/30 text-[10px]">
@@ -766,11 +843,11 @@ export default function PosBillingPage() {
           {/* Mobile Cart View Toggle Button */}
           <button
             type="button"
-            onClick={() => setMobileTab(mobileTab === "catalog" ? "cart" : "catalog")}
+            onClick={() => changeMobileTab(mobileTab === "catalog" ? "cart" : "catalog")}
             className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 bg-brand-800 hover:bg-brand-900 text-white rounded-lg text-xs font-bold shrink-0 relative transition-all active:scale-95 cursor-pointer shadow-inner"
           >
             <ShoppingCart className="w-4 h-4" />
-            <span>{mobileTab === "catalog" ? `Cart (${cart.length})` : "Products"}</span>
+            <span>{mobileTab === "catalog" ? `Cart (${cart.length})` : "← Products"}</span>
             {cart.length > 0 && (
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping absolute -top-0.5 -right-0.5" />
             )}
@@ -1078,7 +1155,7 @@ export default function PosBillingPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setMobileTab("cart")}
+                onClick={() => changeMobileTab("cart")}
                 className="px-4 py-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
               >
                 <ShoppingCart className="w-4 h-4" />
@@ -1118,11 +1195,11 @@ export default function PosBillingPage() {
           <div className="lg:hidden p-2.5 bg-brand-50 border-b border-brand-100 flex items-center justify-between shrink-0">
             <button
               type="button"
-              onClick={() => setMobileTab("catalog")}
-              className="flex items-center gap-1 text-xs font-bold text-brand-700 hover:text-brand-800 cursor-pointer"
+              onClick={() => changeMobileTab("catalog")}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>← Back to Products</span>
+              <span>← Back to Products Catalog</span>
             </button>
             <span className="text-xs font-bold text-gray-700">
               Total: {formatCurrency(subtotal)}
