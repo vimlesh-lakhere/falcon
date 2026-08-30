@@ -1,12 +1,10 @@
 /**
  * Falcon Local Image Studio Engine
- * 100% In-Browser Pure Canvas Background Cleanup, Auto-Cropping & Studio Lighting.
- * Features:
- * - Smart bounding box auto-crop (prevents shrinking loop on repeated clicks)
- * - Corner color & perimeter background isolation
- * - Studio contrast, saturation, and softbox gloss reflections
- * - Centered framing on pure white (#FFFFFF) background with 3D contact shadow
+ * Integrated with Google MediaPipe AI Neural Segmentation & Pure In-Browser Processing.
+ * 100% Offline, Fast & Free.
  */
+
+import { mediaPipeSegmenter } from "./mediapipe-segmenter";
 
 export interface LocalStudioOptions {
   targetSize?: number;
@@ -120,7 +118,7 @@ export const localImageStudio = {
   },
 
   /**
-   * Smart Background Isolator
+   * Smart Background Isolator (Fallback)
    * Removes room walls, tables, and perimeter background while keeping the center product intact.
    */
   isolateProductSubject(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
@@ -142,7 +140,7 @@ export const localImageStudio = {
     const outImgData = outCtx.createImageData(w, h);
     const outData = outImgData.data;
 
-    // 1. Sample Corner & Perimeter Background Colors
+    // Sample Perimeter Background Colors
     const cornerSamples = [
       0, // Top-left
       (w - 1) * 4, // Top-right
@@ -183,28 +181,22 @@ export const localImageStudio = {
           continue;
         }
 
-        // Distance from sample background color
         const diffR = r - avgBgR;
         const diffG = g - avgBgG;
         const diffB = b - avgBgB;
         const colorDist = Math.sqrt(diffR * diffR + diffG * diffG + diffB * diffB);
 
-        // Distance from center
         const dx = x - centerX;
         const dy = y - centerY;
         const radialRatio = Math.sqrt(dx * dx + dy * dy) / maxRadius;
 
-        // Keep center product 100% opaque, fade perimeter background
         let alpha = 255;
         if (radialRatio > 0.40 && colorDist < colorThreshold) {
-          // Perimeter background match
           alpha = 0;
         } else if (radialRatio > 0.32 && colorDist < colorThreshold + feather) {
-          // Smooth edge transition
           const t = (colorDist - colorThreshold) / feather;
           alpha = Math.max(0, Math.min(255, Math.round(t * 255)));
         } else if (radialRatio > 0.88) {
-          // Clean outer border artifacts
           alpha = 0;
         }
 
@@ -277,8 +269,7 @@ export const localImageStudio = {
   },
 
   /**
-   * Master Studio Polish & Clean Pipeline (100% Offline & Universal)
-   * Converts any raw phone snapshot into a polished, crisp product on a clean white background.
+   * Master Studio Polish Pipeline (MediaPipe AI Neural Cutout + Studio Canvas)
    */
   async processStudioPhoto(
     dataUrlOrFile: File | string,
@@ -295,18 +286,27 @@ export const localImageStudio = {
     }
 
     const rawImg = await this.loadImage(src);
-    const baseCanvas = document.createElement("canvas");
-    baseCanvas.width = rawImg.naturalWidth || rawImg.width || 1080;
-    baseCanvas.height = rawImg.naturalHeight || rawImg.height || 1080;
-    const baseCtx = baseCanvas.getContext("2d");
-    if (!baseCtx) return src;
 
-    baseCtx.drawImage(rawImg, 0, 0);
+    // 1. Try Google MediaPipe AI Neural Segmentation first
+    let isolatedCanvas: HTMLCanvasElement | null = null;
+    try {
+      isolatedCanvas = await mediaPipeSegmenter.removeBackground(rawImg);
+    } catch (e) {
+      console.warn("MediaPipe segmentation attempt notice:", e);
+    }
 
-    // 1. Isolate Product Subject from background
-    const isolatedCanvas = this.isolateProductSubject(baseCanvas);
+    // Fallback to Smart Canvas Isolation if MediaPipe is not ready
+    if (!isolatedCanvas) {
+      const baseCanvas = document.createElement("canvas");
+      baseCanvas.width = rawImg.naturalWidth || rawImg.width || 1080;
+      baseCanvas.height = rawImg.naturalHeight || rawImg.height || 1080;
+      const baseCtx = baseCanvas.getContext("2d");
+      if (!baseCtx) return src;
+      baseCtx.drawImage(rawImg, 0, 0);
+      isolatedCanvas = this.isolateProductSubject(baseCanvas);
+    }
 
-    // 2. Crop to bounding box to remove extra surrounding margins
+    // 2. Auto Crop Bounding Box (Centering & No-shrink protection)
     const croppedCanvas = this.cropToBoundingBox(isolatedCanvas);
 
     // 3. Polish Surface, Clean Dust & Add Studio Gloss
