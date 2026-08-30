@@ -414,7 +414,7 @@ export const aiImageEnhancer = {
       return await localImageStudio.processStudioPhoto(dataUrlOrFile, {
         targetSize: options.targetSize || 1080,
         backgroundColor: options.backgroundColor || "#FFFFFF",
-        addGlossShine: options.addGloss !== false,
+        addGloss: options.addGloss !== false,
       });
     } catch (e) {
       console.warn("Studio polish local fallback:", e);

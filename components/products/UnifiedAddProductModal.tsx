@@ -175,10 +175,12 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const [isCatalogDropdownOpen, setIsCatalogDropdownOpen] = useState(false);
+  const [rawFrontPhoto, setRawFrontPhoto] = useState<string>("");
+  const [rawBackPhoto, setRawBackPhoto] = useState<string>("");
 
   const liveCatalogMatches = useMemo(() => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) return [];
-    return searchIndianRetailCatalog(searchQuery.trim(), 8);
+    return searchIndianRetailCatalog(searchQuery.trim(), 10);
   }, [searchQuery]);
 
   const handleSelectCatalogItem = (item: any) => {
@@ -216,57 +218,17 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     setIsCatalogDropdownOpen(false);
   };
 
-  const handleSearchCatalog = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
-
+  const handleOnlineWebSearch = async (term: string) => {
+    if (!term || !term.trim()) return;
     try {
       setIsSearchingCatalog(true);
       setAiSuccessMsg("");
+      setIsCatalogDropdownOpen(false);
 
-      // 1. Check 100% Offline Master Indian Retail Catalog (0.01s instant match)
-      const localMatch = findInIndianRetailCatalog(searchQuery.trim());
-      if (localMatch) {
-        if (localMatch.name) setName(localMatch.name);
-        if (localMatch.brand) setBrand(localMatch.brand);
-        if (localMatch.barcode) setBarcode(localMatch.barcode);
-        if (localMatch.mrp > 0) setSellingPrice(localMatch.mrp);
-        if (localMatch.purchasePrice > 0) setPurchasePrice(localMatch.purchasePrice);
-        if (localMatch.wholesalePrice > 0) setWholesalePrice(localMatch.wholesalePrice);
-        if (localMatch.description) setDescription(localMatch.description);
-
-        if (localMatch.category && categories.length > 0) {
-          const match = categories.find(
-            (c) =>
-              c.name.toLowerCase().includes(localMatch.category.toLowerCase()) ||
-              localMatch.category.toLowerCase().includes(c.name.toLowerCase())
-          );
-          if (match) setCategoryId(match.id);
-        }
-
-        const isLiquid =
-          localMatch.name.toLowerCase().includes("oil") ||
-          localMatch.name.toLowerCase().includes("ml") ||
-          localMatch.name.toLowerCase().includes("shampoo");
-        const generatedVars = generateStandardVariants(
-          localMatch.name,
-          localMatch.mrp,
-          isLiquid ? "liquid" : "weight"
-        );
-        setVariants(generatedVars);
-
-        setAiSuccessMsg(
-          `⚡ Instant Offline Match: "${localMatch.name}" • MRP: ₹${localMatch.mrp} (${generatedVars.length} variants)`
-        );
-        setIsSearchingCatalog(false);
-        return;
-      }
-
-      // 2. Fallback to online catalog search if not in local database
       const res = await fetch("/api/ai/search-product-catalog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: searchQuery.trim() }),
+        body: JSON.stringify({ query: term.trim() }),
       });
 
       const json = await res.json().catch(() => ({}));
@@ -291,13 +253,49 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           if (match) setCategoryId(match.id);
         }
 
-        // Auto-generate realistic pack size variants
-        const isLiquid = d.name.toLowerCase().includes("oil") || d.name.toLowerCase().includes("ml") || d.name.toLowerCase().includes("shampoo");
-        const generatedVars = generateStandardVariants(d.name, d.suggestedSellingPrice, isLiquid ? "liquid" : "weight");
+        const isLiquid =
+          d.name.toLowerCase().includes("oil") ||
+          d.name.toLowerCase().includes("ml") ||
+          d.name.toLowerCase().includes("shampoo");
+        const generatedVars = generateStandardVariants(
+          d.name,
+          d.suggestedSellingPrice,
+          isLiquid ? "liquid" : "weight"
+        );
         setVariants(generatedVars);
 
-        setAiSuccessMsg(`✓ Extracted: "${d.name}" • MRP: ₹${d.suggestedSellingPrice} • ${generatedVars.length} Pack Sizes Generated`);
+        setAiSuccessMsg(
+          `🌐 Online Web Match: "${d.name}" • MRP: ₹${d.suggestedSellingPrice}`
+        );
+      } else {
+        setAiSuccessMsg("⚠️ No exact online product found. Please fill in details above.");
       }
+    } catch (e: any) {
+      console.warn("Online search error:", e);
+      setAiSuccessMsg("⚠️ Online search failed. Please check internet connection.");
+    } finally {
+      setIsSearchingCatalog(false);
+    }
+  };
+
+  const handleSearchCatalog = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    try {
+      setIsSearchingCatalog(true);
+      setAiSuccessMsg("");
+
+      // 1. Check 100% Offline Master Indian Retail Catalog (0.01s instant match)
+      const localMatch = findInIndianRetailCatalog(searchQuery.trim());
+      if (localMatch) {
+        handleSelectCatalogItem(localMatch);
+        setIsSearchingCatalog(false);
+        return;
+      }
+
+      // 2. Search Online Database
+      await handleOnlineWebSearch(searchQuery.trim());
     } catch (err) {
       console.warn("Search catalog error:", err);
     } finally {
@@ -495,15 +493,19 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
   // Instant Studio Polish & Clean Handler (Dust cleaning + Gloss + White BG)
   const handleStudioPolishPhoto = async () => {
-    const currentUrl = activeImageTab === "front" ? imageUrl : backImageUrl;
-    if (!currentUrl) {
+    const rawSource =
+      activeImageTab === "front"
+        ? rawFrontPhoto || imageUrl
+        : rawBackPhoto || backImageUrl;
+
+    if (!rawSource) {
       alert("Please upload or capture a photo first.");
       return;
     }
 
     try {
       setIsPolishing(true);
-      const polished = await aiImageEnhancer.studioPolish(currentUrl, {
+      const polished = await aiImageEnhancer.studioPolish(rawSource, {
         targetSize: 1080,
         backgroundColor: "#FFFFFF",
         addGloss: true,
@@ -525,6 +527,13 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   // Process Image Data URL (From Live Camera Snapshot or File Upload)
   const handleProcessImageDataUrl = async (rawDataUrl: string, target: "front" | "back" = "front") => {
     try {
+      // Store un-padded raw source so studio polish can be re-run cleanly anytime
+      if (target === "front") {
+        setRawFrontPhoto(rawDataUrl);
+      } else {
+        setRawBackPhoto(rawDataUrl);
+      }
+
       // 1. Fast client-side canvas compression (~30ms) - reduces 10MB to ~120KB
       const fastCompressedUrl = await aiImageEnhancer.fastCompress(rawDataUrl, 1080, 0.85);
 
@@ -881,9 +890,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           {/* Master Catalog Instant Suggestions Dropdown */}
           {isCatalogDropdownOpen && searchQuery.trim().length >= 2 && (
             <div className="relative">
-              <div className="absolute top-1 left-0 right-0 z-50 bg-white border border-purple-200 rounded-xl shadow-xl p-2 max-h-64 overflow-y-auto space-y-1">
+              <div className="absolute top-1 left-0 right-0 z-50 bg-white border border-purple-200 rounded-xl shadow-xl p-2 max-h-72 overflow-y-auto space-y-1">
                 <div className="flex items-center justify-between px-2 py-1 text-[11px] font-bold text-gray-500 border-b border-gray-100">
-                  <span>Found in Master Indian Retail Catalog ({liveCatalogMatches.length})</span>
+                  <span>Found in Master Indian Catalog ({liveCatalogMatches.length})</span>
                   <button
                     type="button"
                     onClick={() => setIsCatalogDropdownOpen(false)}
@@ -894,7 +903,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 </div>
                 {liveCatalogMatches.length === 0 ? (
                   <div className="p-3 text-center text-xs text-gray-500">
-                    No matching item in offline catalog. Click &ldquo;Auto-Fill Product&rdquo; for online search.
+                    Not in 150+ offline catalog list. Click button below to search online.
                   </div>
                 ) : (
                   liveCatalogMatches.map((item, idx) => (
@@ -926,6 +935,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     </div>
                   ))
                 )}
+
+                {/* Explicit 1-Click Online Web Database Search */}
+                <div className="pt-2 border-t border-purple-100">
+                  <button
+                    type="button"
+                    onClick={() => handleOnlineWebSearch(searchQuery)}
+                    className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    🌐 Search Entire Web & Online Database for &ldquo;{searchQuery}&rdquo;
+                  </button>
+                </div>
               </div>
             </div>
           )}

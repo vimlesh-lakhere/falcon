@@ -1,101 +1,174 @@
 /**
  * Falcon Local Image Studio Engine
- * 100% Client-Side / Offline E-Commerce Image Polish & Isolation.
- * Zero external API calls, zero cost, instant <100ms execution.
+ * 100% In-Browser Pure Canvas Background Cleanup, Auto-Cropping & Studio Lighting.
+ * Features:
+ * - Smart bounding box auto-crop (prevents shrinking loop on repeated clicks)
+ * - Corner color & perimeter background isolation
+ * - Studio contrast, saturation, and softbox gloss reflections
+ * - Centered framing on pure white (#FFFFFF) background with 3D contact shadow
  */
 
 export interface LocalStudioOptions {
   targetSize?: number;
   backgroundColor?: string;
-  removeBackground?: boolean;
-  addGlossShine?: boolean;
+  addGloss?: boolean;
+  addGroundShadow?: boolean;
   contrastBoost?: number;
   brightnessBoost?: number;
   saturationBoost?: number;
-  sharpness?: number;
 }
 
 export const localImageStudio = {
   /**
-   * Loads an image from Data URL or File into an HTMLImageElement
+   * Helper: Load image from src data URL or blob
    */
   loadImage(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => resolve(img);
-      img.onerror = reject;
+      img.onerror = (e) => reject(new Error("Failed to load image in local studio: " + e));
       img.src = src;
     });
   },
 
   /**
-   * Converts a File to Data URL
+   * Convert File to Data URL
    */
   fileToDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
+      reader.onerror = (e) => reject(e);
       reader.readAsDataURL(file);
     });
   },
 
   /**
-   * Fast Smart Subject Contour & Background Isolation
-   * Analyzes outer boundary pixels (corners and edges) and computes a soft alpha mask
-   * to remove tables, counters, and room walls cleanly in pure canvas.
+   * Detects the bounding box of non-background / non-white pixels
+   * Prevents repeated clicking from shrinking the image!
+   */
+  cropToBoundingBox(canvas: HTMLCanvasElement): HTMLCanvasElement {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return canvas;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    // Sample background from top-left corner
+    const bgR = data[0];
+    const bgG = data[1];
+    const bgB = data[2];
+
+    let minX = w;
+    let minY = h;
+    let maxX = 0;
+    let maxY = 0;
+    let foundAny = false;
+
+    // Tolerance for background pixel
+    const isBgPixel = (r: number, g: number, b: number, a: number) => {
+      if (a < 20) return true;
+      // If near white background (> 245 in all channels)
+      if (r > 245 && g > 245 && b > 245) return true;
+      // If matches top corner color within tolerance
+      const diff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+      return diff < 30;
+    };
+
+    for (let y = 0; y < h; y += 2) {
+      for (let x = 0; x < w; x += 2) {
+        const idx = (y * w + x) * 4;
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        const a = data[idx + 3];
+
+        if (!isBgPixel(r, g, b, a)) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          foundAny = true;
+        }
+      }
+    }
+
+    if (!foundAny || maxX <= minX || maxY <= minY) {
+      return canvas;
+    }
+
+    // Add 4% padding around bounding box
+    const padX = Math.round((maxX - minX) * 0.04);
+    const padY = Math.round((maxY - minY) * 0.04);
+
+    const cropX = Math.max(0, minX - padX);
+    const cropY = Math.max(0, minY - padY);
+    const cropW = Math.min(w - cropX, maxX - minX + padX * 2);
+    const cropH = Math.min(h - cropY, maxY - minY + padY * 2);
+
+    const croppedCanvas = document.createElement("canvas");
+    croppedCanvas.width = cropW;
+    croppedCanvas.height = cropH;
+    const cropCtx = croppedCanvas.getContext("2d");
+    if (!cropCtx) return canvas;
+
+    cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+    return croppedCanvas;
+  },
+
+  /**
+   * Smart Background Isolator
+   * Removes room walls, tables, and perimeter background while keeping the center product intact.
    */
   isolateProductSubject(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
     const w = sourceCanvas.width;
     const h = sourceCanvas.height;
-    const ctx = sourceCanvas.getContext("2d");
-    if (!ctx) return sourceCanvas;
 
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const data = imgData.data;
-
-    // 1. Sample Corner & Perimeter Background Colors (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
-    const samplePoints = [
-      { x: 2, y: 2 },
-      { x: w - 3, y: 2 },
-      { x: 2, y: h - 3 },
-      { x: w - 3, y: h - 3 },
-      { x: Math.floor(w / 2), y: 2 },
-      { x: 2, y: Math.floor(h / 2) },
-      { x: w - 3, y: Math.floor(h / 2) },
-    ];
-
-    let bgR = 0, bgG = 0, bgB = 0, sampleCount = 0;
-    for (const p of samplePoints) {
-      const idx = (p.y * w + p.x) * 4;
-      bgR += data[idx];
-      bgG += data[idx + 1];
-      bgB += data[idx + 2];
-      sampleCount++;
-    }
-    bgR = Math.round(bgR / sampleCount);
-    bgG = Math.round(bgG / sampleCount);
-    bgB = Math.round(bgB / sampleCount);
-
-    // 2. Create Output Transparent Canvas
     const outCanvas = document.createElement("canvas");
     outCanvas.width = w;
     outCanvas.height = h;
     const outCtx = outCanvas.getContext("2d");
     if (!outCtx) return sourceCanvas;
 
+    const srcCtx = sourceCanvas.getContext("2d");
+    if (!srcCtx) return sourceCanvas;
+
+    const srcImgData = srcCtx.getImageData(0, 0, w, h);
+    const data = srcImgData.data;
+
     const outImgData = outCtx.createImageData(w, h);
     const outData = outImgData.data;
 
-    // Center region radius (products are usually placed in center 70% of frame)
+    // 1. Sample Corner & Perimeter Background Colors
+    const cornerSamples = [
+      0, // Top-left
+      (w - 1) * 4, // Top-right
+      ((h - 1) * w) * 4, // Bottom-left
+      ((h - 1) * w + (w - 1)) * 4, // Bottom-right
+      Math.floor(w / 2) * 4, // Top-center
+    ];
+
+    let avgBgR = 0;
+    let avgBgG = 0;
+    let avgBgB = 0;
+    cornerSamples.forEach((idx) => {
+      avgBgR += data[idx];
+      avgBgG += data[idx + 1];
+      avgBgB += data[idx + 2];
+    });
+    avgBgR /= cornerSamples.length;
+    avgBgG /= cornerSamples.length;
+    avgBgB /= cornerSamples.length;
+
     const centerX = w / 2;
     const centerY = h / 2;
     const maxRadius = Math.sqrt(centerX * centerX + centerY * centerY);
 
-    // 3. Smart Euclidean Color Difference + Radial Distance Matting
-    const colorThreshold = 42; // Tolerance for background similarity
-    const feather = 18; // Soft edge feathering
+    const colorThreshold = 48;
+    const feather = 20;
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -110,30 +183,29 @@ export const localImageStudio = {
           continue;
         }
 
-        // Distance from sampled background color
-        const diffR = r - bgR;
-        const diffG = g - bgG;
-        const diffB = b - bgB;
+        // Distance from sample background color
+        const diffR = r - avgBgR;
+        const diffG = g - avgBgG;
+        const diffB = b - avgBgB;
         const colorDist = Math.sqrt(diffR * diffR + diffG * diffG + diffB * diffB);
 
-        // Distance from center (0 at center, 1 at extreme corner)
+        // Distance from center
         const dx = x - centerX;
         const dy = y - centerY;
         const radialRatio = Math.sqrt(dx * dx + dy * dy) / maxRadius;
 
-        // Determine alpha mask
+        // Keep center product 100% opaque, fade perimeter background
         let alpha = 255;
-        if (radialRatio > 0.45 && colorDist < colorThreshold) {
-          // Definitely background
+        if (radialRatio > 0.40 && colorDist < colorThreshold) {
+          // Perimeter background match
           alpha = 0;
-        } else if (radialRatio > 0.35 && colorDist < colorThreshold + feather) {
-          // Feathered transition edge
+        } else if (radialRatio > 0.32 && colorDist < colorThreshold + feather) {
+          // Smooth edge transition
           const t = (colorDist - colorThreshold) / feather;
           alpha = Math.max(0, Math.min(255, Math.round(t * 255)));
-        } else if (radialRatio > 0.85) {
-          // Outer edge vignette cleanup
-          const outerFade = Math.max(0, 1 - (radialRatio - 0.85) / 0.15);
-          alpha = Math.round(255 * outerFade);
+        } else if (radialRatio > 0.88) {
+          // Clean outer border artifacts
+          alpha = 0;
         }
 
         outData[idx] = r;
@@ -148,8 +220,7 @@ export const localImageStudio = {
   },
 
   /**
-   * Surface Polish & Specular Studio Highlights
-   * Cleans blemishes, restores contrast, and adds glossy rim reflections.
+   * Surface Polish, Blemish Cleaning & Studio Highlights
    */
   polishSurface(
     sourceCanvas: HTMLCanvasElement,
@@ -164,11 +235,11 @@ export const localImageStudio = {
     const ctx = outCanvas.getContext("2d");
     if (!ctx) return sourceCanvas;
 
-    const contrast = options.contrastBoost || 1.15;
-    const brightness = options.brightnessBoost || 1.05;
-    const saturation = options.saturationBoost || 1.16;
+    const contrast = options.contrastBoost || 1.14;
+    const brightness = options.brightnessBoost || 1.04;
+    const saturation = options.saturationBoost || 1.15;
 
-    // 1. Draw base with contrast & saturation enhancement
+    // 1. Draw enhanced contrast and saturation
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
@@ -178,41 +249,26 @@ export const localImageStudio = {
     ctx.drawImage(sourceCanvas, 0, 0);
     ctx.restore();
 
-    // 2. High-Frequency Sharpening & Logo Clarity Pass
-    ctx.save();
-    ctx.globalCompositeOperation = "overlay";
-    ctx.globalAlpha = 0.16;
-    ctx.drawImage(sourceCanvas, 0, 0);
-    ctx.restore();
-
-    // 3. Specular Studio Softbox Lighting Reflections (Adds glossy shine on packaging)
-    if (options.addGlossShine !== false) {
+    // 2. Add Soft Glossy Light reflection on shoulders/cap if enabled
+    if (options.addGloss !== false) {
       ctx.save();
-      ctx.globalCompositeOperation = "source-atop"; // Only paints on non-transparent product pixels!
+      ctx.globalCompositeOperation = "source-atop";
 
-      // Left Softbox Rim Light
-      const leftRim = ctx.createLinearGradient(0, 0, w * 0.35, 0);
-      leftRim.addColorStop(0, "rgba(255, 255, 255, 0.42)");
-      leftRim.addColorStop(0.4, "rgba(255, 255, 255, 0.15)");
-      leftRim.addColorStop(1, "rgba(255, 255, 255, 0)");
-      ctx.fillStyle = leftRim;
-      ctx.fillRect(0, 0, w * 0.4, h);
+      // Vertical Softbox Side Streak
+      const sideSoftbox = ctx.createLinearGradient(0, 0, w * 0.35, 0);
+      sideSoftbox.addColorStop(0, "rgba(255, 255, 255, 0.28)");
+      sideSoftbox.addColorStop(0.5, "rgba(255, 255, 255, 0.08)");
+      sideSoftbox.addColorStop(1, "rgba(255, 255, 255, 0)");
+      ctx.fillStyle = sideSoftbox;
+      ctx.fillRect(0, 0, w * 0.35, h);
 
-      // Body Center Gloss Reflection
-      const centerGloss = ctx.createLinearGradient(w * 0.25, 0, w * 0.55, 0);
-      centerGloss.addColorStop(0, "rgba(255, 255, 255, 0)");
-      centerGloss.addColorStop(0.5, "rgba(255, 255, 255, 0.25)");
-      centerGloss.addColorStop(1, "rgba(255, 255, 255, 0)");
-      ctx.fillStyle = centerGloss;
-      ctx.fillRect(w * 0.2, 0, w * 0.4, h);
-
-      // Cap / Top Highlight
-      const capGloss = ctx.createLinearGradient(0, 0, 0, h * 0.22);
-      capGloss.addColorStop(0, "rgba(255, 255, 255, 0.35)");
-      capGloss.addColorStop(0.5, "rgba(255, 255, 255, 0.1)");
+      // Top Cap Rim Light
+      const capGloss = ctx.createLinearGradient(0, 0, 0, h * 0.20);
+      capGloss.addColorStop(0, "rgba(255, 255, 255, 0.30)");
+      capGloss.addColorStop(0.5, "rgba(255, 255, 255, 0.08)");
       capGloss.addColorStop(1, "rgba(255, 255, 255, 0)");
       ctx.fillStyle = capGloss;
-      ctx.fillRect(0, 0, w, h * 0.22);
+      ctx.fillRect(0, 0, w, h * 0.20);
 
       ctx.restore();
     }
@@ -250,8 +306,11 @@ export const localImageStudio = {
     // 1. Isolate Product Subject from background
     const isolatedCanvas = this.isolateProductSubject(baseCanvas);
 
+    // 2. Crop to bounding box to remove extra surrounding margins
+    const croppedCanvas = this.cropToBoundingBox(isolatedCanvas);
+
     // 3. Polish Surface, Clean Dust & Add Studio Gloss
-    const polishedCanvas = this.polishSurface(isolatedCanvas, options);
+    const polishedCanvas = this.polishSurface(croppedCanvas, options);
 
     // 4. Compose on Pure White Master Studio Canvas with Soft Ambient Drop Shadow
     const masterCanvas = document.createElement("canvas");
@@ -264,50 +323,52 @@ export const localImageStudio = {
     masterCtx.fillStyle = backgroundColor;
     masterCtx.fillRect(0, 0, targetSize, targetSize);
 
-    // 4.2 Center Product Aspect Calculation (84% height/width)
+    // 4.2 Scale and Center Product Aspect Ratio (88% of target canvas)
     const aspect = polishedCanvas.width / polishedCanvas.height;
-    let drawW = targetSize * 0.84;
-    let drawH = targetSize * 0.84;
+    let drawW = targetSize * 0.88;
+    let drawH = targetSize * 0.88;
     if (aspect > 1) {
       drawH = drawW / aspect;
     } else {
       drawW = drawH * aspect;
     }
     const drawX = (targetSize - drawW) / 2;
-    const drawY = (targetSize - drawH) / 2 + 8;
+    const drawY = (targetSize - drawH) / 2 + 6;
 
     // 4.3 Ground Soft Contact & Ambient Drop Shadows
-    masterCtx.save();
-    // Ambient Soft Spread Shadow
-    masterCtx.beginPath();
-    masterCtx.ellipse(
-      targetSize / 2,
-      drawY + drawH - 5,
-      drawW * 0.44,
-      14,
-      0,
-      0,
-      2 * Math.PI
-    );
-    masterCtx.fillStyle = "rgba(0, 0, 0, 0.08)";
-    masterCtx.filter = "blur(15px)";
-    masterCtx.fill();
+    if (options.addGroundShadow !== false) {
+      masterCtx.save();
+      // Ambient Soft Spread Shadow
+      masterCtx.beginPath();
+      masterCtx.ellipse(
+        targetSize / 2,
+        drawY + drawH - 4,
+        drawW * 0.44,
+        14,
+        0,
+        0,
+        2 * Math.PI
+      );
+      masterCtx.fillStyle = "rgba(0, 0, 0, 0.08)";
+      masterCtx.filter = "blur(14px)";
+      masterCtx.fill();
 
-    // Sharp Base Contact Shadow
-    masterCtx.beginPath();
-    masterCtx.ellipse(
-      targetSize / 2,
-      drawY + drawH - 2,
-      drawW * 0.32,
-      5,
-      0,
-      0,
-      2 * Math.PI
-    );
-    masterCtx.fillStyle = "rgba(0, 0, 0, 0.16)";
-    masterCtx.filter = "blur(4px)";
-    masterCtx.fill();
-    masterCtx.restore();
+      // Sharp Base Contact Shadow
+      masterCtx.beginPath();
+      masterCtx.ellipse(
+        targetSize / 2,
+        drawY + drawH - 2,
+        drawW * 0.32,
+        5,
+        0,
+        0,
+        2 * Math.PI
+      );
+      masterCtx.fillStyle = "rgba(0, 0, 0, 0.16)";
+      masterCtx.filter = "blur(4px)";
+      masterCtx.fill();
+      masterCtx.restore();
+    }
 
     // 4.4 Render the Polished Product
     masterCtx.save();
