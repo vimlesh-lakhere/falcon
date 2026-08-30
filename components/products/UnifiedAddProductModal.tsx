@@ -330,12 +330,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       setIsAnalyzing(true);
       setAiSuccessMsg("");
 
+      const savedApiKey =
+        typeof window !== "undefined"
+          ? localStorage.getItem("falcon_gemini_api_key") || undefined
+          : undefined;
+
       const res = await fetch("/api/ai/analyze-product", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           frontImage: frontToScan || backToScan,
           backImage: backToScan && backToScan !== frontToScan ? backToScan : undefined,
+          apiKey: savedApiKey,
         }),
       });
 
@@ -366,10 +372,15 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
         setAiSuccessMsg(`✓ Extracted: ${aiData.product_name || "Product"} ${extractedMrp > 0 ? `• MRP: ₹${extractedMrp}` : ""}`);
       } else {
-        setAiSuccessMsg("✓ Photo attached! (Enter details or adjust above)");
+        setAiSuccessMsg(
+          json.error
+            ? `⚠️ ${json.error}`
+            : "✓ Photo attached! (Enter product details above)"
+        );
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("Vision auto-read notice:", err);
+      setAiSuccessMsg("⚠️ AI Scan Notice: Could not read text automatically. Please enter details.");
     } finally {
       setIsAnalyzing(false);
     }

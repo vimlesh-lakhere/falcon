@@ -394,11 +394,12 @@ export const aiImageEnhancer = {
   },
 
   /**
-   * Complete Studio Polish & Clean Engine (0.1s Fast Execution):
-   * 1. Eliminates dust, smudges, and dull indoor lighting
-   * 2. Auto-corrects color vibrancy, contrasts, and white balance
-   * 3. Adds glossy studio softbox reflections along curves & cap
-   * 4. Centers on clean seamless studio backdrop with soft ground drop shadow
+   * Complete Studio Polish & AI Background Removal Engine:
+   * 1. Extracts real product cutout (removes room, wall, table background)
+   * 2. Eliminates dust, smudges, and dull indoor lighting
+   * 3. Auto-corrects color vibrancy, contrasts, and white balance
+   * 4. Adds glossy studio softbox reflections along curves & cap
+   * 5. Centers on pure white (#FFFFFF) backdrop with soft ground drop shadow
    */
   async studioPolish(
     dataUrlOrFile: File | string,
@@ -420,30 +421,46 @@ export const aiImageEnhancer = {
         src = await this.fileToDataUrl(dataUrlOrFile);
       }
 
-      const img = await this.loadImage(src);
+      // 1. Fast AI Background Cutout Isolation (Remove room/table)
+      let transparentSrc = src;
+      try {
+        const bgRes = await fetch("/api/ai/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: src }),
+        });
+        const bgJson = await bgRes.json().catch(() => ({}));
+        if (bgRes.ok && bgJson.transparentImageUrl) {
+          transparentSrc = bgJson.transparentImageUrl;
+        }
+      } catch (bgErr) {
+        console.warn("Background removal notice:", bgErr);
+      }
+
+      const img = await this.loadImage(transparentSrc);
       const canvas = document.createElement("canvas");
       canvas.width = targetSize;
       canvas.height = targetSize;
       const ctx = canvas.getContext("2d");
       if (!ctx) return src;
 
-      // 1. Fill clean studio background
+      // 2. Fill clean studio background
       ctx.fillStyle = backgroundColor;
       ctx.fillRect(0, 0, targetSize, targetSize);
 
-      // 2. Calculate aspect-fitted product position (centered, 84% scale)
+      // 3. Calculate aspect-fitted product position (centered, 82% scale)
       const imgAspect = img.width / img.height;
-      let drawW = targetSize * 0.84;
-      let drawH = targetSize * 0.84;
+      let drawW = targetSize * 0.82;
+      let drawH = targetSize * 0.82;
       if (imgAspect > 1) {
         drawH = drawW / imgAspect;
       } else {
         drawW = drawH * imgAspect;
       }
       const drawX = (targetSize - drawW) / 2;
-      const drawY = (targetSize - drawH) / 2 + 8;
+      const drawY = (targetSize - drawH) / 2 + 10;
 
-      // 3. Ground Soft Ambient Shadow
+      // 4. Ground Soft Ambient Shadow
       ctx.save();
       ctx.beginPath();
       ctx.ellipse(
