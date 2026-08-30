@@ -1657,6 +1657,7 @@ export default function PosBillingPage() {
         onSuccess={handleQuickAddSuccess}
         shopId={SHOP_ID}
         categories={categories}
+        existingProducts={products}
         initialSearchQuery={searchQuery}
       />
 

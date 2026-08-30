@@ -839,6 +839,7 @@ export default function ProductsPage() {
           categories={categories}
           suppliers={suppliers}
           units={units}
+          existingProducts={products}
           onCategoryCreated={(newCat) => setCategories((prev) => [...prev, newCat])}
           onSupplierCreated={(newSupp) => setSuppliers((prev) => [...prev, newSupp])}
         />

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   X,
   Plus,
@@ -27,6 +27,7 @@ interface PosQuickAddModalProps {
   onSuccess: (product: Product, selectedUnit: UnitKey, quantity: number) => void;
   shopId: string;
   categories: Category[];
+  existingProducts?: Product[];
   initialSearchQuery?: string;
 }
 
@@ -36,6 +37,7 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
   onSuccess,
   shopId,
   categories,
+  existingProducts = [],
   initialSearchQuery = "",
 }) => {
   const [name, setName] = useState("");
@@ -53,8 +55,38 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+  const [isNameSuggestionsOpen, setIsNameSuggestionsOpen] = useState(true);
+  const [linkedExistingProduct, setLinkedExistingProduct] = useState<Product | null>(null);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter matching existing products to prevent duplicates & enable 1-click auto-fill
+  const matchingExistingProducts = useMemo(() => {
+    if (!existingProducts || existingProducts.length === 0 || !name.trim() || name.trim().length < 2) {
+      return [];
+    }
+    const q = name.trim().toLowerCase();
+    return existingProducts
+      .filter((p) => {
+        const pName = (p.name || "").toLowerCase();
+        const pBrand = (p.brand || "").toLowerCase();
+        return pName.includes(q) || pBrand.includes(q) || (p.barcode && p.barcode.includes(q));
+      })
+      .slice(0, 5);
+  }, [existingProducts, name]);
+
+  const handleSelectExistingProduct = (p: Product) => {
+    setName(p.name);
+    if (p.barcode) setBarcode(p.barcode);
+    if (p.category_id) setCategoryId(p.category_id);
+    if (p.purchase_price) setPurchasePrice(Number(p.purchase_price));
+    if (p.selling_price) setSellingPrice(Number(p.selling_price));
+    if (p.wholesale_price) setWholesalePrice(Number(p.wholesale_price));
+    if (p.current_stock) setCurrentStock(Number(p.current_stock));
+
+    setLinkedExistingProduct(p);
+    setIsNameSuggestionsOpen(false);
+  };
 
   // Initialize and pre-fill when opened
   useEffect(() => {
@@ -78,6 +110,8 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
       setSelectedUnit("piece");
       setAddQuantity(1);
       setErrorMsg("");
+      setLinkedExistingProduct(null);
+      setIsNameSuggestionsOpen(true);
 
       if (categories.length > 0 && !categoryId) {
         setCategoryId(categories[0].id);
@@ -190,8 +224,35 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
             </div>
           )}
 
+          {/* Linked Existing Product Notice */}
+          {linkedExistingProduct && (
+            <div className="p-3 bg-purple-50 border border-purple-200 rounded-2xl flex items-center justify-between text-xs animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-6 h-6 rounded-md bg-purple-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                  🔗
+                </span>
+                <div className="min-w-0">
+                  <span className="font-bold text-purple-950 truncate block">
+                    Loaded from: {linkedExistingProduct.name}
+                  </span>
+                  <span className="text-[10px] text-purple-700">
+                    Category & pricing loaded. Adjust price/unit and add to bill!
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkedExistingProduct(null)}
+                className="text-purple-400 hover:text-purple-700 text-xs px-1.5"
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Product Name */}
-          <div>
+          <div className="relative">
             <label className="block text-xs font-bold text-gray-700 mb-1">
               Product Name <span className="text-rose-500">*</span>
             </label>
@@ -201,9 +262,75 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
               required
               placeholder="e.g. Maybelline Matte Lipstick Red 01"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setIsNameSuggestionsOpen(true);
+              }}
               className="rounded-xl text-sm font-semibold focus:ring-purple-500"
             />
+
+            {/* Existing Product Duplicate Suggestions Dropdown */}
+            {isNameSuggestionsOpen && matchingExistingProducts.length > 0 && (
+              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-2xl shadow-2xl border-2 border-purple-300 overflow-hidden divide-y divide-gray-100 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="bg-gradient-to-r from-purple-700 to-indigo-700 text-white px-3 py-1.5 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <span>💡 Existing Products Found:</span>
+                    <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                      {matchingExistingProducts.length}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsNameSuggestionsOpen(false)}
+                    className="text-white/80 hover:text-white text-xs px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="max-h-48 overflow-y-auto p-1 space-y-1">
+                  {matchingExistingProducts.map((p) => {
+                    const catName = categories.find((c) => c.id === p.category_id)?.name;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSelectExistingProduct(p)}
+                        className="w-full text-left p-2 rounded-xl hover:bg-purple-50 transition-colors flex items-center justify-between gap-2 group border border-transparent hover:border-purple-200 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {p.image_url ? (
+                            <img
+                              src={p.image_url}
+                              alt={p.name}
+                              className="w-8 h-8 object-contain rounded-lg bg-gray-50 border border-gray-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs shrink-0">
+                              📦
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-gray-900 group-hover:text-purple-900 truncate">
+                              {p.name}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                              {catName && <span>{catName}</span>}
+                              <span>• Stock: {p.current_stock ?? 0}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end shrink-0">
+                          <span className="text-xs font-black text-purple-700">₹{p.selling_price}</span>
+                          <span className="text-[10px] text-indigo-600 font-bold">Auto-fill →</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Category & Barcode Row */}

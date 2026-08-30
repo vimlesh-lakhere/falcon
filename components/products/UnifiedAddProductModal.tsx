@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   X,
   Upload,
@@ -48,6 +48,7 @@ interface UnifiedAddProductModalProps {
   categories: Category[];
   suppliers: Supplier[];
   units: Unit[];
+  existingProducts?: Product[];
   onCategoryCreated?: (newCategory: Category) => void;
   onSupplierCreated?: (newSupplier: Supplier) => void;
 }
@@ -61,6 +62,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   categories,
   suppliers,
   units,
+  existingProducts = [],
   onCategoryCreated,
   onSupplierCreated,
 }) => {
@@ -96,6 +98,73 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [customImageUrlInput, setCustomImageUrlInput] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState("");
+
+  // Existing Product Duplicate Detection & 1-Click Variant Autofill State
+  const [isNameSuggestionsOpen, setIsNameSuggestionsOpen] = useState(true);
+  const [linkedExistingProduct, setLinkedExistingProduct] = useState<Product | null>(null);
+
+  // Filter matching existing products to prevent duplicates & enable 1-click variant auto-fill
+  const matchingExistingProducts = useMemo(() => {
+    if (editingProduct || !existingProducts || existingProducts.length === 0 || !name.trim() || name.trim().length < 2) {
+      return [];
+    }
+    const q = name.trim().toLowerCase();
+    return existingProducts
+      .filter((p) => {
+        const pName = (p.name || "").toLowerCase();
+        const pBrand = (p.brand || "").toLowerCase();
+        return pName.includes(q) || pBrand.includes(q) || (p.barcode && p.barcode.includes(q));
+      })
+      .slice(0, 5);
+  }, [existingProducts, name, editingProduct]);
+
+  // Handler to auto-fill details from an existing product to create a new variant easily
+  const handleSelectExistingProduct = (p: Product) => {
+    setName(p.name);
+    setBrand(p.brand || "");
+    if (p.category_id) setCategoryId(p.category_id);
+    if (p.supplier_id) setSupplierId(p.supplier_id);
+    if (p.unit_id) setUnitId(p.unit_id);
+    if (p.description) {
+      const cleanDesc = stripVariantsFromDescription(p.description);
+      setDescription(cleanDesc || p.description);
+    }
+    if (p.image_url) setImageUrl(p.image_url);
+    if ((p as any).back_image_url) setBackImageUrl((p as any).back_image_url);
+
+    // Extract variants if present, or initialize with base variant
+    const existingVars = extractProductVariants(p);
+    if (existingVars && existingVars.length > 0) {
+      setVariants(existingVars);
+    } else {
+      const baseUnitName = units.find((u) => u.id === p.unit_id)?.name || "Standard";
+      setVariants([
+        {
+          id: `var-base-${Date.now()}`,
+          size: baseUnitName,
+          mrp: Number(p.selling_price) || 0,
+          price: Number(p.selling_price) || 0,
+          purchasePrice: Number(p.purchase_price) || 0,
+          stock: Number(p.current_stock) || 0,
+          barcode: p.barcode || undefined,
+          sku: p.sku || undefined,
+        },
+      ]);
+    }
+
+    setPurchasePrice(Number(p.purchase_price) || 0);
+    setSellingPrice(Number(p.selling_price) || 0);
+    setWholesalePrice(Number(p.wholesale_price) || 0);
+    setMinSellingPrice(Number((p as any).min_selling_price) || 0);
+
+    // Auto-generate a new unique barcode and SKU suggestion for the new variant
+    const randomEan = "890" + Math.floor(1000000000 + Math.random() * 9000000000);
+    setBarcode(randomEan);
+    setSku((p.brand?.slice(0, 3) || "SKU").toUpperCase() + "-" + Date.now().toString().slice(-4));
+
+    setLinkedExistingProduct(p);
+    setIsNameSuggestionsOpen(false);
+  };
 
   // AI Web Search & Official Image Auto-Fetch
   const [searchQuery, setSearchQuery] = useState("");
@@ -208,6 +277,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setImageUrl("");
         setBackImageUrl("");
         setAiSuccessMsg("");
+        setLinkedExistingProduct(null);
+        setIsNameSuggestionsOpen(true);
       }
       setShowAdvanced(false);
       setShowUrlInput(false);
@@ -868,16 +939,126 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
             {/* RIGHT COLUMN: CORE PRODUCT FORM & PROFIT CALCULATOR (8 Cols)          */}
             {/* --------------------------------------------------------------------- */}
             <div className="md:col-span-8 space-y-4">
+              {/* Linked Existing Product Notice Banner */}
+              {linkedExistingProduct && (
+                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-3 flex items-center justify-between shadow-2xs animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+                      🔗
+                    </span>
+                    <div className="text-xs">
+                      <div className="font-bold text-purple-950 flex items-center gap-1.5">
+                        <span>Details Loaded from: {linkedExistingProduct.name}</span>
+                        <span className="text-[10px] bg-purple-200/80 text-purple-800 px-1.5 py-0.2 rounded font-bold">
+                          {categories.find((c) => c.id === linkedExistingProduct.category_id)?.name || "Category"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-purple-700">
+                        Category, brand, and description auto-filled! Add a new size/pack variant, custom price, or barcode below.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLinkedExistingProduct(null)}
+                    className="text-purple-400 hover:text-purple-700 text-xs px-2 py-1"
+                    title="Dismiss"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               {/* Product Identity */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-2 relative">
                   <Input
                     label="Product Name / Title *"
                     required
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setIsNameSuggestionsOpen(true);
+                    }}
                     placeholder="e.g. Parachute 100% Pure Coconut Oil 100ml"
                   />
+
+                  {/* Smart Duplicate Detection & Variant Auto-Fill Dropdown */}
+                  {isNameSuggestionsOpen && matchingExistingProducts.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-2xl border-2 border-purple-300 overflow-hidden divide-y divide-gray-100 animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="bg-gradient-to-r from-purple-700 to-indigo-700 text-white px-3 py-2 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-bold">
+                          <span>💡 Similar Products in Inventory:</span>
+                          <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                            {matchingExistingProducts.length} Found
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsNameSuggestionsOpen(false)}
+                          className="text-white/80 hover:text-white text-xs px-1.5 py-0.5"
+                          title="Close suggestions"
+                        >
+                          ✕ Dismiss
+                        </button>
+                      </div>
+
+                      <div className="max-h-60 overflow-y-auto p-1.5 space-y-1">
+                        {matchingExistingProducts.map((p) => {
+                          const catName = categories.find((c) => c.id === p.category_id)?.name;
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => handleSelectExistingProduct(p)}
+                              className="w-full text-left p-2 rounded-lg hover:bg-purple-50 transition-colors flex items-center justify-between gap-3 group border border-transparent hover:border-purple-200 cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {p.image_url ? (
+                                  <img
+                                    src={p.image_url}
+                                    alt={p.name}
+                                    className="w-9 h-9 object-contain rounded-lg bg-gray-50 border border-gray-200 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                    📦
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-gray-900 group-hover:text-purple-900 truncate">
+                                    {p.name}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-gray-500 mt-0.5">
+                                    {p.brand && (
+                                      <span className="font-semibold text-gray-700">
+                                        Brand: {p.brand}
+                                      </span>
+                                    )}
+                                    {catName && (
+                                      <span className="bg-gray-100 px-1.5 py-0.2 rounded text-gray-600 font-medium">
+                                        {catName}
+                                      </span>
+                                    )}
+                                    <span>• Stock: {p.current_stock ?? 0}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col items-end shrink-0">
+                                <span className="text-xs font-black text-purple-700">
+                                  ₹{p.selling_price}
+                                </span>
+                                <span className="text-[10px] text-indigo-600 font-bold group-hover:underline flex items-center gap-0.5">
+                                  ⚡ Auto-fill & Add Variant →
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
