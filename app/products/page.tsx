@@ -231,6 +231,33 @@ export default function ProductsPage() {
     }
   };
 
+  // 1-Tap Rapid Stock Stepper (+1 / -1 with optimistic instant response)
+  const handleQuickStepStock = async (p: Product, delta: number) => {
+    const cur = Number(p.current_stock) || 0;
+    const next = Math.max(0, cur + delta);
+    if (next === cur) return;
+
+    // Optimistic UI update
+    setProducts((prev) =>
+      prev.map((item) => (item.id === p.id ? { ...item, current_stock: next } : item))
+    );
+
+    try {
+      await productsRepository.updateStock(
+        p.id,
+        next,
+        delta > 0 ? `Quick +${delta} stock` : `Quick ${delta} stock`,
+        activeShopId
+      );
+    } catch (err: any) {
+      // Revert on error
+      setProducts((prev) =>
+        prev.map((item) => (item.id === p.id ? { ...item, current_stock: cur } : item))
+      );
+      alert("Failed to update stock: " + err.message);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to deactivate this product?")) return;
     try {
@@ -496,227 +523,401 @@ export default function ProductsPage() {
         </div>
 
         {/* ========================================================================= */}
-        {/* 📦 PRODUCTS TABLE WITH DIRECT QUICK STOCK ADJUST & MARGINS                */}
+        {/* 📦 PRODUCTS LIST: DESKTOP TABLE & MOBILE TOUCH CARDS                     */}
         {/* ========================================================================= */}
-        <Card className="rounded-2xl shadow-xs overflow-hidden border-gray-200">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50/90 text-xs font-bold text-gray-600 uppercase border-b border-gray-200">
-                  <tr>
-                    <th className="px-5 py-3.5">Product Name & Brand</th>
-                    <th className="px-5 py-3.5">Category</th>
-                    <th className="px-5 py-3.5">SKU / Barcode</th>
-                    <th className="px-5 py-3.5 text-right">Cost Price</th>
-                    <th className="px-5 py-3.5 text-right">Retail Price</th>
-                    <th className="px-5 py-3.5 text-right">Margin / Unit</th>
-                    <th className="px-5 py-3.5 text-center">Live Stock</th>
-                    <th className="px-5 py-3.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
-                        <div className="flex flex-col items-center gap-2">
-                          <RefreshCw className="w-6 h-6 animate-spin text-purple-600" />
-                          <span>Loading product catalog...</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : filteredProducts.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
-                        <div className="max-w-md mx-auto space-y-3">
-                          <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
-                            <Package className="w-6 h-6" />
-                          </div>
-                          <h4 className="text-sm font-bold text-gray-800">No products found</h4>
-                          <p className="text-xs text-gray-500">
-                            {search
-                              ? `No items match "${search}"`
-                              : "No items found for the selected category or stock filter."}
-                          </p>
-                          <Button size="sm" onClick={openAddModal} className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs">
-                            <Plus className="w-4 h-4 mr-1" /> Add New Product
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredProducts.map((p) => {
-                      const stock = Number(p.current_stock) || 0;
-                      const minStock = Number(p.minimum_stock) || 0;
-                      const isOutOfStock = stock <= 0;
-                      const isLowStock = stock > 0 && stock <= minStock;
-                      const cost = Number(p.purchase_price || 0);
-                      const sell = Number(p.selling_price || 0);
-                      const profit = sell - cost;
-                      const marginPercent = sell > 0 ? Math.round((profit / sell) * 100) : 0;
-                      const visual = resolveCategoryVisual(p.category_id || "", p.category?.name || "General");
+        {loading ? (
+          <div className="bg-white rounded-2xl p-12 text-center text-gray-400 border border-gray-200 shadow-xs flex flex-col items-center gap-2">
+            <RefreshCw className="w-6 h-6 animate-spin text-purple-600" />
+            <span className="text-sm font-semibold">Loading product catalog...</span>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 text-center text-gray-500 border border-gray-200 shadow-xs">
+            <div className="max-w-md mx-auto space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
+                <Package className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-bold text-gray-800">No products found</h4>
+              <p className="text-xs text-gray-500">
+                {search
+                  ? `No items match "${search}"`
+                  : "No items found for the selected category or stock filter."}
+              </p>
+              <Button size="sm" onClick={openAddModal} className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs">
+                <Plus className="w-4 h-4 mr-1" /> Add New Product
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ------------------------------------------------------------- */}
+            {/* 📱 MOBILE TOUCH PRODUCT CARDS (Optimized for Phone Screens)  */}
+            {/* ------------------------------------------------------------- */}
+            <div className="md:hidden space-y-3 pb-16">
+              {filteredProducts.map((p) => {
+                const stock = Number(p.current_stock) || 0;
+                const minStock = Number(p.minimum_stock) || 0;
+                const isOutOfStock = stock <= 0;
+                const isLowStock = stock > 0 && stock <= minStock;
+                const cost = Number(p.purchase_price || 0);
+                const sell = Number(p.selling_price || 0);
+                const profit = sell - cost;
+                const marginPercent = sell > 0 ? Math.round((profit / sell) * 100) : 0;
+                const visual = resolveCategoryVisual(p.category_id || "", p.category?.name || "General");
 
-                      return (
-                        <tr key={p.id} className="hover:bg-purple-50/30 transition-colors group">
-                          {/* 1. Name & Brand & Image Thumbnail */}
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => openEditModal(p)}
-                                className="w-11 h-11 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden shrink-0 hover:ring-2 hover:ring-purple-500 transition-all cursor-pointer relative group/img shadow-2xs"
-                                title="Click to view or change product photo"
-                              >
-                                {p.image_url ? (
-                                  <img
-                                    src={p.image_url.split("|||")[0]}
-                                    alt={p.name}
-                                    className="w-full h-full object-contain p-0.5"
-                                  />
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center text-gray-400 group-hover/img:text-purple-600 transition-colors">
-                                    <Camera className="w-4 h-4" />
-                                    <span className="text-[8px] font-black uppercase mt-0.5">+Photo</span>
+                return (
+                  <div
+                    key={p.id}
+                    className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs space-y-3 hover:border-purple-300 transition-all"
+                  >
+                    {/* Top Row: Photo + Title + Brand + Category */}
+                    <div className="flex items-start gap-3">
+                      {/* Product Thumbnail with 1-Tap Camera */}
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(p)}
+                        className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center overflow-hidden shrink-0 relative active:scale-95 transition-transform"
+                      >
+                        {p.image_url ? (
+                          <img
+                            src={p.image_url.split("|||")[0]}
+                            alt={p.name}
+                            className="w-full h-full object-contain p-1"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-purple-600">
+                            <Camera className="w-5 h-5" />
+                            <span className="text-[8px] font-black uppercase mt-0.5">+Photo</span>
+                          </div>
+                        )}
+                        <div className="absolute bottom-0 right-0 p-1 bg-black/60 text-white rounded-tl-lg">
+                          <Camera className="w-2.5 h-2.5" />
+                        </div>
+                      </button>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-1">
+                          <h4
+                            onClick={() => openEditModal(p)}
+                            className="font-bold text-gray-900 text-sm truncate leading-snug cursor-pointer hover:text-purple-600"
+                          >
+                            {p.name}
+                          </h4>
+                        </div>
+                        {p.brand && <div className="text-xs text-gray-500 font-medium">{p.brand}</div>}
+
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-[10px] font-semibold text-gray-700">
+                            {visual.type === "emoji" ? (
+                              <span>{visual.value}</span>
+                            ) : (
+                              <visual.icon className="w-2.5 h-2.5 text-purple-600" />
+                            )}
+                            <span>{p.category?.name || "General"}</span>
+                          </span>
+                          {p.barcode && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                              <Barcode className="w-2.5 h-2.5" />
+                              {p.barcode}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Middle Row: Price & Profit Margins */}
+                    <div className="flex items-center justify-between bg-gray-50/80 p-2 rounded-xl border border-gray-100">
+                      <div>
+                        <span className="text-[10px] text-gray-400 font-semibold uppercase block">Selling Price</span>
+                        <span className="text-base font-black text-purple-950">{formatCurrency(sell)}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-gray-400 font-semibold uppercase block">Cost: {formatCurrency(cost)}</span>
+                        <span
+                          className={`inline-flex items-center text-[10px] font-black px-1.5 py-0.5 rounded ${
+                            marginPercent >= 25
+                              ? "bg-emerald-100 text-emerald-800"
+                              : marginPercent > 10
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-gray-200 text-gray-800"
+                          }`}
+                        >
+                          {marginPercent}% (+{formatCurrency(profit)})
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Bottom Row: 1-Tap Stock Stepper + Quick Actions */}
+                    <div className="flex items-center justify-between pt-1">
+                      {/* 1-Tap Stock Stepper */}
+                      <div className="flex items-center bg-gray-100 rounded-xl p-0.5 border border-gray-200">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStepStock(p, -1)}
+                          disabled={stock <= 0}
+                          className="w-8 h-8 rounded-lg bg-white active:bg-gray-200 flex items-center justify-center text-gray-700 font-black shadow-2xs disabled:opacity-30 cursor-pointer"
+                          title="Decrease Stock (-1)"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => openQuickStockAdjust(p)}
+                          className={`px-2.5 py-1 text-xs font-bold transition-colors cursor-pointer ${
+                            isOutOfStock
+                              ? "text-rose-700"
+                              : isLowStock
+                              ? "text-amber-800"
+                              : "text-emerald-800"
+                          }`}
+                          title="Click for exact stock count"
+                        >
+                          {stock} in stock
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStepStock(p, 1)}
+                          className="w-8 h-8 rounded-lg bg-purple-600 active:bg-purple-700 flex items-center justify-center text-white font-black shadow-2xs cursor-pointer"
+                          title="Increase Stock (+1)"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Actions Strip */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(p)}
+                          className="p-2 rounded-xl bg-purple-50 text-purple-700 active:bg-purple-100 transition-colors"
+                          title="Edit Product"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrintProduct(p)}
+                          className="p-2 rounded-xl bg-indigo-50 text-indigo-700 active:bg-indigo-100 transition-colors"
+                          title="Print Barcode"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(p.id)}
+                          className="p-2 rounded-xl bg-rose-50 text-rose-600 active:bg-rose-100 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ------------------------------------------------------------- */}
+            {/* 💻 DESKTOP TABLE VIEW (For larger screens)                    */}
+            {/* ------------------------------------------------------------- */}
+            <div className="hidden md:block">
+              <Card className="rounded-2xl shadow-xs overflow-hidden border-gray-200">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-gray-50/90 text-xs font-bold text-gray-600 uppercase border-b border-gray-200">
+                        <tr>
+                          <th className="px-5 py-3.5">Product Name & Brand</th>
+                          <th className="px-5 py-3.5">Category</th>
+                          <th className="px-5 py-3.5">SKU / Barcode</th>
+                          <th className="px-5 py-3.5 text-right">Cost Price</th>
+                          <th className="px-5 py-3.5 text-right">Retail Price</th>
+                          <th className="px-5 py-3.5 text-right">Margin / Unit</th>
+                          <th className="px-5 py-3.5 text-center">Live Stock</th>
+                          <th className="px-5 py-3.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {filteredProducts.map((p) => {
+                          const stock = Number(p.current_stock) || 0;
+                          const minStock = Number(p.minimum_stock) || 0;
+                          const isOutOfStock = stock <= 0;
+                          const isLowStock = stock > 0 && stock <= minStock;
+                          const cost = Number(p.purchase_price || 0);
+                          const sell = Number(p.selling_price || 0);
+                          const profit = sell - cost;
+                          const marginPercent = sell > 0 ? Math.round((profit / sell) * 100) : 0;
+                          const visual = resolveCategoryVisual(p.category_id || "", p.category?.name || "General");
+
+                          return (
+                            <tr key={p.id} className="hover:bg-purple-50/30 transition-colors group">
+                              <td className="px-5 py-3.5">
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(p)}
+                                    className="w-11 h-11 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center overflow-hidden shrink-0 hover:ring-2 hover:ring-purple-500 transition-all cursor-pointer relative group/img shadow-2xs"
+                                    title="Click to view or change product photo"
+                                  >
+                                    {p.image_url ? (
+                                      <img
+                                        src={p.image_url.split("|||")[0]}
+                                        alt={p.name}
+                                        className="w-full h-full object-contain p-0.5"
+                                      />
+                                    ) : (
+                                      <div className="flex flex-col items-center justify-center text-gray-400 group-hover/img:text-purple-600 transition-colors">
+                                        <Camera className="w-4 h-4" />
+                                        <span className="text-[8px] font-black uppercase mt-0.5">+Photo</span>
+                                      </div>
+                                    )}
+                                  </button>
+                                  <div className="min-w-0">
+                                    <div className="font-black text-gray-900 text-xs sm:text-sm truncate max-w-xs">{p.name}</div>
+                                    {p.brand && <div className="text-[11px] text-gray-500 font-medium">{p.brand}</div>}
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="px-5 py-3.5 text-xs text-gray-700">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-gray-100 font-medium">
+                                  {visual.type === "emoji" ? (
+                                    <span>{visual.value}</span>
+                                  ) : (
+                                    <visual.icon className="w-3 h-3 text-purple-600" />
+                                  )}
+                                  <span>{p.category?.name || "General"}</span>
+                                </span>
+                              </td>
+
+                              <td className="px-5 py-3.5 font-mono text-xs text-gray-600">
+                                <div>{p.sku || "—"}</div>
+                                {p.barcode && (
+                                  <div className="text-[10px] text-indigo-700 font-bold flex items-center gap-1">
+                                    <Barcode className="w-3 h-3" /> {p.barcode}
                                   </div>
                                 )}
-                              </button>
-                              <div className="min-w-0">
-                                <div className="font-black text-gray-900 text-xs sm:text-sm truncate max-w-xs">{p.name}</div>
-                                {p.brand && <div className="text-[11px] text-gray-500 font-medium">{p.brand}</div>}
-                              </div>
-                            </div>
-                          </td>
+                              </td>
 
-                          {/* 2. Category */}
-                          <td className="px-5 py-3.5 text-xs text-gray-700">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-gray-100 font-medium">
-                              {visual.type === "emoji" ? (
-                                <span>{visual.value}</span>
-                              ) : (
-                                <visual.icon className="w-3 h-3 text-purple-600" />
-                              )}
-                              <span>{p.category?.name || "General"}</span>
-                            </span>
-                          </td>
+                              <td className="px-5 py-3.5 text-xs text-gray-500 text-right tabular-nums">
+                                {formatCurrency(cost)}
+                              </td>
 
-                          {/* 3. SKU / Barcode */}
-                          <td className="px-5 py-3.5 font-mono text-xs text-gray-600">
-                            <div>{p.sku || "—"}</div>
-                            {p.barcode && (
-                              <div className="text-[10px] text-indigo-700 font-bold flex items-center gap-1">
-                                <Barcode className="w-3 h-3" /> {p.barcode}
-                              </div>
-                            )}
-                          </td>
+                              <td className="px-5 py-3.5 text-xs sm:text-sm font-black text-purple-900 text-right tabular-nums">
+                                {formatCurrency(sell)}
+                              </td>
 
-                          {/* 4. Cost Price */}
-                          <td className="px-5 py-3.5 text-xs text-gray-500 text-right tabular-nums">
-                            {formatCurrency(cost)}
-                          </td>
+                              <td className="px-5 py-3.5 text-right">
+                                <span
+                                  className={`inline-flex items-center text-[11px] font-black px-2 py-0.5 rounded-md tabular-nums ${
+                                    marginPercent >= 25
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      : marginPercent > 10
+                                      ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                      : "bg-gray-100 text-gray-700"
+                                  }`}
+                                >
+                                  {marginPercent}% (+{formatCurrency(profit)})
+                                </span>
+                              </td>
 
-                          {/* 5. Retail Price */}
-                          <td className="px-5 py-3.5 text-xs sm:text-sm font-black text-purple-900 text-right tabular-nums">
-                            {formatCurrency(sell)}
-                          </td>
+                              <td className="px-5 py-3.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => openQuickStockAdjust(p)}
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer group-hover:ring-2 group-hover:ring-purple-400 ${
+                                    isOutOfStock
+                                      ? "bg-rose-100 text-rose-800 border border-rose-200"
+                                      : isLowStock
+                                      ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                      : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                  }`}
+                                  title="Click to quickly adjust stock count"
+                                >
+                                  <span>{stock} in stock</span>
+                                  <span className="text-[10px] text-purple-700 bg-white/80 px-1 py-0.2 rounded font-black">
+                                    ✏️ +/-
+                                  </span>
+                                </button>
+                              </td>
 
-                          {/* 6. Margin / Unit */}
-                          <td className="px-5 py-3.5 text-right">
-                            <span
-                              className={`inline-flex items-center text-[11px] font-black px-2 py-0.5 rounded-md tabular-nums ${
-                                marginPercent >= 25
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : marginPercent > 10
-                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                  : "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {marginPercent}% (+{formatCurrency(profit)})
-                            </span>
-                          </td>
-
-                          {/* 7. Live Stock with Direct Quick-Adjust Click */}
-                          <td className="px-5 py-3.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => openQuickStockAdjust(p)}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer group-hover:ring-2 group-hover:ring-purple-400 ${
-                                isOutOfStock
-                                  ? "bg-rose-100 text-rose-800 border border-rose-200"
-                                  : isLowStock
-                                  ? "bg-amber-100 text-amber-900 border border-amber-300"
-                                  : "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                              }`}
-                              title="Click to quickly adjust stock count"
-                            >
-                              <span>{stock} in stock</span>
-                              <span className="text-[10px] text-purple-700 bg-white/80 px-1 py-0.2 rounded font-black">
-                                ✏️ +/-
-                              </span>
-                            </button>
-                          </td>
-
-                          {/* 8. Actions */}
-                          <td className="px-5 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              {/* Quick Photo Upload / Edit Button */}
-                              <button
-                                type="button"
-                                onClick={() => openEditModal(p)}
-                                className="p-1.5 rounded-lg text-purple-700 hover:bg-purple-50 transition-colors"
-                                title="Add / Change Photo"
-                              >
-                                <Camera className="w-4 h-4" />
-                              </button>
-
-                              {/* Quick Stock Adjust Button */}
-                              <button
-                                type="button"
-                                onClick={() => openQuickStockAdjust(p)}
-                                className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors"
-                                title="Quick Stock Adjust (+/-)"
-                              >
-                                <Boxes className="w-4 h-4" />
-                              </button>
-
-                              {/* Print Barcode Label */}
-                              <button
-                                type="button"
-                                onClick={() => setPrintProduct(p)}
-                                className="p-1.5 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                                title="Print Barcode Label Sticker"
-                              >
-                                <Printer className="w-4 h-4" />
-                              </button>
-
-                              {/* Edit Product */}
-                              <button
-                                type="button"
-                                onClick={() => openEditModal(p)}
-                                className="p-1.5 rounded-lg text-gray-500 hover:text-purple-700 hover:bg-purple-50 transition-colors"
-                                title="Edit Product Details & Prices"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-
-                              {/* Deactivate */}
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(p.id)}
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                title="Deactivate Product"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                              <td className="px-5 py-3.5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(p)}
+                                    className="p-1.5 rounded-lg text-purple-700 hover:bg-purple-50 transition-colors"
+                                    title="Add / Change Photo"
+                                  >
+                                    <Camera className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openQuickStockAdjust(p)}
+                                    className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors"
+                                    title="Quick Stock Adjust (+/-)"
+                                  >
+                                    <Boxes className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPrintProduct(p)}
+                                    className="p-1.5 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                    title="Print Barcode Label Sticker"
+                                  >
+                                    <Printer className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(p)}
+                                    className="p-1.5 rounded-lg text-gray-500 hover:text-purple-700 hover:bg-purple-50 transition-colors"
+                                    title="Edit Product Details & Prices"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(p.id)}
+                                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                    title="Deactivate Product"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
+
+            {/* 📱 MOBILE STICKY FLOATING ACTION BAR */}
+            <div className="md:hidden fixed bottom-4 left-4 right-4 z-40 flex items-center gap-2 p-1.5 bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-2xl border border-white/10">
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="flex-1 py-3 px-4 rounded-xl bg-purple-600 active:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Add Product</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFalconAiModalOpen(true)}
+                className="py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 active:from-amber-600 active:to-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg"
+              >
+                <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
+                <span>AI Add</span>
+              </button>
+            </div>
+          </>
+        )}
 
         {/* ========================================================================= */}
         {/* ⚡ QUICK STOCK ADJUSTMENT MODAL                                           */}

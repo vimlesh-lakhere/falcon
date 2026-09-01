@@ -776,24 +776,24 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[96vh] sm:max-h-[92vh] flex flex-col overflow-hidden">
         {/* ========================================================================= */}
         {/* MODAL HEADER                                                              */}
         {/* ========================================================================= */}
-        <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center shadow-md">
-              <Sparkles className="w-5 h-5 text-white" />
+        <div className="px-4 py-3 sm:px-6 sm:py-4 bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center shadow-md shrink-0">
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-base font-black text-white tracking-tight flex items-center gap-2">
+              <h2 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
                 {editingProduct ? "Edit Product Details" : "Add New Product"}
-                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                   Fast Catalog
                 </span>
               </h2>
-              <p className="text-xs text-purple-200/80">
+              <p className="text-[11px] sm:text-xs text-purple-200/80 line-clamp-1">
                 Real photo preview, automated barcode generation & live profit margin analytics
               </p>
             </div>
@@ -810,99 +810,61 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         {/* ========================================================================= */}
         {/* TOP CREATION MODE TABS                                                    */}
         {/* ========================================================================= */}
-        <div className="bg-gray-50 border-b border-gray-200 px-6 py-2 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-1.5 bg-gray-200/70 p-1 rounded-xl">
+        <div className="bg-gray-50 border-b border-gray-200 px-3 sm:px-6 py-2 flex items-center justify-between overflow-x-auto no-scrollbar shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 bg-gray-200/70 p-1 rounded-xl shrink-0">
             <button
               type="button"
               onClick={() => setActiveMode("photo")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 activeMode === "photo"
                   ? "bg-white text-purple-950 shadow-xs"
                   : "text-gray-600 hover:text-gray-900"
               }`}
             >
               <Camera className="w-3.5 h-3.5 text-purple-600" />
-              Photo & AI Scan
+              <span>Photo & AI</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveMode("barcode")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 activeMode === "barcode"
                   ? "bg-white text-purple-950 shadow-xs"
                   : "text-gray-600 hover:text-gray-900"
               }`}
             >
               <Barcode className="w-3.5 h-3.5 text-indigo-600" />
-              Barcode Scanner
+              <span>Barcode</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveMode("manual")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 activeMode === "manual"
                   ? "bg-white text-purple-950 shadow-xs"
                   : "text-gray-600 hover:text-gray-900"
               }`}
             >
               <FileText className="w-3.5 h-3.5 text-gray-500" />
-              Manual Quick Entry
+              <span>Manual</span>
             </button>
           </div>
 
           {aiSuccessMsg && (
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg ml-2">
               <Check className="w-3.5 h-3.5 text-emerald-600" />
               {aiSuccessMsg}
             </div>
           )}
         </div>
 
-        {/* ========================================================================= */}
-        {/* ⚡ INSTANT AI AUTO-FETCH BY PRODUCT NAME (e.g. Vicco Turmeric Cream 50g)  */}
-        {/* ========================================================================= */}
-        <div className="bg-gradient-to-r from-purple-50 via-indigo-50/50 to-slate-50 border-b border-purple-100 px-6 py-2.5 space-y-2">
-          <form onSubmit={handleSearchCatalog} className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <input
-                type="text"
-                placeholder="Type item or brand (e.g. Maggi, Dettol, Fortune, Parachute, Colgate, Surf Excel)..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setIsCatalogDropdownOpen(true);
-                }}
-                onFocus={() => setIsCatalogDropdownOpen(true)}
-                className="w-full text-xs bg-white border border-purple-200 rounded-xl pl-8 pr-3 py-1.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs font-medium"
-              />
-              <Sparkles className="w-3.5 h-3.5 text-purple-600 absolute left-2.5 top-2" />
-            </div>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isSearchingCatalog || !searchQuery.trim()}
-              className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shrink-0 h-8 px-3.5 shadow-xs"
-            >
-              {isSearchingCatalog ? (
-                <>
-                  <RefreshCw className="w-3 h-3 animate-spin mr-1" />
-                  Searching...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3 h-3 text-amber-300 mr-1" />
-                  Auto-Fill Product
-                </>
-              )}
-            </Button>
-          </form>
-
-          {/* Quick FMCG Brand Chips */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5 text-[11px]">
-            <span className="text-gray-500 font-bold shrink-0 flex items-center gap-1">
-              📚 Master Catalog:
+        {/* ⚡ INSTANT MASTER CATALOG SUGGESTIONS BAR (150+ Top Indian FMCG Items) */}
+        <div className="bg-purple-50/70 border-b border-purple-100 px-3 sm:px-6 py-2 shrink-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 text-xs">
+            <span className="font-bold text-purple-900 shrink-0 text-[11px]">
+              ⚡ Fast Fill:
             </span>
-            {["Maggi", "Parachute", "Dettol", "Fortune", "Tata Salt", "Colgate", "Surf Excel", "Amul", "Vicco"].map((brandTag) => (
+            {["Maggi", "Surf Excel", "Tata Salt", "Dettol", "Amul Butter", "Colgate"].map((brandTag) => (
               <button
                 key={brandTag}
                 type="button"
@@ -910,83 +872,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   setSearchQuery(brandTag);
                   setIsCatalogDropdownOpen(true);
                 }}
-                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 border border-purple-200 text-purple-900 font-semibold shrink-0 transition-colors shadow-2xs cursor-pointer"
+                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 border border-purple-200 text-purple-900 font-semibold shrink-0 transition-colors shadow-2xs cursor-pointer text-[11px]"
               >
                 {brandTag}
               </button>
             ))}
           </div>
 
-          {/* Master Catalog Instant Suggestions Dropdown */}
-          {isCatalogDropdownOpen && searchQuery.trim().length >= 2 && (
-            <div className="relative">
-              <div className="absolute top-1 left-0 right-0 z-50 bg-white border border-purple-200 rounded-xl shadow-xl p-2 max-h-72 overflow-y-auto space-y-1">
-                <div className="flex items-center justify-between px-2 py-1 text-[11px] font-bold text-gray-500 border-b border-gray-100">
-                  <span>Found in Master Indian Catalog ({liveCatalogMatches.length})</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsCatalogDropdownOpen(false)}
-                    className="text-gray-400 hover:text-gray-700 cursor-pointer"
-                  >
-                    ✕ Close
-                  </button>
-                </div>
-                {liveCatalogMatches.length === 0 ? (
-                  <div className="p-3 text-center text-xs text-gray-500">
-                    Not in 150+ offline catalog list. Click button below to search online.
-                  </div>
-                ) : (
-                  liveCatalogMatches.map((item, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => handleSelectCatalogItem(item)}
-                      className="p-2 rounded-lg hover:bg-purple-50 cursor-pointer border border-transparent hover:border-purple-200 transition-all flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="text-xs font-bold text-gray-900">{item.name}</div>
-                        <div className="text-[10px] text-gray-500 flex items-center gap-2">
-                          <span className="font-semibold text-purple-700">{item.brand}</span>
-                          <span>•</span>
-                          <span>{item.category}</span>
-                          {item.barcode && (
-                            <>
-                              <span>•</span>
-                              <span className="font-mono text-gray-400">{item.barcode}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-xs font-black text-emerald-700">MRP ₹{item.mrp}</div>
-                        <span className="text-[10px] bg-purple-600 text-white font-bold px-2 py-0.5 rounded shadow-2xs">
-                          Use This
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-
-                {/* Explicit 1-Click Online Web Database Search */}
-                <div className="pt-2 border-t border-purple-100">
-                  <button
-                    type="button"
-                    onClick={() => handleOnlineWebSearch(searchQuery)}
-                    className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
-                  >
-                    <Globe className="w-3.5 h-3.5" />
-                    🌐 Search Entire Web & Online Database for &ldquo;{searchQuery}&rdquo;
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* ========================================================================= */}
         {/* MODAL MAIN CONTENT (2-COLUMN GRID)                                        */}
         {/* ========================================================================= */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-5 bg-white">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        <div className="p-3 sm:p-6 overflow-y-auto flex-1 space-y-4 sm:space-y-5 bg-white">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6">
             {/* --------------------------------------------------------------------- */}
             {/* LEFT COLUMN: DUAL FRONT & BACK PRODUCT IMAGE HUB (4 Cols)             */}
             {/* --------------------------------------------------------------------- */}
@@ -1033,7 +930,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
               </div>
 
               {/* Active Image Container */}
-              <div className="relative aspect-square w-full rounded-2xl bg-gradient-to-b from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden group shadow-2xs">
+              <div className="relative aspect-[4/3] sm:aspect-square w-full rounded-2xl bg-gradient-to-b from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden group shadow-2xs">
                 {activeImageTab === "front" ? (
                   imageUrl ? (
                     <img
@@ -2045,6 +1942,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         onCapture={(photoDataUrl) => handleProcessImageDataUrl(photoDataUrl, activeImageTab)}
         targetAngle={activeImageTab}
       />
+      </div>
     </div>
   );
 };
