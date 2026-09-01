@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Search,
   Barcode,
@@ -30,6 +30,7 @@ import {
   MicOff,
   Zap,
   Package,
+  Calculator,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -47,6 +48,7 @@ import { PosCustomerSelector } from "@/components/pos/PosCustomerSelector";
 import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 import { CameraBarcodeScanner, ScanFeedback } from "@/components/pos/CameraBarcodeScanner";
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
+import { PosFastCalculatorModal } from "@/components/pos/PosFastCalculatorModal";
 import { PosCategoryRightRail } from "@/components/pos/PosCategoryRightRail";
 import { PosCategorySidebar } from "@/components/pos/PosCategorySidebar";
 import { PrinterSettingsTab } from "@/components/settings/PrinterSettingsTab";
@@ -144,6 +146,9 @@ export default function PosBillingPage() {
   // Success Receipt modal
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+
+  // Fast Calculator Billing Modal State
+  const [isFastCalculatorOpen, setIsFastCalculatorOpen] = useState(false);
 
   // Mobile Active Tab (Catalog vs Cart)
   const [mobileTab, setMobileTab] = useState<"catalog" | "cart">("catalog");
@@ -553,12 +558,131 @@ export default function PosBillingPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [products, isCheckoutModalOpen, isReceiptModalOpen]);
 
-  // Barcode / Search auto-matching
+  // Inline Search Math Calculation Detector (e.g. "1*30", "2*20", "50+40+10", "3x45")
+  const searchMathEvaluation = useMemo(() => {
+    const raw = searchQuery.trim();
+    if (!raw || raw.length < 2) return null;
+    const hasMathChars = /^[0-9\s*+xX.₹-]+$/.test(raw) && /[0-9]/.test(raw);
+    if (!hasMathChars) return null;
+
+    try {
+      const normalized = raw
+        .replace(/×/g, "*")
+        .replace(/[xX]/g, "*")
+        .replace(/₹/g, "");
+
+      const chunks = normalized.split(/\+/);
+      const items: { qty: number; price: number; total: number; label: string }[] = [];
+      let grandTotal = 0;
+
+      chunks.forEach((chunk) => {
+        const trimmed = chunk.trim();
+        if (!trimmed) return;
+
+        if (trimmed.includes("*")) {
+          const parts = trimmed.split("*").map((p) => p.trim());
+          if (parts.length >= 2) {
+            const first = parseFloat(parts[0]);
+            const second = parseFloat(parts[1]);
+            if (!isNaN(first) && !isNaN(second) && first > 0 && second > 0) {
+              const qty = Math.min(first, 9999);
+              const price = second;
+              const total = qty * price;
+              grandTotal += total;
+              items.push({ qty, price, total, label: `${qty} × ₹${price}` });
+              return;
+            }
+          }
+        }
+
+        const singleVal = parseFloat(trimmed);
+        if (!isNaN(singleVal) && singleVal > 0) {
+          grandTotal += singleVal;
+          items.push({ qty: 1, price: singleVal, total: singleVal, label: `₹${singleVal}` });
+        }
+      });
+
+      if (items.length > 0 && grandTotal > 0) {
+        return {
+          items,
+          grandTotal,
+          breakdownText: items.map((i) => i.label).join(" + "),
+        };
+      }
+    } catch {}
+    return null;
+  }, [searchQuery]);
+
+  // Handler for adding fast calculator items into cart
+  const handleAddCalculatorItemsToCart = async (
+    items: { name: string; quantity: number; unitPrice: number }[]
+  ) => {
+    if (typeof window !== "undefined" && typeof navigator !== "undefined" && navigator.vibrate) {
+      try {
+        navigator.vibrate(25);
+      } catch {}
+    }
+
+    const quickBaseProduct = await productsRepository.getOrCreateQuickSaleProduct(SHOP_ID);
+
+    setCart((prevCart) => {
+      const updated = [...prevCart];
+      items.forEach((it, idx) => {
+        const customProd: Product = {
+          ...quickBaseProduct,
+          id: `${quickBaseProduct.id}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+          name: it.name,
+          selling_price: it.unitPrice,
+          purchase_price: 0,
+        };
+
+        updated.push({
+          product: customProd,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          originalPrice: it.unitPrice,
+          isPriceOverridden: true,
+          unit: "piece",
+          unitName: "Item",
+          unitMultiplier: 1,
+        });
+      });
+      return updated;
+    });
+
+    if (mobileTab === "catalog") {
+      setMobileTab("cart");
+    }
+  };
+
+  // Direct Quick Checkout from Fast Calculator
+  const handleDirectQuickCalculatorCheckout = async (
+    total: number,
+    items: { name: string; quantity: number; unitPrice: number }[]
+  ) => {
+    await handleAddCalculatorItemsToCart(items);
+    handleOpenCheckout("cash");
+  };
+
+  // Barcode / Search / Math auto-matching
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    // Check exact barcode or SKU match first
+    // 1. If user typed a math expression (e.g. 1*30, 2*20, 50+30), add directly to cart!
+    if (searchMathEvaluation && searchMathEvaluation.items.length > 0) {
+      handleAddCalculatorItemsToCart(
+        searchMathEvaluation.items.map((it: { label: string; qty: number; price: number }) => ({
+          name: `Quick Item (${it.label})`,
+          quantity: it.qty,
+          unitPrice: it.price,
+        }))
+      );
+      setSearchQuery("");
+      return;
+    }
+
+    // 2. Check exact barcode or SKU match first
     const matched = products.find(
       (p) =>
         p.barcode?.toLowerCase() === searchQuery.trim().toLowerCase() ||
@@ -1002,6 +1126,17 @@ export default function PosBillingPage() {
             <span className="hidden sm:inline">Printer</span>
           </button>
 
+          {/* Fast Calculator Header Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setIsFastCalculatorOpen(true)}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 transition-all text-white flex items-center gap-1 text-xs font-black shrink-0 cursor-pointer shadow-xs active:scale-95 border border-amber-400/40"
+            title="Fast Calculator Billing (1*30, 2*20)"
+          >
+            <Calculator className="w-4 h-4 text-amber-100" />
+            <span className="hidden sm:inline">Calc</span>
+          </button>
+
           {/* Mobile Cart View Toggle Button */}
           <button
             type="button"
@@ -1167,6 +1302,17 @@ export default function PosBillingPage() {
                     <span className="hidden sm:inline">{isListening ? "Listening..." : "Voice"}</span>
                   </button>
 
+                  {/* Fast Calculator Billing Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsFastCalculatorOpen(true)}
+                    className="px-2.5 sm:px-3 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
+                    title="Fast Calculator Billing (e.g. 1*30, 2*20 loose items without product name)"
+                  >
+                    <Calculator className="w-4 h-4 text-amber-100" />
+                    <span>Calc</span>
+                  </button>
+
                   {/* Quick Add Product Button */}
                   <button
                     type="button"
@@ -1189,6 +1335,57 @@ export default function PosBillingPage() {
                     <span className="hidden sm:inline">Camera</span>
                   </button>
                 </form>
+
+                {/* Real-time Math Expression Preview Card (when typing e.g. 1*30 + 2*20) */}
+                {searchMathEvaluation && (
+                  <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gradient-to-r from-amber-50 via-orange-50 to-purple-50 border border-amber-300 rounded-2xl shadow-xs animate-in slide-in-from-top-2 duration-150">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 rounded-xl bg-amber-500 text-white font-black shrink-0">
+                        <Calculator className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-black text-amber-950 uppercase tracking-wider">
+                          ⚡ Fast Counter Calculator
+                        </div>
+                        <div className="text-xs font-mono font-bold text-gray-900 truncate">
+                          {searchMathEvaluation.breakdownText} ={" "}
+                          <span className="text-emerald-700 font-black text-sm">
+                            {formatCurrency(searchMathEvaluation.grandTotal)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleAddCalculatorItemsToCart(
+                            searchMathEvaluation.items.map((it: { label: string; qty: number; price: number }) => ({
+                              name: `Quick Item (${it.label})`,
+                              quantity: it.qty,
+                              unitPrice: it.price,
+                            }))
+                          );
+                          setSearchQuery("");
+                        }}
+                        className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black shadow-sm active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add {formatCurrency(searchMathEvaluation.grandTotal)}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsFastCalculatorOpen(true)}
+                        className="p-1.5 rounded-xl bg-white hover:bg-gray-100 border border-gray-300 text-purple-700 shadow-2xs cursor-pointer"
+                        title="Open Keypad Calculator"
+                      >
+                        <Calculator className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Controls Bar: Mobile Categories Trigger + Sort Pills */}
                 <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5 no-scrollbar">
@@ -1769,7 +1966,18 @@ export default function PosBillingPage() {
             </div>
 
             {/* Bill Actions */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-3 gap-1.5 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsFastCalculatorOpen(true)}
+                className="text-xs font-bold gap-1 text-amber-900 border-amber-300 bg-amber-50 hover:bg-amber-100 cursor-pointer"
+                title="Add loose calculation items (1*30, 2*20)"
+              >
+                <Calculator className="w-3.5 h-3.5 text-amber-700" />
+                <span>+ Calc Item</span>
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -1779,7 +1987,7 @@ export default function PosBillingPage() {
                 title="Park current bill and start a fresh bill for the next customer"
               >
                 <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
-                <span>Hold Bill {heldBills.length > 0 ? `(${heldBills.length})` : ""}</span>
+                <span>Hold {heldBills.length > 0 ? `(${heldBills.length})` : ""}</span>
               </Button>
               <Button
                 variant="ghost"
@@ -1789,7 +1997,7 @@ export default function PosBillingPage() {
                 className="text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5 mr-1" />
-                <span>Clear Cart</span>
+                <span>Clear</span>
               </Button>
             </div>
 
@@ -2177,6 +2385,14 @@ export default function PosBillingPage() {
           </div>
         </div>
       </Modal>
+
+      {/* 🧮 Fast Express Calculator Billing Modal (1*30, 2*20 loose counter items) */}
+      <PosFastCalculatorModal
+        isOpen={isFastCalculatorOpen}
+        onClose={() => setIsFastCalculatorOpen(false)}
+        onAddItemsToCart={handleAddCalculatorItemsToCart}
+        onDirectQuickCheckout={handleDirectQuickCalculatorCheckout}
+      />
     </div>
   );
 }

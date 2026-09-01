@@ -143,5 +143,61 @@ export const productsRepository = {
       .order("name");
     if (error) throw error;
     return (data as Unit[]) || [];
+  },
+
+  async getOrCreateQuickSaleProduct(shopId: string): Promise<Product> {
+    try {
+      const { data: existing } = await supabase
+        .from("products")
+        .select("*, category:categories(*), supplier:suppliers(*)")
+        .eq("shop_id", shopId)
+        .eq("sku", "QUICK-CALC-SALE")
+        .maybeSingle();
+
+      if (existing) return existing as Product;
+
+      const { data: created } = await supabase
+        .from("products")
+        .insert([
+          {
+            shop_id: shopId,
+            name: "Quick Counter Sale",
+            sku: "QUICK-CALC-SALE",
+            selling_price: 1,
+            purchase_price: 0,
+            current_stock: 99999,
+            minimum_stock: 0,
+            is_active: true,
+          },
+        ])
+        .select("*, category:categories(*), supplier:suppliers(*)")
+        .single();
+
+      if (created) return created as Product;
+    } catch (e) {
+      console.warn("Using offline fallback quick product:", e);
+    }
+
+    return {
+      id: "quick-calc-sale-virtual",
+      shop_id: shopId,
+      name: "Quick Item",
+      sku: "QUICK-CALC-SALE",
+      barcode: null,
+      brand: null,
+      category_id: null,
+      supplier_id: null,
+      unit_id: null,
+      purchase_price: 0,
+      selling_price: 1,
+      wholesale_price: null,
+      minimum_selling_price: null,
+      current_stock: 99999,
+      minimum_stock: 0,
+      image_url: null,
+      description: "Quick calculator sale item",
+      is_active: true,
+      created_at: new Date().toISOString(),
+    };
   }
 };
