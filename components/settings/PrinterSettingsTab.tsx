@@ -18,10 +18,12 @@ import {
   Type,
   Sparkles,
   Building2,
+  Package,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
 import {
   PrinterConfig,
   DEFAULT_PRINTER_CONFIG,
@@ -48,6 +50,7 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
   const [config, setConfig] = useState<PrinterConfig>(DEFAULT_PRINTER_CONFIG);
   const [isSaved, setIsSaved] = useState(false);
   const [isPairing, setIsPairing] = useState(false);
+  const [isParcelModalOpen, setIsParcelModalOpen] = useState(false);
   const [pairedDevice, setPairedDevice] = useState<string>("");
   const [btState, setBtState] = useState<"connected" | "paired" | "disconnected" | "unsupported">("disconnected");
   const [testPrintStatus, setTestPrintStatus] = useState<string>("");
@@ -241,7 +244,16 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+          <Button
+            type="button"
+            onClick={() => setIsParcelModalOpen(true)}
+            className="flex-1 sm:flex-none bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-xs gap-1.5 shadow-md active:scale-95 cursor-pointer"
+            title="Generate & Print 80mm Parcel Shipping Sticker"
+          >
+            <Package className="w-3.5 h-3.5 text-amber-100" />
+            <span>📦 Parcel Label</span>
+          </Button>
           <Button
             type="button"
             onClick={handleTestPrint}
@@ -809,6 +821,16 @@ export const PrinterSettingsTab: React.FC<PrinterSettingsTabProps> = ({ shopId }
           {isSaved ? "✓ All Settings Saved Permanently!" : "Save Printer Configuration"}
         </Button>
       </div>
+
+      {/* 📦 80mm Parcel & Shipping Label Generator Modal */}
+      <ShippingParcelLabelModal
+        isOpen={isParcelModalOpen}
+        onClose={() => setIsParcelModalOpen(false)}
+        shopId={shopId}
+        initialCustomerName=""
+        initialCustomerPhone=""
+        initialDestination=""
+      />
     </form>
   );
 };

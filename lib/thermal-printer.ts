@@ -805,3 +805,379 @@ export async function buildTestPrintPayload(config: PrinterConfig): Promise<Uint
   }
   return buildEscPosReceipt(sampleSale, sampleCustomer, config);
 }
+
+// ---------------------------------------------------------------------------
+// 📦 80mm / 58mm Parcel / Shipping Dispatch Label Generator
+// ---------------------------------------------------------------------------
+
+export interface ParcelLabelData {
+  customerName: string;
+  customerPhone: string;
+  destination: string; // e.g. "Banda Bus Stand / Rewa"
+  address?: string;
+  boxIndex: number;
+  totalBoxes: number;
+  invoiceNo?: string;
+  orderValue?: number;
+  notes?: string;
+  senderName?: string;
+  senderPhone?: string;
+  senderAddress?: string;
+}
+
+/**
+ * Builds high-definition raster graphics for an 80mm/58mm thermal parcel label.
+ * Features giant bold typography for customer name & phone so drivers/conductors can read easily.
+ */
+export async function buildShippingParcelLabelGraphics(
+  data: ParcelLabelData,
+  config: PrinterConfig
+): Promise<Uint8Array> {
+  if (typeof document === "undefined") {
+    return buildShippingParcelLabelEscPos(data, config);
+  }
+
+  const is80mm = config.paperWidth === "80mm";
+  const canvasWidth = is80mm ? 576 : 384;
+  const paddingX = is80mm ? 16 : 8;
+  const contentWidth = canvasWidth - paddingX * 2;
+
+  // Generate QR Code for fast dialing customer phone or tracking invoice
+  let qrImage: HTMLImageElement | null = null;
+  if (data.customerPhone) {
+    try {
+      const cleanPhone = data.customerPhone.replace(/[^0-9]/g, "").slice(-10);
+      const telUrl = `tel:${cleanPhone}`;
+      const qrDataUrl = await QRCode.toDataURL(telUrl, {
+        width: is80mm ? 140 : 110,
+        margin: 0,
+        errorCorrectionLevel: "M",
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+      qrImage = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = qrDataUrl;
+      });
+    } catch (e) {
+      console.warn("Could not generate parcel QR code:", e);
+    }
+  }
+
+  // Pre-calculate canvas height dynamically
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+
+  let currentY = 16;
+  const lineSpacing = is80mm ? 6 : 4;
+
+  // Measure fonts & height
+  const titleFont = is80mm ? "900 28px sans-serif" : "900 20px sans-serif";
+  const giantCustFont = is80mm ? "900 36px sans-serif" : "900 26px sans-serif";
+  const giantPhoneFont = is80mm ? "900 38px monospace" : "900 28px monospace";
+  const destFont = is80mm ? "bold 26px sans-serif" : "bold 20px sans-serif";
+  const labelFont = is80mm ? "bold 18px sans-serif" : "bold 14px sans-serif";
+  const bodyFont = is80mm ? "normal 20px sans-serif" : "normal 16px sans-serif";
+  const smallFont = is80mm ? "bold 16px sans-serif" : "bold 13px sans-serif";
+
+  // Estimated dynamic height
+  const estimatedHeight = is80mm ? 860 : 720;
+  canvas.width = canvasWidth;
+  canvas.height = estimatedHeight;
+
+  // Background white
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#000000";
+
+  // 1. TOP HEADER BANNER (Inverted Black Background)
+  const headerHeight = is80mm ? 44 : 36;
+  ctx.fillRect(paddingX, currentY, contentWidth, headerHeight);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = titleFont;
+  ctx.textAlign = "center";
+  ctx.fillText("★ PARCEL / DISPATCH SLIP ★", canvasWidth / 2, currentY + headerHeight - 12);
+  currentY += headerHeight + 12;
+
+  // 2. BOX COUNT BADGE (e.g. BOX 1 OF 2)
+  ctx.fillStyle = "#000000";
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(paddingX, currentY, contentWidth, is80mm ? 42 : 36);
+
+  ctx.font = is80mm ? "900 24px sans-serif" : "900 18px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(
+    `📦 PARCEL: BOX ${data.boxIndex} OF ${data.totalBoxes}`,
+    canvasWidth / 2,
+    currentY + (is80mm ? 29 : 25)
+  );
+  currentY += (is80mm ? 42 : 36) + 16;
+
+  // 3. TO / SHIP TO SECTION (GIANT BOLD CUSTOMER NAME & PHONE)
+  ctx.textAlign = "left";
+  ctx.font = labelFont;
+  ctx.fillText("SHIP TO / पाने वाले का विवरण:", paddingX, currentY);
+  currentY += is80mm ? 26 : 20;
+
+  // Giant Customer Name
+  ctx.font = giantCustFont;
+  const custName = data.customerName || "Customer";
+  // Word wrap customer name if too long
+  const nameWords = custName.split(" ");
+  let currentNameLine = "";
+  for (const word of nameWords) {
+    const testLine = currentNameLine ? `${currentNameLine} ${word}` : word;
+    if (ctx.measureText(testLine).width > contentWidth) {
+      if (currentNameLine) {
+        ctx.fillText(currentNameLine, paddingX, currentY);
+        currentY += is80mm ? 40 : 30;
+      }
+      currentNameLine = word;
+    } else {
+      currentNameLine = testLine;
+    }
+  }
+  if (currentNameLine) {
+    ctx.fillText(currentNameLine, paddingX, currentY);
+    currentY += is80mm ? 44 : 32;
+  }
+
+  // Giant Phone Number with Inverted Highlight Box
+  const rawPhone = data.customerPhone.replace(/[^0-9]/g, "").slice(-10);
+  const formattedPhone = rawPhone.length === 10
+    ? `📱 ${rawPhone.slice(0, 5)} ${rawPhone.slice(5)}`
+    : `📱 ${data.customerPhone || "NO PHONE"}`;
+
+  const phoneBoxHeight = is80mm ? 56 : 46;
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(paddingX, currentY, contentWidth, phoneBoxHeight);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = giantPhoneFont;
+  ctx.textAlign = "center";
+  ctx.fillText(formattedPhone, canvasWidth / 2, currentY + (is80mm ? 39 : 32));
+  currentY += phoneBoxHeight + 16;
+
+  // 4. DESTINATION / BUS STAND / LOCATION
+  ctx.fillStyle = "#000000";
+  ctx.textAlign = "left";
+  if (data.destination) {
+    ctx.font = labelFont;
+    ctx.fillText("📍 DESTINATION / बस स्टैंड / शहर:", paddingX, currentY);
+    currentY += is80mm ? 26 : 20;
+
+    ctx.font = destFont;
+    ctx.fillText(data.destination.toUpperCase(), paddingX, currentY);
+    currentY += is80mm ? 32 : 24;
+  }
+
+  // Address (if present)
+  if (data.address) {
+    ctx.font = bodyFont;
+    ctx.fillText(`Address: ${data.address}`, paddingX, currentY);
+    currentY += is80mm ? 28 : 22;
+  }
+
+  // Optional Notes / Transport / Bus Number
+  if (data.notes) {
+    ctx.font = bodyFont;
+    ctx.fillText(`Notes / Transport: ${data.notes}`, paddingX, currentY);
+    currentY += is80mm ? 28 : 22;
+  }
+
+  // Invoice / Date Reference Bar
+  currentY += 6;
+  ctx.fillStyle = "#f3f4f6";
+  ctx.fillRect(paddingX, currentY, contentWidth, is80mm ? 32 : 26);
+  ctx.fillStyle = "#000000";
+  ctx.font = smallFont;
+  const invText = data.invoiceNo ? `Inv: #${data.invoiceNo}` : "";
+  const dateText = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const valText = data.orderValue ? ` | Value: ₹${data.orderValue}` : "";
+  ctx.fillText(`${invText ? `${invText} | ` : ""}Date: ${dateText}${valText}`, paddingX + 8, currentY + (is80mm ? 21 : 18));
+  currentY += (is80mm ? 32 : 26) + 16;
+
+  // 5. SENDER / FROM SECTION (PRESHAK)
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(paddingX, currentY);
+  ctx.lineTo(paddingX + contentWidth, currentY);
+  ctx.stroke();
+  currentY += 16;
+
+  const sName = data.senderName || config.shopName || "AGS STORE & COSMETICS";
+  const sPhone = data.senderPhone || config.shopPhone || "+91 9340362381";
+  const sAddr = data.senderAddress || config.shopAddress || "";
+
+  ctx.font = labelFont;
+  ctx.fillText("FROM / भेजने वाले की दुकान:", paddingX, currentY);
+  currentY += is80mm ? 24 : 18;
+
+  ctx.font = is80mm ? "bold 22px sans-serif" : "bold 17px sans-serif";
+  ctx.fillText(sName, paddingX, currentY);
+  currentY += is80mm ? 26 : 20;
+
+  ctx.font = is80mm ? "bold 20px monospace" : "bold 16px monospace";
+  ctx.fillText(`📞 Contact: ${sPhone}`, paddingX, currentY);
+  currentY += is80mm ? 24 : 18;
+
+  if (sAddr) {
+    ctx.font = smallFont;
+    ctx.fillText(sAddr, paddingX, currentY);
+    currentY += is80mm ? 22 : 16;
+  }
+
+  // Draw QR code on bottom right if generated
+  if (qrImage) {
+    const qrSize = is80mm ? 100 : 80;
+    ctx.drawImage(qrImage, paddingX + contentWidth - qrSize, currentY - (is80mm ? 90 : 70), qrSize, qrSize);
+  }
+
+  // 6. FOOTER WARNING
+  currentY += 12;
+  ctx.fillStyle = "#000000";
+  ctx.font = smallFont;
+  ctx.textAlign = "center";
+  ctx.fillText("⚠️ HANDLE WITH CARE (कांच/सामान सम्भाल कर रखें)", canvasWidth / 2, currentY);
+  currentY += is80mm ? 20 : 16;
+  ctx.fillText("डिलीवरी न होने पर प्रेषक को तुरंत कॉल करें", canvasWidth / 2, currentY);
+  currentY += 24;
+
+  // Trim canvas to final actual height
+  const finalCanvas = document.createElement("canvas");
+  finalCanvas.width = canvasWidth;
+  finalCanvas.height = currentY;
+  const finalCtx = finalCanvas.getContext("2d")!;
+  finalCtx.drawImage(canvas, 0, 0);
+
+  // Convert canvas to ESC/POS Raster bitmap command (GS v 0)
+  const imgData = finalCtx.getImageData(0, 0, finalCanvas.width, finalCanvas.height);
+  const widthBytes = Math.ceil(finalCanvas.width / 8);
+  const totalRasterBytes = widthBytes * finalCanvas.height;
+
+  const ESC = 0x1b;
+  const GS = 0x1d;
+
+  const buffer: number[] = [];
+  buffer.push(ESC, 0x40); // Initialize printer
+
+  // Set line spacing to 0
+  buffer.push(ESC, 0x33, 0);
+
+  // GS v 0 m xL xH yL yH d1...dk
+  const xL = widthBytes & 0xff;
+  const xH = (widthBytes >> 8) & 0xff;
+  const yL = finalCanvas.height & 0xff;
+  const yH = (finalCanvas.height >> 8) & 0xff;
+
+  buffer.push(GS, 0x76, 0x30, 0x00, xL, xH, yL, yH);
+
+  for (let y = 0; y < finalCanvas.height; y++) {
+    for (let byteX = 0; byteX < widthBytes; byteX++) {
+      let byteVal = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const px = byteX * 8 + bit;
+        if (px < finalCanvas.width) {
+          const idx = (y * finalCanvas.width + px) * 4;
+          const r = imgData.data[idx];
+          const g = imgData.data[idx + 1];
+          const b = imgData.data[idx + 2];
+          // Convert grayscale luminance (threshold 160)
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (lum < 160) {
+            byteVal |= 1 << (7 - bit);
+          }
+        }
+      }
+      buffer.push(byteVal);
+    }
+  }
+
+  // Reset line spacing, feed paper and cut
+  buffer.push(ESC, 0x32);
+  buffer.push(0x0a, 0x0a, 0x0a, 0x0a);
+  buffer.push(GS, 0x56, 0x41, 0x00); // Partial cut
+
+  return new Uint8Array(buffer);
+}
+
+/**
+ * Standard Text-mode ESC/POS fallback for Parcel Labels
+ */
+export function buildShippingParcelLabelEscPos(
+  data: ParcelLabelData,
+  config: PrinterConfig
+): Uint8Array {
+  const ESC = 0x1b;
+  const GS = 0x1d;
+  const buffer: number[] = [];
+
+  const writeBytes = (...bytes: number[]) => buffer.push(...bytes);
+  const write = (str: string) => {
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i);
+      buffer.push(code > 127 ? 63 : code);
+    }
+  };
+
+  const is80mm = config.paperWidth === "80mm";
+  const separator = is80mm ? "=".repeat(48) + "\n" : "=".repeat(32) + "\n";
+  const dashSeparator = is80mm ? "-".repeat(48) + "\n" : "-".repeat(32) + "\n";
+
+  writeBytes(ESC, 0x40); // Init
+  writeBytes(ESC, 0x61, 0x01); // Center
+
+  // Header
+  write(separator);
+  writeBytes(ESC, 0x21, 0x30); // Double width & height
+  write("PARCEL SLIP\n");
+  writeBytes(ESC, 0x21, 0x10); // Double width
+  write(`BOX ${data.boxIndex} OF ${data.totalBoxes}\n`);
+  writeBytes(ESC, 0x21, 0x00);
+  write(separator);
+
+  // Deliver To
+  writeBytes(ESC, 0x61, 0x00); // Left align
+  write("SHIP TO (DELIVER TO):\n");
+  writeBytes(ESC, 0x21, 0x30); // Double width & height
+  write(`${data.customerName}\n`);
+  writeBytes(ESC, 0x21, 0x38); // Bold double width/height
+  write(`MOB: ${data.customerPhone}\n`);
+  writeBytes(ESC, 0x21, 0x00);
+
+  if (data.destination) {
+    writeBytes(ESC, 0x21, 0x10); // Double width
+    write(`DEST: ${data.destination}\n`);
+    writeBytes(ESC, 0x21, 0x00);
+  }
+
+  if (data.address) {
+    write(`Addr: ${data.address}\n`);
+  }
+  if (data.notes) {
+    write(`Transport/Notes: ${data.notes}\n`);
+  }
+
+  write(dashSeparator);
+
+  // Sender
+  const sName = data.senderName || config.shopName || "AGS STORE & COSMETICS";
+  const sPhone = data.senderPhone || config.shopPhone || "+91 9340362381";
+  write("FROM (SENDER):\n");
+  writeBytes(ESC, 0x45, 0x01); // Bold
+  write(`${sName}\n`);
+  write(`Phone: ${sPhone}\n`);
+  writeBytes(ESC, 0x45, 0x00);
+
+  write(separator);
+  writeBytes(ESC, 0x61, 0x01); // Center
+  write("HANDLE WITH CARE / PLEASE DELIVER SAFELY\n");
+  write("\n\n\n\n");
+  writeBytes(GS, 0x56, 0x41, 0x00);
+
+  return new Uint8Array(buffer);
+}
+

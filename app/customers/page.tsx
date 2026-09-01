@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Receipt,
   Eye,
+  Package,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -25,6 +26,7 @@ import { Customer, Product } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { CustomerLedgerModal } from "@/components/customers/CustomerLedgerModal";
+import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
 
 const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
@@ -48,6 +50,9 @@ export default function CustomersPage() {
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  // Parcel Shipping Label Modal State
+  const [shippingCustomer, setShippingCustomer] = useState<Customer | null>(null);
 
   // Custom Pricing Modal
   const [selectedCustForPricing, setSelectedCustForPricing] = useState<Customer | null>(null);
@@ -296,7 +301,7 @@ export default function CustomersPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="pt-1 flex items-center justify-between gap-2 text-xs">
+                    <div className="pt-1 flex items-center justify-between gap-1.5 text-xs">
                       <Button
                         size="sm"
                         variant="outline"
@@ -310,8 +315,19 @@ export default function CustomersPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        onClick={() => setShippingCustomer(cust)}
+                        className="text-xs font-bold gap-1 border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100"
+                        title="Print 80mm Parcel Shipping Sticker"
+                      >
+                        <Package className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Parcel</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => openPricingModal(cust)}
-                        className="text-xs font-semibold gap-1 border-purple-200 text-purple-700 hover:bg-purple-50"
+                        className="text-xs font-semibold gap-1 border-purple-200 text-purple-700 hover:bg-purple-50 px-2"
                         title="Configure wholesale locked price"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-purple-600" />
@@ -467,6 +483,19 @@ export default function CustomersPage() {
             </div>
           </div>
         </Modal>
+
+        {/* 📦 80mm Customer Parcel Shipping Sticker Modal */}
+        {shippingCustomer && (
+          <ShippingParcelLabelModal
+            isOpen={!!shippingCustomer}
+            onClose={() => setShippingCustomer(null)}
+            shopId={activeShopId}
+            initialCustomerName={shippingCustomer.name}
+            initialCustomerPhone={shippingCustomer.phone || ""}
+            initialDestination={shippingCustomer.address || ""}
+            initialAddress={shippingCustomer.address || ""}
+          />
+        )}
       </div>
     </MainLayout>
   );

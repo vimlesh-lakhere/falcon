@@ -15,11 +15,13 @@ import {
   AlertCircle,
   QrCode as QrIcon,
   RefreshCw,
+  Package,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { Sale, Customer } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
+import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
 import {
   PrinterConfig,
   getPrinterConfig,
@@ -58,6 +60,7 @@ export function ThermalReceipt({
 }: ThermalReceiptProps) {
   const [copiedText, setCopiedText] = useState(false);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+  const [isParcelModalOpen, setIsParcelModalOpen] = useState(false);
   const [printerConfig, setPrinterConfig] = useState<PrinterConfig>(() => getPrinterConfig(shopId));
   const [isBluetoothPrinting, setIsBluetoothPrinting] = useState(false);
   const [printStatus, setPrintStatus] = useState<string>("");
@@ -255,6 +258,16 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
               <Printer className="w-3.5 h-3.5" />
             )}
             <span>{isBluetoothPrinting ? "Printing..." : "🖨️ Print Thermal Bill"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsParcelModalOpen(true)}
+            className="px-3 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+            title="Print 80mm Parcel Shipping Sticker with Large Name & Phone"
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>📦 Parcel Slip</span>
           </button>
 
           <button
@@ -471,6 +484,18 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
           <ArrowRight className="w-4 h-4" />
         </button>
       )}
+
+      {/* 📦 80mm Shipping / Parcel Label Modal */}
+      <ShippingParcelLabelModal
+        isOpen={isParcelModalOpen}
+        onClose={() => setIsParcelModalOpen(false)}
+        shopId={shopId}
+        initialCustomerName={custName !== "Walk-in Customer" ? custName : ""}
+        initialCustomerPhone={custPhone}
+        initialDestination={customer?.address || ""}
+        initialInvoiceNo={sale.invoice_number}
+        initialOrderValue={Number(sale.total_amount) || 0}
+      />
 
       {/* Global Thermal Printing Style */}
       <style jsx global>{`
