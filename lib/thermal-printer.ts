@@ -823,11 +823,12 @@ export interface ParcelLabelData {
   senderName?: string;
   senderPhone?: string;
   senderAddress?: string;
+  orientation?: "rotated-90" | "standard";
 }
 
 /**
  * Builds high-definition raster graphics for an 80mm/58mm thermal parcel label.
- * Features giant bold typography for customer name & phone so drivers/conductors can read easily.
+ * Supports 90° Rotated (Vertical Roll Length) mode for MEGA GIANT TEXT (50px+).
  */
 export async function buildShippingParcelLabelGraphics(
   data: ParcelLabelData,
@@ -838,18 +839,17 @@ export async function buildShippingParcelLabelGraphics(
   }
 
   const is80mm = config.paperWidth === "80mm";
-  const canvasWidth = is80mm ? 576 : 384;
-  const paddingX = is80mm ? 16 : 8;
-  const contentWidth = canvasWidth - paddingX * 2;
+  const rollWidth = is80mm ? 576 : 384;
+  const isRotated = data.orientation !== "standard"; // Default to 90° rotated along roll
 
-  // Generate QR Code for fast dialing customer phone or tracking invoice
+  // Generate QR Code for fast dialing customer phone
   let qrImage: HTMLImageElement | null = null;
   if (data.customerPhone) {
     try {
       const cleanPhone = data.customerPhone.replace(/[^0-9]/g, "").slice(-10);
       const telUrl = `tel:${cleanPhone}`;
       const qrDataUrl = await QRCode.toDataURL(telUrl, {
-        width: is80mm ? 140 : 110,
+        width: isRotated ? 130 : (is80mm ? 140 : 110),
         margin: 0,
         errorCorrectionLevel: "M",
         color: { dark: "#000000", light: "#ffffff" },
@@ -865,227 +865,314 @@ export async function buildShippingParcelLabelGraphics(
     }
   }
 
-  // Pre-calculate canvas height dynamically
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
+  let finalPrintableCanvas: HTMLCanvasElement;
 
-  let currentY = 16;
-  const lineSpacing = is80mm ? 6 : 4;
+  if (isRotated) {
+    // =========================================================================
+    // 🔄 90° ROTATED MEGA BANNER MODE (Printed along roll length for HUGE text)
+    // =========================================================================
+    const labelLength = is80mm ? 940 : 740; // Length along paper roll
+    const labelHeight = rollWidth; // 576 on 80mm, 384 on 58mm
 
-  // Measure fonts & height
-  const titleFont = is80mm ? "900 28px sans-serif" : "900 20px sans-serif";
-  const giantCustFont = is80mm ? "900 36px sans-serif" : "900 26px sans-serif";
-  const giantPhoneFont = is80mm ? "900 38px monospace" : "900 28px monospace";
-  const destFont = is80mm ? "bold 26px sans-serif" : "bold 20px sans-serif";
-  const labelFont = is80mm ? "bold 18px sans-serif" : "bold 14px sans-serif";
-  const bodyFont = is80mm ? "normal 20px sans-serif" : "normal 16px sans-serif";
-  const smallFont = is80mm ? "bold 16px sans-serif" : "bold 13px sans-serif";
+    const renderCanvas = document.createElement("canvas");
+    renderCanvas.width = labelLength;
+    renderCanvas.height = labelHeight;
+    const ctx = renderCanvas.getContext("2d")!;
 
-  // Estimated dynamic height
-  const estimatedHeight = is80mm ? 860 : 720;
-  canvas.width = canvasWidth;
-  canvas.height = estimatedHeight;
+    // White background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, labelLength, labelHeight);
+    ctx.fillStyle = "#000000";
 
-  // Background white
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#000000";
+    // 1. TOP HEADER BANNER (Across whole 940px width)
+    const headerHeight = is80mm ? 48 : 38;
+    ctx.fillRect(16, 16, labelLength - 32, headerHeight);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = is80mm ? "900 28px sans-serif" : "900 22px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("★ PARCEL / DISPATCH SLIP (पार्सल पर्ची) ★", labelLength / 2, 16 + headerHeight - 14);
 
-  // 1. TOP HEADER BANNER (Inverted Black Background)
-  const headerHeight = is80mm ? 44 : 36;
-  ctx.fillRect(paddingX, currentY, contentWidth, headerHeight);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = titleFont;
-  ctx.textAlign = "center";
-  ctx.fillText("★ PARCEL / DISPATCH SLIP ★", canvasWidth / 2, currentY + headerHeight - 12);
-  currentY += headerHeight + 12;
+    // Split into LEFT MAIN PANEL (~630px) and RIGHT DETAILS PANEL (~260px)
+    const leftWidth = is80mm ? 630 : 490;
+    const rightStartX = leftWidth + 24;
+    const rightWidth = labelLength - rightStartX - 16;
 
-  // 2. BOX COUNT BADGE (e.g. BOX 1 OF 2)
-  ctx.fillStyle = "#000000";
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(paddingX, currentY, contentWidth, is80mm ? 42 : 36);
+    // Vertical dashed divider
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.setLineDash([6, 6]);
+    ctx.moveTo(leftWidth + 12, 16 + headerHeight + 8);
+    ctx.lineTo(leftWidth + 12, labelHeight - 16);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
-  ctx.font = is80mm ? "900 24px sans-serif" : "900 18px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(
-    `📦 PARCEL: BOX ${data.boxIndex} OF ${data.totalBoxes}`,
-    canvasWidth / 2,
-    currentY + (is80mm ? 29 : 25)
-  );
-  currentY += (is80mm ? 42 : 36) + 16;
+    // --- LEFT MAIN PANEL: GIANT CUSTOMER NAME, PHONE, DESTINATION ---
+    ctx.fillStyle = "#000000";
+    ctx.textAlign = "left";
+    let leftY = 16 + headerHeight + 28;
 
-  // 3. TO / SHIP TO SECTION (GIANT BOLD CUSTOMER NAME & PHONE)
-  ctx.textAlign = "left";
-  ctx.font = labelFont;
-  ctx.fillText("SHIP TO / पाने वाले का विवरण:", paddingX, currentY);
-  currentY += is80mm ? 26 : 20;
+    ctx.font = is80mm ? "bold 20px sans-serif" : "bold 16px sans-serif";
+    ctx.fillText("SHIP TO / पाने वाले ग्राहक का विवरण:", 20, leftY);
+    leftY += is80mm ? 48 : 36;
 
-  // Giant Customer Name
-  ctx.font = giantCustFont;
-  const custName = data.customerName || "Customer";
-  // Word wrap customer name if too long
-  const nameWords = custName.split(" ");
-  let currentNameLine = "";
-  for (const word of nameWords) {
-    const testLine = currentNameLine ? `${currentNameLine} ${word}` : word;
-    if (ctx.measureText(testLine).width > contentWidth) {
-      if (currentNameLine) {
-        ctx.fillText(currentNameLine, paddingX, currentY);
-        currentY += is80mm ? 40 : 30;
-      }
-      currentNameLine = word;
-    } else {
-      currentNameLine = testLine;
+    // MEGA CUSTOMER NAME (52px Extra Black)
+    ctx.font = is80mm ? "900 48px sans-serif" : "900 36px sans-serif";
+    const custName = data.customerName || "Customer";
+    ctx.fillText(custName, 20, leftY, leftWidth - 30);
+    leftY += is80mm ? 64 : 48;
+
+    // MEGA PHONE NUMBER IN SOLID INVERTED BAR (56px Monospace)
+    const rawPhone = data.customerPhone.replace(/[^0-9]/g, "").slice(-10);
+    const formattedPhone = rawPhone.length === 10
+      ? `📱 ${rawPhone.slice(0, 5)} ${rawPhone.slice(5)}`
+      : `📱 ${data.customerPhone || "NO PHONE"}`;
+
+    const phoneBarHeight = is80mm ? 72 : 56;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(20, leftY - (is80mm ? 48 : 38), leftWidth - 20, phoneBarHeight);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = is80mm ? "900 52px monospace" : "900 38px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(formattedPhone, 20 + (leftWidth - 20) / 2, leftY + (is80mm ? 6 : 3));
+    leftY += phoneBarHeight + 20;
+
+    // MEGA DESTINATION / BUS STAND (36px Bold)
+    ctx.fillStyle = "#000000";
+    ctx.textAlign = "left";
+    if (data.destination) {
+      ctx.font = is80mm ? "bold 20px sans-serif" : "bold 16px sans-serif";
+      ctx.fillText("📍 DESTINATION / बस स्टैंड / शहर:", 20, leftY);
+      leftY += is80mm ? 34 : 26;
+
+      ctx.font = is80mm ? "900 36px sans-serif" : "900 26px sans-serif";
+      ctx.fillText(data.destination.toUpperCase(), 20, leftY, leftWidth - 30);
+      leftY += is80mm ? 38 : 28;
     }
-  }
-  if (currentNameLine) {
-    ctx.fillText(currentNameLine, paddingX, currentY);
-    currentY += is80mm ? 44 : 32;
-  }
 
-  // Giant Phone Number with Inverted Highlight Box
-  const rawPhone = data.customerPhone.replace(/[^0-9]/g, "").slice(-10);
-  const formattedPhone = rawPhone.length === 10
-    ? `📱 ${rawPhone.slice(0, 5)} ${rawPhone.slice(5)}`
-    : `📱 ${data.customerPhone || "NO PHONE"}`;
+    // Address or Transport Notes
+    if (data.address || data.notes) {
+      ctx.font = is80mm ? "bold 22px sans-serif" : "bold 17px sans-serif";
+      const extraText = [data.address, data.notes ? `(${data.notes})` : ""].filter(Boolean).join(" ");
+      ctx.fillText(extraText, 20, leftY, leftWidth - 30);
+    }
 
-  const phoneBoxHeight = is80mm ? 56 : 46;
-  ctx.fillStyle = "#000000";
-  ctx.fillRect(paddingX, currentY, contentWidth, phoneBoxHeight);
+    // --- RIGHT PANEL: BOX BADGE, SENDER, QR CODE & WARNING ---
+    let rightY = 16 + headerHeight + 20;
 
-  ctx.fillStyle = "#ffffff";
-  ctx.font = giantPhoneFont;
-  ctx.textAlign = "center";
-  ctx.fillText(formattedPhone, canvasWidth / 2, currentY + (is80mm ? 39 : 32));
-  currentY += phoneBoxHeight + 16;
+    // Box Counter Badge
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 3;
+    const boxBadgeHeight = is80mm ? 52 : 42;
+    ctx.strokeRect(rightStartX, rightY, rightWidth, boxBadgeHeight);
 
-  // 4. DESTINATION / BUS STAND / LOCATION
-  ctx.fillStyle = "#000000";
-  ctx.textAlign = "left";
-  if (data.destination) {
-    ctx.font = labelFont;
-    ctx.fillText("📍 DESTINATION / बस स्टैंड / शहर:", paddingX, currentY);
+    ctx.font = is80mm ? "900 24px sans-serif" : "900 18px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`📦 BOX ${data.boxIndex} OF ${data.totalBoxes}`, rightStartX + rightWidth / 2, rightY + (is80mm ? 34 : 28));
+    rightY += boxBadgeHeight + 16;
+
+    // Sender / Store Info
+    ctx.textAlign = "left";
+    ctx.font = is80mm ? "bold 16px sans-serif" : "bold 13px sans-serif";
+    ctx.fillText("FROM / भेजने वाला:", rightStartX, rightY);
+    rightY += is80mm ? 22 : 18;
+
+    ctx.font = is80mm ? "900 22px sans-serif" : "900 17px sans-serif";
+    ctx.fillText(data.senderName || config.shopName || "AGS STORE & COSMETICS", rightStartX, rightY, rightWidth);
+    rightY += is80mm ? 24 : 18;
+
+    ctx.font = is80mm ? "bold 20px monospace" : "bold 16px monospace";
+    ctx.fillText(`📞 ${data.senderPhone || config.shopPhone || "+91 9340362381"}`, rightStartX, rightY);
+    rightY += is80mm ? 24 : 18;
+
+    // Invoice & Date Pill
+    ctx.font = is80mm ? "bold 15px monospace" : "bold 12px monospace";
+    const dateText = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+    const invText = data.invoiceNo ? `#${data.invoiceNo} • ` : "";
+    const valText = data.orderValue ? ` • ₹${data.orderValue}` : "";
+    ctx.fillText(`${invText}${dateText}${valText}`, rightStartX, rightY);
+    rightY += 12;
+
+    // QR Code on right side
+    if (qrImage) {
+      const qrSize = is80mm ? 120 : 95;
+      ctx.drawImage(qrImage, rightStartX + (rightWidth - qrSize) / 2, rightY, qrSize, qrSize);
+      rightY += qrSize + 10;
+    } else {
+      rightY += 30;
+    }
+
+    // Warning
+    ctx.textAlign = "center";
+    ctx.font = is80mm ? "900 15px sans-serif" : "900 12px sans-serif";
+    ctx.fillText("⚠️ HANDLE WITH CARE", rightStartX + rightWidth / 2, rightY);
+    ctx.font = is80mm ? "bold 13px sans-serif" : "bold 10px sans-serif";
+    ctx.fillText("कांच/सामान सम्भाल कर रखें", rightStartX + rightWidth / 2, rightY + 16);
+
+    // =========================================================================
+    // 🔄 ROTATE 90 DEGREES CLOCKWISE ONTO 80MM PRINTER WIDTH (576 x 940)
+    // =========================================================================
+    const rotatedCanvas = document.createElement("canvas");
+    rotatedCanvas.width = rollWidth; // 576 dots for 80mm
+    rotatedCanvas.height = labelLength; // 940 dots roll feed length
+    const rCtx = rotatedCanvas.getContext("2d")!;
+
+    rCtx.fillStyle = "#ffffff";
+    rCtx.fillRect(0, 0, rotatedCanvas.width, rotatedCanvas.height);
+
+    rCtx.translate(rollWidth, 0);
+    rCtx.rotate((90 * Math.PI) / 180);
+    rCtx.drawImage(renderCanvas, 0, 0);
+
+    finalPrintableCanvas = rotatedCanvas;
+  } else {
+    // =========================================================================
+    // 📄 STANDARD PORTRAIT 80MM LAYOUT
+    // =========================================================================
+    const canvasWidth = rollWidth;
+    const paddingX = is80mm ? 16 : 8;
+    const contentWidth = canvasWidth - paddingX * 2;
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    canvas.width = canvasWidth;
+    canvas.height = is80mm ? 860 : 720;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000000";
+
+    let currentY = 16;
+    const headerHeight = is80mm ? 44 : 36;
+    ctx.fillRect(paddingX, currentY, contentWidth, headerHeight);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = is80mm ? "900 28px sans-serif" : "900 20px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("★ PARCEL / DISPATCH SLIP ★", canvasWidth / 2, currentY + headerHeight - 12);
+    currentY += headerHeight + 12;
+
+    ctx.fillStyle = "#000000";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(paddingX, currentY, contentWidth, is80mm ? 42 : 36);
+
+    ctx.font = is80mm ? "900 24px sans-serif" : "900 18px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`📦 PARCEL: BOX ${data.boxIndex} OF ${data.totalBoxes}`, canvasWidth / 2, currentY + (is80mm ? 29 : 25));
+    currentY += (is80mm ? 42 : 36) + 16;
+
+    ctx.textAlign = "left";
+    ctx.font = is80mm ? "bold 18px sans-serif" : "bold 14px sans-serif";
+    ctx.fillText("SHIP TO / पाने वाले का विवरण:", paddingX, currentY);
     currentY += is80mm ? 26 : 20;
 
-    ctx.font = destFont;
-    ctx.fillText(data.destination.toUpperCase(), paddingX, currentY);
+    ctx.font = is80mm ? "900 36px sans-serif" : "900 26px sans-serif";
+    ctx.fillText(data.customerName || "Customer", paddingX, currentY, contentWidth);
+    currentY += is80mm ? 44 : 32;
+
+    const rawPhone = data.customerPhone.replace(/[^0-9]/g, "").slice(-10);
+    const formattedPhone = rawPhone.length === 10
+      ? `📱 ${rawPhone.slice(0, 5)} ${rawPhone.slice(5)}`
+      : `📱 ${data.customerPhone || "NO PHONE"}`;
+
+    const phoneBoxHeight = is80mm ? 56 : 46;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(paddingX, currentY, contentWidth, phoneBoxHeight);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = is80mm ? "900 38px monospace" : "900 28px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(formattedPhone, canvasWidth / 2, currentY + (is80mm ? 39 : 32));
+    currentY += phoneBoxHeight + 16;
+
+    ctx.fillStyle = "#000000";
+    ctx.textAlign = "left";
+    if (data.destination) {
+      ctx.font = is80mm ? "bold 18px sans-serif" : "bold 14px sans-serif";
+      ctx.fillText("📍 DESTINATION / बस स्टैंड / शहर:", paddingX, currentY);
+      currentY += is80mm ? 26 : 20;
+
+      ctx.font = is80mm ? "bold 26px sans-serif" : "bold 20px sans-serif";
+      ctx.fillText(data.destination.toUpperCase(), paddingX, currentY, contentWidth);
+      currentY += is80mm ? 32 : 24;
+    }
+
+    if (data.address || data.notes) {
+      ctx.font = is80mm ? "normal 20px sans-serif" : "normal 16px sans-serif";
+      ctx.fillText([data.address, data.notes].filter(Boolean).join(", "), paddingX, currentY, contentWidth);
+      currentY += is80mm ? 28 : 22;
+    }
+
+    // Sender
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(paddingX, currentY);
+    ctx.lineTo(paddingX + contentWidth, currentY);
+    ctx.stroke();
+    currentY += 16;
+
+    ctx.font = is80mm ? "bold 18px sans-serif" : "bold 14px sans-serif";
+    ctx.fillText("FROM / भेजने वाले की दुकान:", paddingX, currentY);
+    currentY += is80mm ? 24 : 18;
+
+    ctx.font = is80mm ? "bold 22px sans-serif" : "bold 17px sans-serif";
+    ctx.fillText(data.senderName || config.shopName || "AGS STORE & COSMETICS", paddingX, currentY);
+    currentY += is80mm ? 26 : 20;
+
+    ctx.font = is80mm ? "bold 20px monospace" : "bold 16px monospace";
+    ctx.fillText(`📞 Contact: ${data.senderPhone || config.shopPhone || "+91 9340362381"}`, paddingX, currentY);
     currentY += is80mm ? 32 : 24;
+
+    if (qrImage) {
+      const qrSize = is80mm ? 100 : 80;
+      ctx.drawImage(qrImage, paddingX + contentWidth - qrSize, currentY - (is80mm ? 90 : 70), qrSize, qrSize);
+    }
+
+    ctx.fillStyle = "#000000";
+    ctx.font = is80mm ? "bold 16px sans-serif" : "bold 13px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("⚠️ HANDLE WITH CARE (कांच/सामान सम्भाल कर रखें)", canvasWidth / 2, currentY);
+    currentY += 24;
+
+    const trimmedCanvas = document.createElement("canvas");
+    trimmedCanvas.width = canvasWidth;
+    trimmedCanvas.height = currentY;
+    const tCtx = trimmedCanvas.getContext("2d")!;
+    tCtx.drawImage(canvas, 0, 0);
+    finalPrintableCanvas = trimmedCanvas;
   }
 
-  // Address (if present)
-  if (data.address) {
-    ctx.font = bodyFont;
-    ctx.fillText(`Address: ${data.address}`, paddingX, currentY);
-    currentY += is80mm ? 28 : 22;
-  }
-
-  // Optional Notes / Transport / Bus Number
-  if (data.notes) {
-    ctx.font = bodyFont;
-    ctx.fillText(`Notes / Transport: ${data.notes}`, paddingX, currentY);
-    currentY += is80mm ? 28 : 22;
-  }
-
-  // Invoice / Date Reference Bar
-  currentY += 6;
-  ctx.fillStyle = "#f3f4f6";
-  ctx.fillRect(paddingX, currentY, contentWidth, is80mm ? 32 : 26);
-  ctx.fillStyle = "#000000";
-  ctx.font = smallFont;
-  const invText = data.invoiceNo ? `Inv: #${data.invoiceNo}` : "";
-  const dateText = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const valText = data.orderValue ? ` | Value: ₹${data.orderValue}` : "";
-  ctx.fillText(`${invText ? `${invText} | ` : ""}Date: ${dateText}${valText}`, paddingX + 8, currentY + (is80mm ? 21 : 18));
-  currentY += (is80mm ? 32 : 26) + 16;
-
-  // 5. SENDER / FROM SECTION (PRESHAK)
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(paddingX, currentY);
-  ctx.lineTo(paddingX + contentWidth, currentY);
-  ctx.stroke();
-  currentY += 16;
-
-  const sName = data.senderName || config.shopName || "AGS STORE & COSMETICS";
-  const sPhone = data.senderPhone || config.shopPhone || "+91 9340362381";
-  const sAddr = data.senderAddress || config.shopAddress || "";
-
-  ctx.font = labelFont;
-  ctx.fillText("FROM / भेजने वाले की दुकान:", paddingX, currentY);
-  currentY += is80mm ? 24 : 18;
-
-  ctx.font = is80mm ? "bold 22px sans-serif" : "bold 17px sans-serif";
-  ctx.fillText(sName, paddingX, currentY);
-  currentY += is80mm ? 26 : 20;
-
-  ctx.font = is80mm ? "bold 20px monospace" : "bold 16px monospace";
-  ctx.fillText(`📞 Contact: ${sPhone}`, paddingX, currentY);
-  currentY += is80mm ? 24 : 18;
-
-  if (sAddr) {
-    ctx.font = smallFont;
-    ctx.fillText(sAddr, paddingX, currentY);
-    currentY += is80mm ? 22 : 16;
-  }
-
-  // Draw QR code on bottom right if generated
-  if (qrImage) {
-    const qrSize = is80mm ? 100 : 80;
-    ctx.drawImage(qrImage, paddingX + contentWidth - qrSize, currentY - (is80mm ? 90 : 70), qrSize, qrSize);
-  }
-
-  // 6. FOOTER WARNING
-  currentY += 12;
-  ctx.fillStyle = "#000000";
-  ctx.font = smallFont;
-  ctx.textAlign = "center";
-  ctx.fillText("⚠️ HANDLE WITH CARE (कांच/सामान सम्भाल कर रखें)", canvasWidth / 2, currentY);
-  currentY += is80mm ? 20 : 16;
-  ctx.fillText("डिलीवरी न होने पर प्रेषक को तुरंत कॉल करें", canvasWidth / 2, currentY);
-  currentY += 24;
-
-  // Trim canvas to final actual height
-  const finalCanvas = document.createElement("canvas");
-  finalCanvas.width = canvasWidth;
-  finalCanvas.height = currentY;
-  const finalCtx = finalCanvas.getContext("2d")!;
-  finalCtx.drawImage(canvas, 0, 0);
-
-  // Convert canvas to ESC/POS Raster bitmap command (GS v 0)
-  const imgData = finalCtx.getImageData(0, 0, finalCanvas.width, finalCanvas.height);
-  const widthBytes = Math.ceil(finalCanvas.width / 8);
-  const totalRasterBytes = widthBytes * finalCanvas.height;
+  // Convert finalPrintableCanvas to ESC/POS Raster bitmap command (GS v 0)
+  const finalCtx = finalPrintableCanvas.getContext("2d")!;
+  const imgData = finalCtx.getImageData(0, 0, finalPrintableCanvas.width, finalPrintableCanvas.height);
+  const widthBytes = Math.ceil(finalPrintableCanvas.width / 8);
 
   const ESC = 0x1b;
   const GS = 0x1d;
 
   const buffer: number[] = [];
   buffer.push(ESC, 0x40); // Initialize printer
+  buffer.push(ESC, 0x33, 0); // Set line spacing to 0
 
-  // Set line spacing to 0
-  buffer.push(ESC, 0x33, 0);
-
-  // GS v 0 m xL xH yL yH d1...dk
   const xL = widthBytes & 0xff;
   const xH = (widthBytes >> 8) & 0xff;
-  const yL = finalCanvas.height & 0xff;
-  const yH = (finalCanvas.height >> 8) & 0xff;
+  const yL = finalPrintableCanvas.height & 0xff;
+  const yH = (finalPrintableCanvas.height >> 8) & 0xff;
 
   buffer.push(GS, 0x76, 0x30, 0x00, xL, xH, yL, yH);
 
-  for (let y = 0; y < finalCanvas.height; y++) {
+  for (let y = 0; y < finalPrintableCanvas.height; y++) {
     for (let byteX = 0; byteX < widthBytes; byteX++) {
       let byteVal = 0;
       for (let bit = 0; bit < 8; bit++) {
         const px = byteX * 8 + bit;
-        if (px < finalCanvas.width) {
-          const idx = (y * finalCanvas.width + px) * 4;
+        if (px < finalPrintableCanvas.width) {
+          const idx = (y * finalPrintableCanvas.width + px) * 4;
           const r = imgData.data[idx];
           const g = imgData.data[idx + 1];
           const b = imgData.data[idx + 2];
-          // Convert grayscale luminance (threshold 160)
           const lum = 0.299 * r + 0.587 * g + 0.114 * b;
           if (lum < 160) {
             byteVal |= 1 << (7 - bit);
@@ -1096,7 +1183,6 @@ export async function buildShippingParcelLabelGraphics(
     }
   }
 
-  // Reset line spacing, feed paper and cut
   buffer.push(ESC, 0x32);
   buffer.push(0x0a, 0x0a, 0x0a, 0x0a);
   buffer.push(GS, 0x56, 0x41, 0x00); // Partial cut

@@ -61,6 +61,7 @@ export const ShippingParcelLabelModal: React.FC<ShippingParcelLabelModalProps> =
   const [transportNotes, setTransportNotes] = useState("");
   const [invoiceNo, setInvoiceNo] = useState(initialInvoiceNo);
   const [orderValue, setOrderValue] = useState<number>(initialOrderValue);
+  const [orientation, setOrientation] = useState<"rotated-90" | "standard">("rotated-90");
 
   const [printerConfig, setPrinterConfig] = useState<PrinterConfig>(() => getPrinterConfig(shopId));
   const [isPrinting, setIsPrinting] = useState(false);
@@ -78,6 +79,7 @@ export const ShippingParcelLabelModal: React.FC<ShippingParcelLabelModalProps> =
       setAddress(initialAddress);
       setInvoiceNo(initialInvoiceNo);
       setOrderValue(initialOrderValue);
+      setOrientation("rotated-90");
       setTotalBoxes(1);
       setCurrentBoxIndex(1);
       setPrintStatus("");
@@ -109,6 +111,7 @@ export const ShippingParcelLabelModal: React.FC<ShippingParcelLabelModalProps> =
     senderName: printerConfig.shopName || "AGS STORE & COSMETICS",
     senderPhone: printerConfig.shopPhone || "+91 9340362381",
     senderAddress: printerConfig.shopAddress || "Main Market Road",
+    orientation: orientation,
   };
 
   const rawPhone = customerPhone.replace(/[^0-9]/g, "").slice(-10);
@@ -320,6 +323,52 @@ export const ShippingParcelLabelModal: React.FC<ShippingParcelLabelModalProps> =
               </div>
             </div>
 
+            {/* Print Orientation Selector */}
+            <div className="space-y-1 pt-1 border-t border-gray-200">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                📐 Print Style / ओरिएंटेशन (अक्षर का आकार)
+              </span>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOrientation("rotated-90")}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    orientation === "rotated-90"
+                      ? "bg-purple-50 border-purple-600 text-purple-950 ring-2 ring-purple-600 shadow-xs"
+                      : "bg-white border-gray-200 text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-black text-xs">
+                    <span>🔄 लंबा बड़ा स्टिकर</span>
+                    <span className="text-[9px] bg-purple-600 text-white px-1.5 py-0.2 rounded-full font-black">
+                      Recommended
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-0.5 leading-tight">
+                    90° घूमकर लंबा प्रिंट होगा (सबसे बड़ा नाम व मोबाइल नंबर)
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOrientation("standard")}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    orientation === "standard"
+                      ? "bg-purple-50 border-purple-600 text-purple-950 ring-2 ring-purple-600 shadow-xs"
+                      : "bg-white border-gray-200 text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <div className="font-black text-xs text-gray-900">
+                    📄 सीधा स्टिकर
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-0.5 leading-tight">
+                    स्टैंडर्ड 80mm चौड़ाई में सामान्य साइज
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {/* Optional Additional Details */}
             <div className="space-y-2 pt-1 border-t border-gray-200">
               <div className="grid grid-cols-2 gap-2">
@@ -366,93 +415,159 @@ export const ShippingParcelLabelModal: React.FC<ShippingParcelLabelModalProps> =
           </div>
 
           {/* Right: Live 80mm Thermal Label Preview (6 cols) */}
-          <div className="md:col-span-6 p-4 bg-slate-100 flex flex-col items-center justify-center">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 self-start">
-              🖨️ 80mm Thermal Slip Preview
-            </span>
-
-            {/* Real 80mm Thermal Slip Visual Simulator */}
-            <div
-              ref={printAreaRef}
-              className="w-full max-w-[320px] bg-white border-2 border-dashed border-gray-400 p-4 rounded-xl shadow-lg font-sans text-black space-y-3 print:m-0 print:p-0 print:border-none print:shadow-none"
-              style={{ minHeight: "400px" }}
-            >
-              {/* Header Banner */}
-              <div className="bg-black text-white text-center py-1.5 px-2 rounded-sm font-black text-xs uppercase tracking-wider">
-                ★ PARCEL / DISPATCH SLIP ★
-              </div>
-
-              {/* Box Counter Badge */}
-              <div className="border-2 border-black text-center py-1 font-black text-xs tracking-wide">
-                📦 PARCEL: BOX {currentBoxIndex} OF {totalBoxes}
-              </div>
-
-              {/* TO: Section */}
-              <div className="space-y-1 pt-1">
-                <div className="text-[10px] font-bold uppercase text-gray-600">
-                  SHIP TO / पाने वाले का विवरण:
-                </div>
-
-                {/* Giant Customer Name */}
-                <div className="text-xl font-black leading-tight break-words">
-                  {customerName.trim() || "RAMESH KUMAR"}
-                </div>
-
-                {/* Giant Inverted Phone Number */}
-                <div className="bg-black text-white text-center py-2 px-1 rounded-sm font-mono font-black text-lg tracking-wider">
-                  📱 {displayFormattedPhone}
-                </div>
-              </div>
-
-              {/* Destination */}
-              {destination.trim() && (
-                <div className="space-y-0.5 border-t border-gray-300 pt-1.5">
-                  <div className="text-[10px] font-bold text-gray-600">
-                    📍 DESTINATION / बस स्टैंड / शहर:
-                  </div>
-                  <div className="text-sm font-black text-gray-900 leading-snug uppercase">
-                    {destination.trim()}
-                  </div>
-                </div>
-              )}
-
-              {/* Address / Transport Note */}
-              {(address.trim() || transportNotes.trim()) && (
-                <div className="text-[11px] text-gray-800 space-y-0.5">
-                  {address.trim() && <div>Addr: {address.trim()}</div>}
-                  {transportNotes.trim() && <div>Transport: {transportNotes.trim()}</div>}
-                </div>
-              )}
-
-              {/* Bill & Date Ref */}
-              <div className="bg-gray-100 p-1.5 text-[10px] font-bold flex items-center justify-between rounded-sm">
-                <span>{invoiceNo ? `Inv: #${invoiceNo}` : "Direct Dispatch"}</span>
-                <span>Date: {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</span>
-                {orderValue > 0 && <span>₹{orderValue}</span>}
-              </div>
-
-              {/* SENDER / FROM */}
-              <div className="border-t-2 border-black pt-1.5 space-y-0.5 text-left">
-                <div className="text-[9px] font-bold uppercase text-gray-500">
-                  FROM / भेजने वाले की दुकान:
-                </div>
-                <div className="text-xs font-black">
-                  {printerConfig.shopName || "AGS STORE & COSMETICS"}
-                </div>
-                <div className="text-[11px] font-mono font-bold">
-                  📞 {printerConfig.shopPhone || "+91 9340362381"}
-                </div>
-                {printerConfig.shopAddress && (
-                  <div className="text-[10px] text-gray-600">{printerConfig.shopAddress}</div>
-                )}
-              </div>
-
-              {/* FOOTER WARNING */}
-              <div className="border-t border-dashed border-gray-400 pt-2 text-center text-[9px] font-bold text-gray-800 space-y-0.5">
-                <div>⚠️ HANDLE WITH CARE (कांच/सामान सम्भाल कर रखें)</div>
-                <div>डिलीवरी न होने पर प्रेषक को तुरंत कॉल करें</div>
-              </div>
+          <div className="md:col-span-6 p-4 bg-slate-100 flex flex-col items-center justify-start overflow-y-auto max-h-[500px]">
+            <div className="flex items-center justify-between w-full mb-2">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                🖨️ Live 80mm Preview
+              </span>
+              <span className="text-[10px] font-black text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                {orientation === "rotated-90" ? "🔄 90° Rotated (Mega Text)" : "📄 Standard 80mm"}
+              </span>
             </div>
+
+            {orientation === "rotated-90" ? (
+              /* Real 90° Rotated Landscape-on-Roll Preview */
+              <div
+                ref={printAreaRef}
+                className="w-full bg-white border-2 border-dashed border-gray-400 p-3.5 rounded-xl shadow-lg font-sans text-black space-y-2.5"
+              >
+                {/* Header Banner */}
+                <div className="bg-black text-white text-center py-1 px-2 rounded-sm font-black text-xs uppercase tracking-wider">
+                  ★ PARCEL / DISPATCH SLIP (पार्सल पर्ची) ★
+                </div>
+
+                <div className="grid grid-cols-12 gap-2">
+                  {/* Left Column: Mega Customer Info */}
+                  <div className="col-span-8 space-y-1.5 pr-2 border-r border-dashed border-gray-300">
+                    <div className="text-[9px] font-bold uppercase text-gray-500">
+                      SHIP TO / पाने वाले ग्राहक का विवरण:
+                    </div>
+
+                    {/* Mega Customer Name */}
+                    <div className="text-xl font-black leading-tight text-gray-950 uppercase break-words">
+                      {customerName.trim() || "RAMESH KUMAR SHARMA"}
+                    </div>
+
+                    {/* Mega Highlighted Phone Bar */}
+                    <div className="bg-black text-white text-center py-2 px-1 rounded-md font-mono font-black text-xl tracking-wider shadow-xs">
+                      📱 {displayFormattedPhone}
+                    </div>
+
+                    {/* Mega Destination */}
+                    {destination.trim() && (
+                      <div className="pt-1">
+                        <div className="text-[9px] font-bold text-gray-600">
+                          📍 DESTINATION / बस स्टैंड / शहर:
+                        </div>
+                        <div className="text-sm font-black text-gray-900 uppercase">
+                          {destination.trim()}
+                        </div>
+                      </div>
+                    )}
+
+                    {(address.trim() || transportNotes.trim()) && (
+                      <div className="text-[10px] text-gray-700 font-bold line-clamp-2">
+                        {[address.trim(), transportNotes.trim()].filter(Boolean).join(" • ")}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Box, Sender & Info */}
+                  <div className="col-span-4 space-y-1.5 text-left flex flex-col justify-between">
+                    {/* Box Counter Badge */}
+                    <div className="border-2 border-black text-center py-1 font-black text-xs tracking-wide bg-gray-50">
+                      📦 BOX {currentBoxIndex} OF {totalBoxes}
+                    </div>
+
+                    {/* Sender Info */}
+                    <div className="space-y-0.5 text-[9px]">
+                      <div className="font-bold text-gray-500 uppercase">FROM / प्रेषक:</div>
+                      <div className="font-black text-[10px] text-gray-900 leading-tight">
+                        {printerConfig.shopName || "AGS STORE & COSMETICS"}
+                      </div>
+                      <div className="font-mono font-bold text-[10px]">
+                        📞 {printerConfig.shopPhone || "+91 9340362381"}
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-100 p-1 text-[9px] font-mono font-bold rounded-sm">
+                      {invoiceNo ? `#${invoiceNo} • ` : ""}
+                      {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                      {orderValue > 0 && ` • ₹${orderValue}`}
+                    </div>
+
+                    <div className="text-[8px] font-black text-center text-gray-700 border-t border-gray-200 pt-1">
+                      ⚠️ HANDLE WITH CARE
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Standard Vertical 80mm Preview */
+              <div
+                ref={printAreaRef}
+                className="w-full max-w-[280px] bg-white border-2 border-dashed border-gray-400 p-3 rounded-xl shadow-lg font-sans text-black space-y-2.5"
+              >
+                {/* Header Banner */}
+                <div className="bg-black text-white text-center py-1.5 px-2 rounded-sm font-black text-xs uppercase tracking-wider">
+                  ★ PARCEL / DISPATCH SLIP ★
+                </div>
+
+                {/* Box Counter Badge */}
+                <div className="border-2 border-black text-center py-1 font-black text-xs tracking-wide">
+                  📦 PARCEL: BOX {currentBoxIndex} OF {totalBoxes}
+                </div>
+
+                {/* TO: Section */}
+                <div className="space-y-1 pt-1">
+                  <div className="text-[10px] font-bold uppercase text-gray-600">
+                    SHIP TO / पाने वाले का विवरण:
+                  </div>
+
+                  <div className="text-lg font-black leading-tight break-words">
+                    {customerName.trim() || "RAMESH KUMAR"}
+                  </div>
+
+                  <div className="bg-black text-white text-center py-1.5 px-1 rounded-sm font-mono font-black text-base tracking-wider">
+                    📱 {displayFormattedPhone}
+                  </div>
+                </div>
+
+                {destination.trim() && (
+                  <div className="space-y-0.5 border-t border-gray-300 pt-1">
+                    <div className="text-[10px] font-bold text-gray-600">
+                      📍 DESTINATION:
+                    </div>
+                    <div className="text-xs font-black text-gray-900 leading-snug uppercase">
+                      {destination.trim()}
+                    </div>
+                  </div>
+                )}
+
+                {(address.trim() || transportNotes.trim()) && (
+                  <div className="text-[10px] text-gray-800 space-y-0.5">
+                    {address.trim() && <div>Addr: {address.trim()}</div>}
+                    {transportNotes.trim() && <div>Transport: {transportNotes.trim()}</div>}
+                  </div>
+                )}
+
+                <div className="border-t-2 border-black pt-1 space-y-0.5 text-left text-[10px]">
+                  <div className="text-[9px] font-bold uppercase text-gray-500">
+                    FROM:
+                  </div>
+                  <div className="font-black text-xs">
+                    {printerConfig.shopName || "AGS STORE & COSMETICS"}
+                  </div>
+                  <div className="font-mono font-bold text-[11px]">
+                    📞 {printerConfig.shopPhone || "+91 9340362381"}
+                  </div>
+                </div>
+
+                <div className="border-t border-dashed border-gray-400 pt-1 text-center text-[9px] font-bold text-gray-800">
+                  ⚠️ HANDLE WITH CARE (कांच/सामान सम्भाल कर रखें)
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
