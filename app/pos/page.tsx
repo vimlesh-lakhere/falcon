@@ -29,6 +29,7 @@ import {
   Mic,
   MicOff,
   Zap,
+  Package,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -1288,6 +1289,8 @@ export default function PosBillingPage() {
                     const effectivePiecePrice = customPrice !== undefined ? customPrice : pricing.piecePrice;
                     const salesCount = productSalesCount[p.id] || 0;
                     const isTopSeller = salesCount > 0;
+                    const rawImages = (p.image_url || "").split("|||").map((s) => s.trim()).filter(Boolean);
+                    const primaryImage = rawImages.length > 0 ? rawImages[0] : null;
 
                     // In-Cart quantities for this specific product
                     const cartPieceIndex = cart.findIndex((i) => i.product.id === p.id && i.unit === "piece");
@@ -1302,46 +1305,74 @@ export default function PosBillingPage() {
                       <div
                         key={p.id}
                         onClick={() => addToCart(p, "piece", 1)}
-                        className={`rounded-2xl border-2 p-2.5 sm:p-3 flex flex-col justify-between transition-all relative select-none cursor-pointer active:scale-[0.97] touch-manipulation group ${
+                        className={`rounded-2xl border-2 p-2 sm:p-2.5 flex flex-col justify-between transition-all relative select-none cursor-pointer active:scale-[0.97] touch-manipulation group ${
                           totalInCart > 0
                             ? "bg-purple-50/50 border-purple-600 shadow-md ring-2 ring-purple-600/10"
                             : "bg-white border-gray-200 hover:border-purple-400 hover:shadow-md"
                         } ${!inStock ? "opacity-60 bg-gray-50" : ""}`}
                         title="Tap anywhere to add 1 piece to bill"
                       >
-                        <div className="space-y-1">
-                          {/* Top Badge Row */}
-                          <div className="flex items-center justify-between gap-1">
-                            {totalInCart > 0 ? (
-                              <span className="text-[9px] sm:text-[10px] font-black bg-purple-600 text-white px-2 py-0.5 rounded-md flex items-center gap-1 shadow-xs animate-in zoom-in-75">
-                                <span>⚡ In Bill: {inCartPieceQty ? `${inCartPieceQty} pc` : ""}{inCartPieceQty && inCartDozenQty ? " + " : ""}{inCartDozenQty ? `${inCartDozenQty} d` : ""}</span>
-                              </span>
-                            ) : isTopSeller ? (
-                              <span className="text-[9px] sm:text-[10px] font-black bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                                <Flame className="w-3 h-3 text-amber-600" /> Top ({salesCount})
-                              </span>
-                            ) : (
-                              <span className="text-[9px] text-gray-400 font-mono truncate max-w-[80px]">
-                                {p.sku || p.barcode || ""}
-                              </span>
-                            )}
-                            <span
-                              className={`text-[9px] sm:text-[10px] font-bold ${
-                                inStock ? "text-emerald-700" : "text-rose-600"
-                              }`}
+                        <div className="space-y-1.5">
+                          {/* Product Image & Overlays */}
+                          <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 border border-gray-100 flex items-center justify-center group-hover:border-purple-200 transition-colors">
+                            {primaryImage ? (
+                              <img
+                                src={primaryImage}
+                                alt={p.name}
+                                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLElement).style.display = "none";
+                                  const fallback = (e.currentTarget.parentElement?.querySelector(".img-fallback") as HTMLElement);
+                                  if (fallback) fallback.style.display = "flex";
+                                }}
+                              />
+                            ) : null}
+                            <div
+                              className="img-fallback w-full h-full flex flex-col items-center justify-center text-gray-400 p-2"
+                              style={{ display: primaryImage ? "none" : "flex" }}
                             >
-                              {inStock
-                                ? `${stockQty} pcs ${stockQty >= 12 ? `(${Math.floor(stockQty / 12)}d)` : ""}`
-                                : "Out"}
-                            </span>
+                              <Package className="w-8 h-8 stroke-[1.2] text-gray-300 group-hover:text-purple-400 transition-colors" />
+                              <span className="text-[9px] font-bold text-gray-400 tracking-wider uppercase mt-0.5">
+                                {p.category?.name || "Falcon"}
+                              </span>
+                            </div>
+
+                            {/* Top Badges & Stock Overlays */}
+                            <div className="absolute top-1 left-1 right-1 flex items-center justify-between gap-1 pointer-events-none">
+                              {totalInCart > 0 ? (
+                                <span className="text-[9px] sm:text-[10px] font-black bg-purple-600/95 text-white px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
+                                  <span>⚡ {inCartPieceQty ? `${inCartPieceQty}p` : ""}{inCartPieceQty && inCartDozenQty ? "+" : ""}{inCartDozenQty ? `${inCartDozenQty}d` : ""}</span>
+                                </span>
+                              ) : isTopSeller ? (
+                                <span className="text-[9px] sm:text-[10px] font-black bg-amber-500/95 text-white px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-xs backdrop-blur-xs">
+                                  <Flame className="w-2.5 h-2.5 text-white" /> Top
+                                </span>
+                              ) : (
+                                <span className="text-[8px] text-gray-700 bg-white/90 px-1 py-0.5 rounded font-mono truncate max-w-[65px] backdrop-blur-xs font-bold">
+                                  {p.sku || p.barcode || ""}
+                                </span>
+                              )}
+
+                              <span
+                                className={`text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs shadow-xs ${
+                                  inStock ? "bg-emerald-600/90 text-white" : "bg-rose-600/90 text-white"
+                                }`}
+                              >
+                                {inStock
+                                  ? `${stockQty} ${stockQty >= 12 ? `(${Math.floor(stockQty / 12)}d)` : "pcs"}`
+                                  : "Out"}
+                              </span>
+                            </div>
                           </div>
 
-                          <span className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-2 leading-tight block">
+                          {/* Product Name */}
+                          <h4 className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-2 leading-tight min-h-[2rem]" title={p.name}>
                             {p.name}
-                          </span>
+                          </h4>
                         </div>
 
-                        <div className="mt-2.5 pt-1.5 border-t border-gray-100 space-y-1.5">
+                        <div className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-1.5">
                           {/* Pricing Line */}
                           <div className="flex flex-col">
                             <div className="flex items-baseline justify-between">
@@ -1554,20 +1585,45 @@ export default function PosBillingPage() {
                       isOverStock ? "bg-amber-50/40 border-amber-200" : ""
                     }`}
                   >
-                    {/* Top Row: Name & Remove */}
+                    {/* Top Row: Thumbnail + Name & Remove */}
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-gray-900 truncate">
-                          {item.product.name}
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {/* Product Thumbnail */}
+                        <div className="w-10 h-10 rounded-lg bg-gray-100 border border-gray-200 overflow-hidden shrink-0 flex items-center justify-center">
+                          {item.product.image_url ? (
+                            <img
+                              src={item.product.image_url.split("|||")[0].trim()}
+                              alt={item.product.name}
+                              className="w-full h-full object-cover object-center"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = "none";
+                                const fallback = (e.currentTarget.parentElement?.querySelector(".cart-img-fallback") as HTMLElement);
+                                if (fallback) fallback.style.display = "flex";
+                              }}
+                            />
+                          ) : null}
+                          <div
+                            className="cart-img-fallback w-full h-full flex items-center justify-center text-gray-400"
+                            style={{ display: item.product.image_url ? "none" : "flex" }}
+                          >
+                            <Package className="w-5 h-5 text-gray-400 stroke-[1.5]" />
+                          </div>
                         </div>
-                        <div className="text-[10px] text-gray-400 font-mono">
-                          {item.product.barcode || item.product.sku || "No Barcode"}
+
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-gray-900 truncate" title={item.product.name}>
+                            {item.product.name}
+                          </div>
+                          <div className="text-[10px] text-gray-400 font-mono">
+                            {item.product.barcode || item.product.sku || "No Barcode"}
+                          </div>
                         </div>
                       </div>
+
                       <button
                         type="button"
                         onClick={() => removeItem(index)}
-                        className="text-gray-300 hover:text-rose-600 p-1 transition-colors rounded-lg hover:bg-rose-50"
+                        className="text-gray-300 hover:text-rose-600 p-1 transition-colors rounded-lg hover:bg-rose-50 shrink-0"
                         title="Remove item from bill"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
