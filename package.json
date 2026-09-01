@@ -11,6 +11,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.8.0",
+    "@huggingface/inference": "^4.13.28",
     "@mediapipe/tasks-vision": "^1.0.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
