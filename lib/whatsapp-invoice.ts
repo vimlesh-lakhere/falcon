@@ -1,6 +1,6 @@
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { Sale, Customer, Product } from "@/types/database";
-import { buildUpiPaymentUrl } from "@/lib/thermal-printer";
+import { buildUpiPaymentUrl, parseFreightCharge } from "@/lib/thermal-printer";
 
 export interface WhatsAppInvoiceOptions {
   shopName: string;
@@ -53,6 +53,8 @@ export function buildWhatsAppInvoiceText(
         )}`
       : "";
 
+  const freightAmount = parseFreightCharge(sale);
+
   return `🧾 *CASH BILL / INVOICE - ${shopName.toUpperCase()}*
 ━━━━━━━━━━━━━━━━━━━━
 📍 *Address:* ${shopAddress}
@@ -66,7 +68,7 @@ ${showGst ? `🏛️ *GSTIN:* ${rawGst}\n` : ""}━━━━━━━━━━�
 ${itemsText}
 ━━━━━━━━━━━━━━━━━━━━
 💵 *Subtotal:* ₹${Number(sale.subtotal).toFixed(2)}
-${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${Number(sale.total_amount).toFixed(2)}*
+${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}${freightAmount > 0 ? `🚚 *भाड़ा / Freight:* +₹${freightAmount.toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${Number(sale.total_amount).toFixed(2)}*
 💳 *Payment Mode:* ${payMethod}${upiPayLink}
 ━━━━━━━━━━━━━━━━━━━━
 🙏 *${options?.customFooter || "Thank you for shopping with us!"}*

@@ -32,6 +32,7 @@ import {
   pairBluetoothPrinter,
   getBluetoothPrinterState,
   buildUpiPaymentUrl,
+  parseFreightCharge,
   PaperWidth,
 } from "@/lib/thermal-printer";
 
@@ -134,6 +135,8 @@ export function ThermalReceipt({
         )}`
       : "";
 
+  const freightAmount = parseFreightCharge(sale);
+
   const whatsappBillMessage = `🧾 *CASH BILL / INVOICE - ${activeShopName}*
 ━━━━━━━━━━━━━━━━━━━━
 📍 *Address:* ${activeShopAddress}
@@ -147,7 +150,7 @@ ${printerConfig.showGstin && activeShopGst ? `🏛️ *GSTIN:* ${activeShopGst}\
 ${itemsText}
 ━━━━━━━━━━━━━━━━━━━━
 💵 *Subtotal:* ₹${Number(sale.subtotal).toFixed(2)}
-${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${Number(sale.total_amount).toFixed(2)}*
+${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}${freightAmount > 0 ? `🚚 *भाड़ा / Freight:* +₹${freightAmount.toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${Number(sale.total_amount).toFixed(2)}*
 💳 *Payment Mode:* ${payMethod}${upiPayLink}
 ━━━━━━━━━━━━━━━━━━━━
 🙏 *${printerConfig.customFooter || "Thank you for shopping with us!"}*
@@ -402,6 +405,13 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
               <div className="flex justify-between text-[10px]">
                 <span>Tax / GST:</span>
                 <span>+₹{Number(sale.tax_amount).toFixed(2)}</span>
+              </div>
+            )}
+
+            {freightAmount > 0 && (
+              <div className="flex justify-between text-[10px] font-bold text-gray-900">
+                <span>🚚 भाड़ा / Freight:</span>
+                <span>+₹{freightAmount.toFixed(2)}</span>
               </div>
             )}
 

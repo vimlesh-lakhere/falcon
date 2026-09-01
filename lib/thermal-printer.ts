@@ -506,12 +506,16 @@ export async function buildRasterGraphicsReceipt(
   drawDashedLine();
 
   // 5. Bill Summary & Grand Total
+  const freight = parseFreightCharge(sale);
   drawRow("Subtotal:", `₹${Number(sale.subtotal || 0).toFixed(2)}`, baseFontSize);
   if (Number(sale.discount_amount) > 0) {
     drawRow("Discount:", `-₹${Number(sale.discount_amount).toFixed(2)}`, baseFontSize);
   }
   if (Number(sale.tax_amount) > 0) {
     drawRow("GST / Tax:", `+₹${Number(sale.tax_amount).toFixed(2)}`, baseFontSize);
+  }
+  if (freight > 0) {
+    drawRow("🚚 भाड़ा / Freight:", `+₹${freight.toFixed(2)}`, baseFontSize, true);
   }
 
   // Grand Total Highlight
@@ -736,6 +740,7 @@ export function buildEscPosReceipt(
   write(separator);
 
   // Totals (Right Align)
+  const freight = parseFreightCharge(sale);
   writeBytes(ESC, 0x61, 0x02);
   write(`Subtotal: INR ${sale.subtotal}\n`);
   if (Number(sale.discount_amount) > 0) {
@@ -743,6 +748,9 @@ export function buildEscPosReceipt(
   }
   if (Number(sale.tax_amount) > 0) {
     write(`GST/Tax: +INR ${sale.tax_amount}\n`);
+  }
+  if (freight > 0) {
+    write(`Freight/Delivery: +INR ${freight.toFixed(2)}\n`);
   }
 
   // Final Total (Double size + Bold)
@@ -822,8 +830,33 @@ export interface ParcelLabelData {
   notes?: string;
   senderName?: string;
   senderPhone?: string;
-  senderAddress?: string;
+senderAddress?: string;
   orientation?: "rotated-90" | "standard";
+}
+
+/**
+ * Parses freight / delivery / shipping charge from sale record or notes.
+ */
+export function parseFreightCharge(sale: Sale): number {
+  if (!sale) return 0;
+  if ((sale as any).shipping_fee) return Number((sale as any).shipping_fee) || 0;
+  if ((sale as any).delivery_charge) return Number((sale as any).delivery_charge) || 0;
+  if (sale.notes) {
+    const match = sale.notes.match(/(?:Freight|Delivery|Shipping|भाड़ा|भाडा)[\s:]*₹?\s*([\d.]+)/i);
+    if (match && match[1]) {
+      return parseFloat(match[1]) || 0;
+    }
+  }
+  // Check if calculated total exceeds subtotal - discount + tax
+  const sub = Number(sale.subtotal) || 0;
+  const disc = Number(sale.discount_amount) || 0;
+  const tax = Number(sale.tax_amount) || 0;
+  const tot = Number(sale.total_amount) || 0;
+  const diff = tot - (sub - disc + tax);
+  if (diff > 0.01 && sale.notes && (sale.notes.toLowerCase().includes("freight") || sale.notes.toLowerCase().includes("delivery") || sale.notes.includes("भाड़ा") || sale.notes.includes("भाडा"))) {
+    return Math.round(diff * 100) / 100;
+  }
+  return 0;
 }
 
 /**

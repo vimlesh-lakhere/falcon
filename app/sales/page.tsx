@@ -19,6 +19,9 @@ import {
   MessageCircle,
   MapPin,
   AlertCircle,
+  Pencil,
+  Tag,
+  Sparkles,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -30,6 +33,10 @@ import { createClient } from "@/lib/supabase/client";
 import { Sale } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
+import { EditInvoiceModal } from "@/components/sales/EditInvoiceModal";
+import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
+import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
+import { parseFreightCharge } from "@/lib/thermal-printer";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -42,6 +49,9 @@ function SalesHistoryContent() {
   const [search, setSearch] = useState("");
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [whatsAppSale, setWhatsAppSale] = useState<Sale | null>(null);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [printingSale, setPrintingSale] = useState<Sale | null>(null);
+  const [parcelSale, setParcelSale] = useState<Sale | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "online" | "pos">(initialTab);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -467,6 +477,30 @@ function SalesHistoryContent() {
                                 </>
                               )}
 
+                              {/* ✏️ Edit Invoice Button */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setEditingSale(sale)}
+                                className="text-xs font-bold h-7 gap-1 text-purple-700 hover:bg-purple-50 border-purple-300"
+                                title="Edit items, prices, discount or freight for this invoice"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-purple-600" />
+                                <span>Edit</span>
+                              </Button>
+
+                              {/* 🖨️ Thermal Print Receipt Button */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setPrintingSale(sale)}
+                                className="text-xs font-semibold h-7 gap-1 text-gray-700 hover:bg-gray-100 border-gray-300"
+                                title="Print 80mm/58mm Thermal Bill"
+                              >
+                                <Printer className="w-3.5 h-3.5 text-gray-700" />
+                                <span className="hidden md:inline">Print</span>
+                              </Button>
+
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -475,7 +509,7 @@ function SalesHistoryContent() {
                                 title="Share Cash Bill via WhatsApp"
                               >
                                 <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                <span className="hidden sm:inline">WhatsApp</span>
+                                <span className="hidden lg:inline">WhatsApp</span>
                               </Button>
 
                               <Button
@@ -712,6 +746,24 @@ function SalesHistoryContent() {
                     <span>Subtotal:</span>
                     <span>{formatCurrency(selectedSale.subtotal)}</span>
                   </div>
+                  {Number(selectedSale.discount_amount) > 0 && (
+                    <div className="flex justify-between text-emerald-700">
+                      <span>Discount:</span>
+                      <span>-{formatCurrency(selectedSale.discount_amount)}</span>
+                    </div>
+                  )}
+                  {parseFreightCharge(selectedSale) > 0 && (
+                    <div className="flex justify-between text-amber-800">
+                      <span>🚚 भाड़ा / Freight:</span>
+                      <span>+{formatCurrency(parseFreightCharge(selectedSale))}</span>
+                    </div>
+                  )}
+                  {Number(selectedSale.tax_amount) > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Tax / GST:</span>
+                      <span>+{formatCurrency(selectedSale.tax_amount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm text-gray-900 pt-1 border-t border-gray-200">
                     <span>Grand Total:</span>
                     <span className="text-brand-700">{formatCurrency(selectedSale.total_amount)}</span>
@@ -721,22 +773,54 @@ function SalesHistoryContent() {
 
               {/* Modal Actions */}
               <div className="flex items-center gap-2 flex-wrap">
+                {/* ✏️ Edit Invoice Button */}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditingSale(selectedSale);
+                    setSelectedSale(null);
+                  }}
+                  className="flex-1 gap-1.5 text-xs font-black text-purple-700 border-purple-300 hover:bg-purple-50"
+                >
+                  <Pencil className="w-4 h-4 text-purple-600" />
+                  Edit Invoice (बिल एडिट करें)
+                </Button>
+
+                {/* 🖨️ Thermal Print Receipt */}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPrintingSale(selectedSale);
+                    setSelectedSale(null);
+                  }}
+                  className="flex-1 gap-1.5 text-xs font-bold text-gray-800 hover:bg-gray-100"
+                >
+                  <Printer className="w-4 h-4 text-gray-700" />
+                  Thermal Print (80mm/58mm)
+                </Button>
+
+                {/* 🏷️ Shipping Parcel Sticker */}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setParcelSale(selectedSale);
+                    setSelectedSale(null);
+                  }}
+                  className="flex-1 gap-1.5 text-xs font-bold text-amber-800 border-amber-300 hover:bg-amber-50"
+                >
+                  <Tag className="w-4 h-4 text-amber-600" />
+                  Parcel Sticker
+                </Button>
+
                 <Button
                   variant="outline"
                   onClick={() => setWhatsAppSale(selectedSale)}
                   className="flex-1 gap-1.5 text-xs font-bold text-emerald-700 border-emerald-300 hover:bg-emerald-50"
                 >
                   <MessageCircle className="w-4 h-4 text-emerald-600" />
-                  Send WhatsApp Bill
+                  WhatsApp Bill
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => window.print()}
-                  className="flex-1 gap-1.5 text-xs font-semibold"
-                >
-                  <Printer className="w-4 h-4" />
-                  Print Delivery Slip / Invoice
-                </Button>
+
                 <Button
                   variant="secondary"
                   onClick={() => setSelectedSale(null)}
@@ -748,6 +832,53 @@ function SalesHistoryContent() {
             </div>
           )}
         </Modal>
+
+        {/* Edit Invoice Modal */}
+        {editingSale && (
+          <EditInvoiceModal
+            isOpen={!!editingSale}
+            onClose={() => setEditingSale(null)}
+            sale={editingSale}
+            shopId={SHOP_ID}
+            onSuccess={(updatedSale) => {
+              setEditingSale(null);
+              loadSales();
+              setPrintingSale(updatedSale);
+            }}
+          />
+        )}
+
+        {/* Thermal Print Receipt Modal */}
+        {printingSale && (
+          <Modal
+            isOpen={!!printingSale}
+            onClose={() => setPrintingSale(null)}
+            title={`🧾 Thermal Receipt #${printingSale.invoice_number}`}
+            description="80mm / 58mm POS thermal print, Bluetooth ESC/POS and sharing"
+            maxWidth="lg"
+          >
+            <ThermalReceipt
+              sale={printingSale}
+              customer={printingSale.customer}
+              shopId={SHOP_ID}
+              onDone={() => setPrintingSale(null)}
+            />
+          </Modal>
+        )}
+
+        {/* Shipping Parcel Label Modal */}
+        {parcelSale && (
+          <ShippingParcelLabelModal
+            isOpen={!!parcelSale}
+            onClose={() => setParcelSale(null)}
+            shopId={SHOP_ID}
+            initialCustomerName={parcelSale.customer?.name || undefined}
+            initialCustomerPhone={parcelSale.customer?.phone || undefined}
+            initialAddress={parcelSale.customer?.address || undefined}
+            initialInvoiceNo={parcelSale.invoice_number}
+            initialOrderValue={Number(parcelSale.total_amount) || 0}
+          />
+        )}
 
         {/* WhatsApp Invoice Modal */}
         {whatsAppSale && (

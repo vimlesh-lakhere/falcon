@@ -129,6 +129,7 @@ export default function PosBillingPage() {
   // Cart state & Persistence
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [freightAmount, setFreightAmount] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(0); // e.g. 0% or 18%
   const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
   const [isRestoredToast, setIsRestoredToast] = useState<boolean>(false);
@@ -818,6 +819,7 @@ export default function PosBillingPage() {
   const clearCart = () => {
     setCart([]);
     setDiscountAmount(0);
+    setFreightAmount(0);
     setSelectedCustomer(null);
     try {
       localStorage.removeItem(POS_CART_STORAGE_KEY);
@@ -834,7 +836,7 @@ export default function PosBillingPage() {
 
     const billSubtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const billTax = (billSubtotal - discountAmount) * (taxRate / 100);
-    const billTotal = Math.max(0, billSubtotal - discountAmount + billTax);
+    const billTotal = Math.max(0, billSubtotal - discountAmount + billTax + freightAmount);
     const totalItems = cart.reduce((s, i) => s + i.quantity, 0);
     const label =
       customLabel ||
@@ -868,7 +870,7 @@ export default function PosBillingPage() {
     if (cart.length > 0) {
       const currentSubtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       const currentTax = (currentSubtotal - discountAmount) * (taxRate / 100);
-      const currentTotal = Math.max(0, currentSubtotal - discountAmount + currentTax);
+      const currentTotal = Math.max(0, currentSubtotal - discountAmount + currentTax + freightAmount);
       const currentItems = cart.reduce((s, i) => s + i.quantity, 0);
       const currentLabel = selectedCustomer?.name
         ? `${selectedCustomer.name}`
@@ -908,7 +910,7 @@ export default function PosBillingPage() {
   // Calculations
   const subtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   const taxAmount = (subtotal - discountAmount) * (taxRate / 100);
-  const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount);
+  const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount + freightAmount);
 
   // Open checkout modal
   const handleOpenCheckout = (methodOrEvent?: "cash" | "upi" | "card" | "split" | React.MouseEvent) => {
@@ -963,6 +965,7 @@ export default function PosBillingPage() {
         discount_amount: discountAmount,
         tax_amount: taxAmount,
         total_amount: totalAmount,
+        notes: freightAmount > 0 ? `[Freight: ₹${freightAmount}]` : undefined,
         items: cart.map((it) => ({
           product_id: it.product.id,
           quantity: it.quantity,
@@ -1959,6 +1962,26 @@ export default function PosBillingPage() {
                   />
                 </div>
               </div>
+
+              {/* 🚚 Freight / Delivery Charges (भाड़ा) */}
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1 font-semibold text-gray-700">
+                  <span>🚚 भाड़ा / Freight</span>
+                </span>
+                <div className="flex items-center gap-1">
+                  <span className="text-gray-500 font-semibold">+ ₹</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={freightAmount === 0 ? "" : freightAmount}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) => setFreightAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
+                    className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded font-bold text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-purple-600 bg-white shadow-2xs"
+                    title="Add optional freight/shipping charge"
+                  />
+                </div>
+              </div>
+
               <div className="flex justify-between pt-2 border-t border-gray-200 text-base font-bold text-gray-900">
                 <span>Total Payable</span>
                 <span className="text-brand-700 text-xl tabular-nums">{formatCurrency(totalAmount)}</span>
