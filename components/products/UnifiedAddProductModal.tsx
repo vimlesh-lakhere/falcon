@@ -101,8 +101,23 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState("");
   const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
+  const [isPhotoActionSheetOpen, setIsPhotoActionSheetOpen] = useState(false);
   const [autoScanWithAi, setAutoScanWithAi] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
+
+  const handleOpenGalleryPicker = () => {
+    setIsPhotoActionSheetOpen(false);
+    if (activeImageTab === "front") {
+      frontFileInputRef.current?.click();
+    } else {
+      backFileInputRef.current?.click();
+    }
+  };
+
+  const handleOpenCameraCapture = () => {
+    setIsPhotoActionSheetOpen(false);
+    setIsCameraCaptureOpen(true);
+  };
 
   // Existing Product Duplicate Detection & 1-Click Variant Autofill State
   const [isNameSuggestionsOpen, setIsNameSuggestionsOpen] = useState(true);
@@ -929,51 +944,152 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 </button>
               </div>
 
-              {/* Active Image Container */}
-              <div className="relative aspect-[4/3] sm:aspect-square w-full rounded-2xl bg-gradient-to-b from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden group shadow-2xs">
+              {/* Active Image Container (Click opens direct Camera or Gallery options) */}
+              <div
+                onClick={() => {
+                  if (activeImageTab === "front" ? !imageUrl : !backImageUrl) {
+                    setIsPhotoActionSheetOpen(true);
+                  }
+                }}
+                className="relative aspect-[4/3] sm:aspect-square w-full rounded-2xl bg-gradient-to-b from-purple-50/30 via-gray-50 to-indigo-50/20 border-2 border-dashed border-purple-300 hover:border-purple-500 flex items-center justify-center overflow-hidden group shadow-2xs transition-all cursor-pointer"
+              >
                 {activeImageTab === "front" ? (
                   imageUrl ? (
-                    <img
-                      src={imageUrl}
-                      alt="Front Packaging"
-                      className="w-full h-full object-contain p-3 transition-transform group-hover:scale-105"
-                    />
+                    <div className="relative w-full h-full">
+                      <img
+                        src={imageUrl}
+                        alt="Front Packaging"
+                        className="w-full h-full object-contain p-2 transition-transform group-hover:scale-105"
+                      />
+                      {/* 1-Tap Overlay Actions */}
+                      <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsPhotoActionSheetOpen(true);
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-black/75 hover:bg-black text-white text-[11px] font-bold shadow-md flex items-center gap-1 backdrop-blur-xs active:scale-95 transition-all"
+                        >
+                          <Camera className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Change</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setImageUrl("");
+                          }}
+                          className="p-1.5 rounded-xl bg-black/75 hover:bg-rose-600 text-white shadow-md backdrop-blur-xs active:scale-95 transition-all"
+                          title="Remove photo"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="text-center p-4 space-y-2">
-                      <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto shadow-2xs">
-                        <Upload className="w-6 h-6" />
+                    <div className="text-center p-4 space-y-3 w-full">
+                      {/* Direct 1-Tap Big Buttons inside box */}
+                      <div className="flex items-center justify-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenCameraCapture();
+                          }}
+                          className="flex-1 py-3 px-2 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md active:scale-95 transition-all flex flex-col items-center gap-1 cursor-pointer"
+                        >
+                          <Camera className="w-6 h-6" />
+                          <span className="text-[11px] font-black">📷 Click Camera</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenGalleryPicker();
+                          }}
+                          className="flex-1 py-3 px-2 rounded-2xl bg-white hover:bg-purple-50 border border-purple-200 text-purple-700 shadow-xs active:scale-95 transition-all flex flex-col items-center gap-1 cursor-pointer"
+                        >
+                          <Upload className="w-6 h-6 text-purple-600" />
+                          <span className="text-[11px] font-black">🖼️ Choose Gallery</span>
+                        </button>
                       </div>
-                      <div className="text-xs font-bold text-gray-800">
-                        Upload Front Packshot
+
+                      <div className="text-[10px] text-gray-500 font-medium">
+                        Tap anywhere on box to upload Front photo
                       </div>
-                      <p className="text-[10px] text-gray-500">
-                        Main product bottle / pack on white background
-                      </p>
                     </div>
                   )
                 ) : backImageUrl ? (
-                  <img
-                    src={backImageUrl}
-                    alt="Back Packaging & MRP"
-                    className="w-full h-full object-contain p-3 transition-transform group-hover:scale-105"
-                  />
+                  <div className="relative w-full h-full">
+                    <img
+                      src={backImageUrl}
+                      alt="Back Packaging & MRP"
+                      className="w-full h-full object-contain p-2 transition-transform group-hover:scale-105"
+                    />
+                    <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsPhotoActionSheetOpen(true);
+                        }}
+                        className="px-2.5 py-1 rounded-xl bg-black/75 hover:bg-black text-white text-[11px] font-bold shadow-md flex items-center gap-1 backdrop-blur-xs active:scale-95 transition-all"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Change</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBackImageUrl("");
+                        }}
+                        className="p-1.5 rounded-xl bg-black/75 hover:bg-rose-600 text-white shadow-md backdrop-blur-xs active:scale-95 transition-all"
+                        title="Remove photo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="text-center p-4 space-y-2">
-                    <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto shadow-2xs">
-                      <Upload className="w-6 h-6" />
+                  <div className="text-center p-4 space-y-3 w-full">
+                    <div className="flex items-center justify-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenCameraCapture();
+                        }}
+                        className="flex-1 py-3 px-2 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md active:scale-95 transition-all flex flex-col items-center gap-1 cursor-pointer"
+                      >
+                        <Camera className="w-6 h-6" />
+                        <span className="text-[11px] font-black">📷 Click Camera</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenGalleryPicker();
+                        }}
+                        className="flex-1 py-3 px-2 rounded-2xl bg-white hover:bg-purple-50 border border-purple-200 text-purple-700 shadow-xs active:scale-95 transition-all flex flex-col items-center gap-1 cursor-pointer"
+                      >
+                        <Upload className="w-6 h-6 text-purple-600" />
+                        <span className="text-[11px] font-black">🖼️ Choose Gallery</span>
+                      </button>
                     </div>
-                    <div className="text-xs font-bold text-gray-800">
-                      Upload Back / MRP Photo
+
+                    <div className="text-[10px] text-gray-500 font-medium">
+                      Tap anywhere on box to upload Back/MRP label
                     </div>
-                    <p className="text-[10px] text-gray-500">
-                      Rear label showing printed MRP, barcode & ingredients
-                    </p>
                   </div>
                 )}
 
                 {/* Badge indicating which angle is showing */}
-                <div className="absolute top-2.5 left-2.5 bg-black/70 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs">
-                  {activeImageTab === "front" ? "📷 Front Packshot" : "🔍 Back / MRP Label"}
+                <div className="absolute top-2.5 left-2.5 bg-black/70 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs pointer-events-none">
+                  {activeImageTab === "front" ? "📷 Front View" : "🔍 Back / MRP"}
                 </div>
 
                 {/* Hidden File Inputs */}
@@ -1000,75 +1116,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
                 {/* Loading Overlay */}
                 {isAnalyzing && (
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white space-y-2">
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white space-y-2 z-20">
                     <RefreshCw className="w-7 h-7 animate-spin text-purple-300" />
                     <span className="text-xs font-bold text-purple-100">Extracting Name & MRP...</span>
                   </div>
                 )}
               </div>
 
-              {/* Visual Action Buttons for Active Tab (Direct Camera Click + Gallery Upload) */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* 1. Direct Live Camera Capture Button */}
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => setIsCameraCaptureOpen(true)}
-                  className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
-                  title="Click photo using device camera"
-                >
-                  <Camera className="w-3.5 h-3.5 mr-1" />
-                  <span>📷 Click Camera</span>
-                </Button>
-
-                {/* 2. Gallery / File Upload Button */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (activeImageTab === "front") {
-                      frontFileInputRef.current?.click();
-                    } else {
-                      backFileInputRef.current?.click();
-                    }
-                  }}
-                  className="flex-1 text-xs font-bold border-gray-300 hover:border-purple-500 hover:bg-purple-50"
-                  title="Choose image from phone gallery or files"
-                >
-                  <Upload className="w-3.5 h-3.5 text-purple-600 mr-1" />
-                  <span>🖼️ Gallery</span>
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowUrlInput(!showUrlInput)}
-                  className="text-xs border-gray-300 hover:bg-gray-50 px-2"
-                  title="Paste direct image URL"
-                >
-                  <LinkIcon className="w-3.5 h-3.5 text-gray-600" />
-                </Button>
-
-                {(activeImageTab === "front" ? imageUrl : backImageUrl) && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (activeImageTab === "front") setImageUrl("");
-                      else setBackImageUrl("");
-                    }}
-                    className="text-xs border-gray-300 text-red-600 hover:bg-red-50 px-2"
-                    title="Remove active angle image"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                )}
-              </div>
-
-              {/* Paste Image URL Box */}
+              {/* Paste Image URL Toggle */}
               {showUrlInput && (
                 <div className="flex items-center gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-xl animate-in fade-in duration-150">
                   <input
@@ -1942,6 +1997,124 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         onCapture={(photoDataUrl) => handleProcessImageDataUrl(photoDataUrl, activeImageTab)}
         targetAngle={activeImageTab}
       />
+
+      {/* 📸 1-Tap Photo Action Sheet (Camera vs Gallery vs Polish vs URL) */}
+      {isPhotoActionSheetOpen && (
+        <div
+          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-3 animate-in fade-in duration-150"
+          onClick={() => setIsPhotoActionSheetOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-white rounded-3xl p-4 shadow-2xl space-y-2.5 animate-in slide-in-from-bottom-5 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                  <Camera className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-black text-gray-900">
+                  {activeImageTab === "front" ? "Front Packshot Photo" : "Back / MRP Photo"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPhotoActionSheetOpen(false)}
+                className="p-1 text-gray-400 hover:text-gray-700 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 1. Live Camera Snapshot */}
+            <button
+              type="button"
+              onClick={handleOpenCameraCapture}
+              className="w-full p-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-between shadow-md active:scale-98 transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-white/20 rounded-xl">
+                  <Camera className="w-4 h-4 text-white" />
+                </div>
+                <div className="text-left">
+                  <div className="font-black text-white text-xs">📷 Open Live Camera</div>
+                  <div className="text-[10px] text-purple-200">Snapshot product pack with phone camera</div>
+                </div>
+              </div>
+              <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">Fast</span>
+            </button>
+
+            {/* 2. Choose from Gallery */}
+            <button
+              type="button"
+              onClick={handleOpenGalleryPicker}
+              className="w-full p-3 rounded-2xl bg-purple-50/70 hover:bg-purple-100 border border-purple-200 text-purple-900 font-bold text-xs flex items-center justify-between shadow-2xs active:scale-98 transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-purple-200 text-purple-800 rounded-xl">
+                  <Upload className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <div className="font-black text-purple-950 text-xs">🖼️ Choose from Gallery</div>
+                  <div className="text-[10px] text-purple-700/80">Select existing image file from phone</div>
+                </div>
+              </div>
+            </button>
+
+            {/* 3. Studio Polish (if photo present) */}
+            {(activeImageTab === "front" ? imageUrl : backImageUrl) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPhotoActionSheetOpen(false);
+                  handleStudioPolishPhoto();
+                }}
+                disabled={isPolishing}
+                className="w-full p-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-xs flex items-center justify-between shadow-2xs active:scale-98 transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 bg-white/20 rounded-xl">
+                    <Sparkles className="w-4 h-4 text-yellow-300 animate-pulse" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-black text-white text-xs">✨ Studio Polish & White BG</div>
+                    <div className="text-[10px] text-emerald-100">Clean background & set on pure white</div>
+                  </div>
+                </div>
+              </button>
+            )}
+
+            {/* 4. Paste URL */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsPhotoActionSheetOpen(false);
+                setShowUrlInput(true);
+              }}
+              className="w-full p-2.5 rounded-xl hover:bg-gray-100 border border-gray-200 text-gray-700 font-bold text-xs flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <LinkIcon className="w-4 h-4 text-gray-500" />
+              <span>🌐 Paste Image URL</span>
+            </button>
+
+            {/* 5. Delete Photo (if photo present) */}
+            {(activeImageTab === "front" ? imageUrl : backImageUrl) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPhotoActionSheetOpen(false);
+                  if (activeImageTab === "front") setImageUrl("");
+                  else setBackImageUrl("");
+                }}
+                className="w-full p-2.5 rounded-xl hover:bg-rose-50 border border-rose-200 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Remove Current Photo</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
