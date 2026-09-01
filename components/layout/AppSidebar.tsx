@@ -59,8 +59,8 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
       <div className="p-4 border-b border-surface-border space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white shadow-sm font-bold text-base">
-              F
+            <div className="w-8 h-8 rounded-lg overflow-hidden shadow-xs shrink-0 flex items-center justify-center">
+              <img src="/icons/icon-192x192.png" alt="Falcon Logo" className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
               <span className="font-extrabold text-sm text-gray-900 leading-tight">

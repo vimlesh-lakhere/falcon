@@ -23,8 +23,8 @@ export function AuthLayout({
 
         {/* Brand Header */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white font-bold text-xl shadow-lg border border-white/20">
-            F
+          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg border border-white/20 shrink-0">
+            <img src="/icons/icon-192x192.png" alt="Falcon Logo" className="w-full h-full object-cover" />
           </div>
           <div>
             <h1 className="text-xl font-extrabold tracking-tight flex items-center gap-2">
@@ -78,8 +78,8 @@ export function AuthLayout({
         <div className="w-full max-w-md space-y-6">
           {/* Mobile Brand Header */}
           <div className="lg:hidden flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
-              F
+            <div className="w-9 h-9 rounded-lg overflow-hidden shadow-xs shrink-0">
+              <img src="/icons/icon-192x192.png" alt="Falcon Logo" className="w-full h-full object-cover" />
             </div>
             <div>
               <span className="font-bold text-gray-900 leading-tight block">Falcon ERP</span>
