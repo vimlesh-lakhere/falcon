@@ -46,6 +46,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { AddProductSplitButton } from "@/components/products/AddProductSplitButton";
 import { UnifiedAddProductModal } from "@/components/products/UnifiedAddProductModal";
+import { FalconAiProductModal } from "@/components/products/FalconAiProductModal";
 import { ExcelBulkImportModal } from "@/components/products/ExcelBulkImportModal";
 import { ManageCategoriesModal } from "@/components/products/ManageCategoriesModal";
 import { BarcodeLabelGenerator } from "@/components/products/BarcodeLabelGenerator";
@@ -68,6 +69,7 @@ export default function ProductsPage() {
 
   // Unified Add / Edit Product Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFalconAiModalOpen, setIsFalconAiModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Quick Stock Adjustment Dialog state
@@ -440,7 +442,7 @@ export default function ProductsPage() {
 
             {/* Primary Add Product Action */}
             <AddProductSplitButton
-              onOpenAiCreation={openAddModal}
+              onOpenAiCreation={() => setIsFalconAiModalOpen(true)}
               onOpenManualCreation={openAddModal}
             />
           </div>
@@ -877,6 +879,27 @@ export default function ProductsPage() {
           existingProducts={products}
           onCategoryCreated={(newCat) => setCategories((prev) => [...prev, newCat])}
           onSupplierCreated={(newSupp) => setSuppliers((prev) => [...prev, newSupp])}
+        />
+
+        {/* ========================================================================= */}
+        {/* FALCON AI PRODUCT SHOWROOM & MULTI-ANGLE STUDIO MODAL                      */}
+        {/* ========================================================================= */}
+        <FalconAiProductModal
+          isOpen={isFalconAiModalOpen}
+          onClose={() => setIsFalconAiModalOpen(false)}
+          onProductCreated={() => {
+            setIsFalconAiModalOpen(false);
+            loadData();
+          }}
+          shopId={activeShopId}
+          categories={categories}
+          suppliers={suppliers}
+          units={units}
+          existingProducts={products}
+          onOpenManualModal={() => {
+            setIsFalconAiModalOpen(false);
+            openAddModal();
+          }}
         />
 
         {/* Barcode Label Print & Generator Modal */}

@@ -21,10 +21,28 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_HF_TOKEN ||
       process.env.HUGGINGFACE_API_KEY;
 
-    // Extract base64 payload & convert to Buffer / Blob
-    const base64Data = image.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
-    const imageBuffer = Buffer.from(base64Data, "base64");
-    const imageBlob = new Blob([imageBuffer], { type: "image/png" });
+    let cleanImageSrc = typeof image === "string" ? image.split("|||")[0].trim() : "";
+    if (!cleanImageSrc) {
+      return NextResponse.json({ error: "Invalid image source" }, { status: 400 });
+    }
+
+    let imageBuffer: Buffer;
+    if (cleanImageSrc.startsWith("http://") || cleanImageSrc.startsWith("https://")) {
+      // Download existing remote image
+      const fetchRes = await fetch(cleanImageSrc);
+      if (!fetchRes.ok) {
+        throw new Error(`Could not fetch remote product image: HTTP ${fetchRes.status}`);
+      }
+      const arrayBuf = await fetchRes.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuf);
+    } else {
+      // Extract base64 payload
+      const base64Data = cleanImageSrc.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+      imageBuffer = Buffer.from(base64Data, "base64");
+    }
+
+    const uint8Data = new Uint8Array(imageBuffer);
+    const imageBlob = new Blob([uint8Data], { type: "image/png" });
 
     // -----------------------------------------------------------------
     // TIER 1: HUGGING FACE INFERENCE (RMBG-2.0 & RMBG-1.4)
@@ -87,7 +105,7 @@ export async function POST(req: NextRequest) {
               "Content-Type": "application/octet-stream",
               Authorization: `Bearer ${token}`,
             },
-            body: imageBuffer,
+            body: uint8Data,
           }
         );
 
@@ -115,7 +133,7 @@ export async function POST(req: NextRequest) {
         const formData = new FormData();
         formData.append(
           "image_file",
-          new Blob([imageBuffer], { type: "image/jpeg" }),
+          new Blob([uint8Data], { type: "image/jpeg" }),
           "product.jpg"
         );
 
