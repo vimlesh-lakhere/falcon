@@ -522,17 +522,19 @@ export default function DashboardPage() {
       </div>
 
       {/* ⚡ Quick Demand Pad / Kharidi Parchi Modal */}
-      <QuickDemandPadModal
-        isOpen={isQuickDemandPadOpen}
-        onClose={() => setIsQuickDemandPadOpen(false)}
-        shopId={SHOP_ID}
-        suppliers={suppliers}
-        onAddAsProduct={(name, suppId) => {
-          window.location.href = `/products?action=add&name=${encodeURIComponent(name)}${
-            suppId ? `&supplierId=${encodeURIComponent(suppId)}` : ""
-          }`;
-        }}
-      />
+      {isQuickDemandPadOpen && (
+        <QuickDemandPadModal
+          isOpen={isQuickDemandPadOpen}
+          onClose={() => setIsQuickDemandPadOpen(false)}
+          shopId={SHOP_ID}
+          suppliers={suppliers}
+          onAddAsProduct={(name, suppId) => {
+            window.location.href = `/products?action=add&name=${encodeURIComponent(name)}${
+              suppId ? `&supplierId=${encodeURIComponent(suppId)}` : ""
+            }`;
+          }}
+        />
+      )}
     </MainLayout>
   );
 }
