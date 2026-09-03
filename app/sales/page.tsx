@@ -224,51 +224,51 @@ function SalesHistoryContent() {
           const avgMrg = totalRev > 0 ? (totalPrf / totalRev) * 100 : 0;
 
           return (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                  Total Sales Revenue
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+              <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+                <span className="text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  Total Revenue
                 </span>
-                <div className="text-xl font-black text-gray-900 tabular-nums">
+                <div className="text-base sm:text-xl font-black text-gray-900 tabular-nums">
                   {formatCurrency(totalRev)}
                 </div>
-                <div className="text-[11px] text-gray-500 font-medium">
-                  {filteredSales.length} Total Invoices Billed
+                <div className="text-[10px] sm:text-[11px] text-gray-500 font-medium truncate">
+                  {filteredSales.length} Total Invoices
                 </div>
               </div>
 
-              <div className="bg-gradient-to-br from-emerald-50 to-teal-50/70 p-4 rounded-2xl border border-emerald-200 shadow-xs space-y-1">
-                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
-                  Total Gross Profit (कमाई)
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50/70 p-3 sm:p-4 rounded-2xl border border-emerald-200 shadow-xs space-y-1">
+                <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
+                  Gross Profit (कमाई)
                 </span>
-                <div className="text-xl font-black text-emerald-700 tabular-nums flex items-baseline gap-1.5">
+                <div className="text-base sm:text-xl font-black text-emerald-700 tabular-nums flex items-baseline gap-1">
                   <span>+{formatCurrency(totalPrf)}</span>
                 </div>
-                <div className="text-[11px] font-bold text-emerald-800">
-                  ⚡ {avgMrg.toFixed(1)}% Overall Margin
+                <div className="text-[10px] sm:text-[11px] font-bold text-emerald-800 truncate">
+                  ⚡ {avgMrg.toFixed(1)}% Margin
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                  Inventory Cost (COGS)
+              <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+                <span className="text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  Inventory Cost
                 </span>
-                <div className="text-xl font-black text-gray-700 tabular-nums">
+                <div className="text-base sm:text-xl font-black text-gray-700 tabular-nums">
                   {formatCurrency(totalCst)}
                 </div>
-                <div className="text-[11px] text-gray-500 font-medium">
+                <div className="text-[10px] sm:text-[11px] text-gray-500 font-medium truncate">
                   Product purchase costs
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                  Avg. Ticket / Basket
+              <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-200 shadow-xs space-y-1">
+                <span className="text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  Avg. Basket
                 </span>
-                <div className="text-xl font-black text-purple-700 tabular-nums">
+                <div className="text-base sm:text-xl font-black text-purple-700 tabular-nums">
                   {formatCurrency(totalRev / (filteredSales.length || 1))}
                 </div>
-                <div className="text-[11px] text-gray-500 font-medium">
+                <div className="text-[10px] sm:text-[11px] text-gray-500 font-medium truncate">
                   Per transaction average
                 </div>
               </div>
@@ -294,10 +294,214 @@ function SalesHistoryContent() {
           </div>
         )}
 
-        {/* Invoices & Orders Table */}
+        {/* Invoices & Orders Container (Dual Responsive View) */}
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            {/* 📱 Mobile View: Touch-Friendly Card Rows (Zero horizontal scrolling) */}
+            <div className="block sm:hidden divide-y divide-gray-100">
+              {loading ? (
+                <div className="p-8 text-center text-xs text-gray-400">
+                  Loading transaction records...
+                </div>
+              ) : filteredSales.length === 0 ? (
+                <div className="p-8 text-center text-xs text-gray-400">
+                  {activeTab === "online"
+                    ? "No online orders found."
+                    : activeTab === "pos"
+                    ? "No in-store POS sales found."
+                    : "No records found."}
+                </div>
+              ) : (
+                filteredSales.map((sale) => {
+                  const isOnline = isOnlineOrder(sale);
+                  const items = sale.items || [];
+                  const billCost = items.reduce(
+                    (sum: number, it: any) =>
+                      sum +
+                      ((Number(it.cost_price) || Number(it.product?.purchase_price) || 0) *
+                        Number(it.quantity || 1)),
+                    0
+                  );
+                  const billTotal = Number(sale.total_amount) || Number(sale.subtotal) || 0;
+                  const billProfit = billTotal - billCost;
+                  const billMargin = billTotal > 0 ? (billProfit / billTotal) * 100 : 0;
+
+                  return (
+                    <div
+                      key={sale.id}
+                      className={`p-4 transition-colors ${
+                        isOnline && sale.status === "received"
+                          ? "bg-purple-50/50"
+                          : "bg-white hover:bg-gray-50/50"
+                      }`}
+                    >
+                      {/* Row 1: Channel + Invoice # + Status Badge */}
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {isOnline ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 text-[10px] font-bold shrink-0">
+                              <Globe className="w-3 h-3" /> Online
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 text-[10px] font-bold shrink-0">
+                              <Store className="w-3 h-3" /> POS
+                            </span>
+                          )}
+                          <span className="font-mono text-xs font-bold text-gray-900 truncate">
+                            {sale.invoice_number}
+                          </span>
+                        </div>
+                        <div className="shrink-0">{getStatusBadge(sale.status)}</div>
+                      </div>
+
+                      {/* Row 2: Customer & Date */}
+                      <div className="flex items-start justify-between gap-2 mb-2.5">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-gray-900 truncate">
+                            {sale.customer ? sale.customer.name : "Walk-in Customer"}
+                          </div>
+                          {sale.customer?.phone && (
+                            <a
+                              href={`tel:${sale.customer.phone}`}
+                              className="inline-flex items-center gap-1 text-[11px] text-brand-600 font-mono font-medium hover:underline mt-0.5"
+                            >
+                              <Phone className="w-3 h-3 text-brand-500" />
+                              <span>{sale.customer.phone}</span>
+                            </a>
+                          )}
+                          {sale.customer?.address && (
+                            <div className="text-[10px] text-gray-500 truncate mt-0.5" title={sale.customer.address}>
+                              📍 {sale.customer.address}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] font-mono text-gray-400">
+                            {formatDateTime(sale.created_at)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Row 3: Financials Summary Box (Amount + Profit + Payment Mode) */}
+                      <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-100 mb-3 flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[10px] uppercase font-bold text-gray-400">Total Billed</div>
+                          <div className="text-sm font-black text-brand-700 tabular-nums">
+                            {formatCurrency(sale.total_amount)}
+                          </div>
+                          <div className="text-[9px] font-semibold text-gray-500 uppercase mt-0.5">
+                            Paid via {sale.payments?.[0]?.method || (sale.notes?.includes("UPI") ? "UPI" : "Cash")}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-[10px] uppercase font-bold text-gray-400">Est. Profit</div>
+                          <div className="text-xs font-black text-emerald-700 tabular-nums">
+                            +{formatCurrency(billProfit)}
+                          </div>
+                          <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded mt-0.5">
+                            {billMargin.toFixed(1)}% margin
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Online Order Quick Workflow Transition Button (if applicable) */}
+                      {isOnline && (
+                        <div className="mb-2.5">
+                          {sale.status === "received" && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateStatus(sale.id, "confirmed")}
+                              disabled={updatingId === sale.id}
+                              className="w-full text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white font-bold gap-1.5"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Accept & Confirm Order
+                            </Button>
+                          )}
+                          {sale.status === "confirmed" && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateStatus(sale.id, "packing")}
+                              disabled={updatingId === sale.id}
+                              className="w-full text-xs h-8 bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5"
+                            >
+                              <PackageCheck className="w-3.5 h-3.5" /> Start Packing
+                            </Button>
+                          )}
+                          {sale.status === "packing" && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateStatus(sale.id, "out_for_delivery")}
+                              disabled={updatingId === sale.id}
+                              className="w-full text-xs h-8 bg-purple-600 hover:bg-purple-700 text-white font-bold gap-1.5"
+                            >
+                              <Truck className="w-3.5 h-3.5" /> Dispatch / Out for Delivery
+                            </Button>
+                          )}
+                          {sale.status === "out_for_delivery" && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateStatus(sale.id, "completed")}
+                              disabled={updatingId === sale.id}
+                              className="w-full text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Mark Delivered & Paid
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Row 4: Action Buttons Bar */}
+                      <div className="grid grid-cols-4 gap-1.5 pt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSelectedSale(sale)}
+                          className="text-[11px] h-7 px-1 flex items-center justify-center gap-1 font-semibold"
+                        >
+                          <Eye className="w-3 h-3 text-gray-500" />
+                          <span>Details</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingSale(sale)}
+                          className="text-[11px] h-7 px-1 flex items-center justify-center gap-1 font-semibold text-purple-700 border-purple-200 hover:bg-purple-50"
+                        >
+                          <Pencil className="w-3 h-3 text-purple-600" />
+                          <span>Edit</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPrintingSale(sale)}
+                          className="text-[11px] h-7 px-1 flex items-center justify-center gap-1 font-semibold text-gray-700 border-gray-300 hover:bg-gray-100"
+                        >
+                          <Printer className="w-3 h-3 text-gray-700" />
+                          <span>Print</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setWhatsAppSale(sale)}
+                          className="text-[11px] h-7 px-1 flex items-center justify-center gap-1 font-semibold text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                        >
+                          <MessageCircle className="w-3 h-3 text-emerald-600" />
+                          <span>WA</span>
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* 💻 Desktop View: Full Data Table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50/80 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100">
                   <tr>
@@ -314,13 +518,13 @@ function SalesHistoryContent() {
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
+                      <td colSpan={8} className="px-6 py-8 text-center text-gray-400">
                         Loading transaction records...
                       </td>
                     </tr>
                   ) : filteredSales.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
+                      <td colSpan={8} className="px-6 py-8 text-center text-gray-400">
                         {activeTab === "online"
                           ? "No online orders found."
                           : activeTab === "pos"
