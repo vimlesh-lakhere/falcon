@@ -1,11 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { HfInference } from "@huggingface/inference";
+import { requireStaff } from "@/lib/auth/server";
+
+function isSafeRemoteUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+    const hostname = parsed.hostname.toLowerCase();
+    // Block loopback, local network, and cloud metadata endpoints
+    if (
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname === "::1" ||
+      hostname === "169.254.169.254" ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * High-performance AI Product Background Remover API
  * Utilizes Hugging Face RMBG-2.0 / RMBG-1.4 / BiRefNet neural segmentation models.
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await req.json();
     const { image, apiKey, hfToken } = body;
@@ -18,7 +47,6 @@ export async function POST(req: NextRequest) {
       hfToken ||
       apiKey ||
       process.env.HF_TOKEN ||
-      process.env.NEXT_PUBLIC_HF_TOKEN ||
       process.env.HUGGINGFACE_API_KEY;
 
     let cleanImageSrc = typeof image === "string" ? image.split("|||")[0].trim() : "";
@@ -28,6 +56,9 @@ export async function POST(req: NextRequest) {
 
     let imageBuffer: Buffer;
     if (cleanImageSrc.startsWith("http://") || cleanImageSrc.startsWith("https://")) {
+      if (!isSafeRemoteUrl(cleanImageSrc)) {
+        return NextResponse.json({ error: "Forbidden or unsafe remote image URL" }, { status: 400 });
+      }
       // Download existing remote image
       const fetchRes = await fetch(cleanImageSrc);
       if (!fetchRes.ok) {
