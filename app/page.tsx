@@ -15,13 +15,18 @@ import {
   DollarSign,
   Truck,
   MessageSquare,
+  ClipboardList,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { dashboardRepository, DashboardMetrics } from "@/repositories/dashboard.repo";
+import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { QuickDemandPadModal } from "@/components/dashboard/QuickDemandPadModal";
+import { quickDemandNotesService } from "@/lib/quick-demand-notes";
+import { Supplier } from "@/types/database";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -29,11 +34,23 @@ export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeOnlineOrders, setActiveOnlineOrders] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [isQuickDemandPadOpen, setIsQuickDemandPadOpen] = useState(false);
+  const [demandStats, setDemandStats] = useState({
+    total: 0,
+    pending: 0,
+    completed: 0,
+    byGroup: {} as Record<string, number>,
+  });
+
+  const updateDemandStats = () => {
+    setDemandStats(quickDemandNotesService.getStats(SHOP_ID));
+  };
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [data, salesRes] = await Promise.all([
+      const [data, salesRes, suppsRes] = await Promise.all([
         dashboardRepository.getMetrics(SHOP_ID),
         (async () => {
           const { createClient } = await import("@/lib/supabase/client");
@@ -45,12 +62,14 @@ export default function DashboardPage() {
             .in("status", ["received", "pending", "confirmed", "packing", "out_for_delivery"])
             .order("created_at", { ascending: false });
         })(),
+        suppliersRepository.getAll(SHOP_ID).catch(() => []),
       ]);
 
       setMetrics(data);
       if (salesRes?.data) {
         setActiveOnlineOrders(salesRes.data);
       }
+      setSuppliers(suppsRes || []);
     } catch (err) {
       console.error("Failed to load dashboard metrics", err);
     } finally {
@@ -60,6 +79,35 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadData();
+    updateDemandStats();
+
+    const handleDemandNotesUpdated = () => updateDemandStats();
+    window.addEventListener("falcon_demand_notes_updated", handleDemandNotesUpdated);
+    return () => window.removeEventListener("falcon_demand_notes_updated", handleDemandNotesUpdated);
+  }, []);
+
+  // Handle URL query for auto-opening Quick Note (e.g. from PWA app icon shortcut)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("action") === "quick-note") {
+        setIsQuickDemandPadOpen(true);
+      }
+    }
+  }, []);
+
+  // Global Keyboard shortcut 'Q' or 'Alt+Q' to open Quick Demand Pad
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+      if (!isInput && (e.key.toLowerCase() === "q" || (e.altKey && e.key.toLowerCase() === "q"))) {
+        e.preventDefault();
+        setIsQuickDemandPadOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   return (
@@ -129,7 +177,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Top KPI Metrics Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Today's Sales */}
           <Card className="hover:shadow-md transition-shadow border-brand-100">
             <CardContent className="p-5 flex items-center justify-between">
@@ -212,6 +260,42 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </Link>
+
+          {/* ⚡ Quick Demand Pad (Kharidi Parchi) */}
+          <div
+            onClick={() => setIsQuickDemandPadOpen(true)}
+            className="cursor-pointer block"
+          >
+            <Card className="hover:shadow-md transition-all border-purple-300 bg-gradient-to-br from-purple-50/70 via-white to-indigo-50/40 hover:border-purple-500 group h-full">
+              <CardContent className="p-5 flex items-center justify-between">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-purple-900 uppercase tracking-wider">
+                      Demand Pad
+                    </span>
+                    <span className="text-[9px] font-black bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-full uppercase">
+                      Kharidi
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-purple-950 tabular-nums">
+                    {demandStats.pending}{" "}
+                    <span className="text-xs font-normal text-gray-500">to order</span>
+                  </div>
+                  <div className="text-[11px] text-purple-700 truncate max-w-[140px] font-medium">
+                    {Object.keys(demandStats.byGroup).length > 0
+                      ? Object.entries(demandStats.byGroup)
+                          .slice(0, 2)
+                          .map(([g, c]) => `${g}: ${c}`)
+                          .join(" • ")
+                      : "Tap to jot down (Q)"}
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                  <ClipboardList className="w-6 h-6" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Content Section: Recent Transactions & Top Selling Products */}
@@ -230,7 +314,58 @@ export default function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              {/* 📱 Mobile View: Responsive Card Rows (Zero horizontal sliding needed) */}
+              <div className="block sm:hidden divide-y divide-gray-100">
+                {loading ? (
+                  <div className="px-4 py-8 text-center text-xs text-gray-400">
+                    Loading transactions...
+                  </div>
+                ) : metrics?.recentSales.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-xs text-gray-400">
+                    No transactions recorded yet today.
+                  </div>
+                ) : (
+                  metrics?.recentSales.map((sale) => (
+                    <div
+                      key={sale.id}
+                      className="p-3.5 hover:bg-gray-50/70 active:bg-gray-100/50 transition-colors flex items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-gray-900 truncate">
+                            {sale.customer ? sale.customer.name : "Walk-in Customer"}
+                          </span>
+                          <Badge
+                            variant={sale.status === "completed" ? "success" : "warning"}
+                            className="text-[10px] px-1.5 py-0.2 shrink-0"
+                          >
+                            {sale.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                          <span className="font-mono font-medium text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">
+                            {sale.invoice_number}
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1 text-gray-400">
+                            <Clock className="w-3 h-3" />
+                            {formatDateTime(sale.created_at)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-black text-gray-900 tabular-nums">
+                          {formatCurrency(sale.total_amount)}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* 💻 Desktop View: Full-featured Table */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-50/80 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100">
                     <tr>
@@ -292,6 +427,32 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-2">
+                {/* ⚡ Quick Demand Pad Action */}
+                <div
+                  onClick={() => setIsQuickDemandPadOpen(true)}
+                  className="flex items-center justify-between p-3 rounded-lg border border-purple-200 bg-purple-50/40 hover:bg-purple-100/60 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
+                      ⚡
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                        <span>Quick Demand Pad</span>
+                        <span className="text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-300 px-1.5 py-0.2 rounded">
+                          Press &apos;Q&apos;
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-gray-500">
+                        {demandStats.pending > 0
+                          ? `${demandStats.pending} shortages pending`
+                          : "Jot customer & party demands"}
+                      </div>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-purple-600" />
+                </div>
+
                 <Link href="/pos" className="block">
                   <div className="flex items-center justify-between p-3 rounded-lg border border-brand-100 bg-brand-50/30 hover:bg-brand-50 transition-colors">
                     <div className="flex items-center gap-3">
@@ -359,6 +520,19 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* ⚡ Quick Demand Pad / Kharidi Parchi Modal */}
+      <QuickDemandPadModal
+        isOpen={isQuickDemandPadOpen}
+        onClose={() => setIsQuickDemandPadOpen(false)}
+        shopId={SHOP_ID}
+        suppliers={suppliers}
+        onAddAsProduct={(name, suppId) => {
+          window.location.href = `/products?action=add&name=${encodeURIComponent(name)}${
+            suppId ? `&supplierId=${encodeURIComponent(suppId)}` : ""
+          }`;
+        }}
+      />
     </MainLayout>
   );
 }

@@ -791,8 +791,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[96vh] sm:max-h-[92vh] flex flex-col overflow-hidden">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 w-full max-w-4xl max-h-[96vh] sm:max-h-[92vh] flex flex-col overflow-hidden">
         {/* ========================================================================= */}
         {/* MODAL HEADER                                                              */}
         {/* ========================================================================= */}
@@ -893,6 +894,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
               </button>
             ))}
           </div>
+        </div>
 
         {/* ========================================================================= */}
         {/* MODAL MAIN CONTENT (2-COLUMN GRID)                                        */}
@@ -1902,6 +1904,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           </div>
         </div>
       </div>
+    </div>
 
       {/* ========================================================================= */}
       {/* INLINE QUICK CATEGORY ADD MODAL                                           */}
@@ -2115,7 +2118,6 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           </div>
         </div>
       )}
-      </div>
-    </div>
+    </>
   );
 };

@@ -29,8 +29,9 @@ function isPublicPath(pathname: string) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Customer OTP is the only intentionally public API endpoint.
-  if (pathname === "/api/auth/otp" || isPublicPath(pathname)) {
+  // Customer OTP & Storefront Checkout are intentionally public endpoints.
+  const PUBLIC_API_PATHS = ["/api/auth/otp", "/api/store/checkout"];
+  if (PUBLIC_API_PATHS.includes(pathname) || isPublicPath(pathname)) {
     return NextResponse.next();
   }
 

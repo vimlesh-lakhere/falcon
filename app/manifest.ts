@@ -38,6 +38,13 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
+        name: "⚡ Quick Note / Kharidi Parchi",
+        short_name: "Quick Note",
+        description: "Quickly jot down customer demands or shortage notes",
+        url: "/?action=quick-note",
+        icons: [{ src: "/icons/icon-192x192.png", sizes: "192x192" }],
+      },
+      {
         name: "POS Billing Terminal",
         short_name: "POS",
         description: "Open Fast POS Billing Terminal",

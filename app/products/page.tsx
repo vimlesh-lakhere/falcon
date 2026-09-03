@@ -112,6 +112,35 @@ export default function ProductsPage() {
     loadData();
   }, [activeShopId]);
 
+  // Handle URL query actions (e.g. from Quick Demand Pad or Dashboard Out-of-Stock card)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("action") === "add") {
+        const prefillName = params.get("name");
+        const prefillSuppId = params.get("supplierId");
+        if (prefillName) {
+          setEditingProduct({
+            id: "",
+            shop_id: activeShopId,
+            name: prefillName,
+            supplier_id: prefillSuppId || null,
+            purchase_price: 0,
+            selling_price: 0,
+            current_stock: 10,
+            minimum_stock: 5,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as unknown as Product);
+        }
+        setIsModalOpen(true);
+      } else if (params.get("stock") === "out_of_stock") {
+        setStockStatusFilter("out_of_stock");
+      }
+    }
+  }, [activeShopId]);
+
   // Inventory KPI calculations
   const totalItemsCount = products.length;
   const totalStockUnits = products.reduce((acc, p) => acc + (Number(p.current_stock) || 0), 0);
