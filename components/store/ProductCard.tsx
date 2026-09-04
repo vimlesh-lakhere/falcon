@@ -207,6 +207,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             )}
           </div>
 
+          {/* Wholesale Offer Tag */}
+          {!selectedVariant && Number(product.wholesale_price) > 0 && (
+            <div className="text-[10px] text-indigo-700 font-bold bg-indigo-50/80 border border-indigo-100 px-1.5 py-0.5 rounded-md flex items-center justify-between">
+              <span>
+                ⚡ Wholesale: ₹{Number(product.wholesale_price) < price * 3 ? Number(product.wholesale_price) : (Number(product.wholesale_price) / 12).toFixed(0)}/pc
+              </span>
+              <span className="text-[9px] text-indigo-500 font-semibold">
+                ({product.wholesale_min_qty || 12}+ pcs)
+              </span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-1.5">
             {/* 1-Tap Add to Cart */}
             <button

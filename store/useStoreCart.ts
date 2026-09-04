@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Product } from "@/types/database";
+import { getEffectiveItemPrice } from "@/lib/units-pricing";
 
 export interface CartItem {
   product: Product;
@@ -165,9 +166,10 @@ export const useStoreCart = create<StoreCartState>()(
         let itemCount = 0;
 
         cart.forEach((item) => {
-          const price = Number(item.product.selling_price) || 0;
-          const mrp = Number((item.product as any).mrp) || price;
           const qty = item.quantity;
+          const effective = getEffectiveItemPrice(item.product, qty, "piece");
+          const price = effective.unitPrice;
+          const mrp = Number(item.product.mrp) || Number(item.product.selling_price) || price;
 
           subtotal += price * qty;
           mrpTotal += mrp * qty;
@@ -176,9 +178,9 @@ export const useStoreCart = create<StoreCartState>()(
 
         const totalSavings = Math.max(0, mrpTotal - subtotal);
         return {
-          subtotal,
-          totalSavings,
-          finalTotal: subtotal,
+          subtotal: Number(subtotal.toFixed(2)),
+          totalSavings: Number(totalSavings.toFixed(2)),
+          finalTotal: Number(subtotal.toFixed(2)),
           itemCount,
         };
       },

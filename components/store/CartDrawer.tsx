@@ -13,8 +13,10 @@ import {
   ShieldCheck,
   Truck,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import { useStoreCart } from "@/store/useStoreCart";
+import { getEffectiveItemPrice } from "@/lib/units-pricing";
 
 export const CartDrawer: React.FC = () => {
   const router = useRouter();
@@ -85,8 +87,14 @@ export const CartDrawer: React.FC = () => {
               </div>
             ) : (
               cart.map((item) => {
-                const price = Number(item.product.selling_price) || 0;
-                const mrp = Number((item.product as any).mrp) || price;
+                const effective = getEffectiveItemPrice(item.product, item.quantity, "piece");
+                const price = effective.unitPrice;
+                const originalRetail = effective.originalPrice;
+                const mrp = Number(item.product.mrp) || originalRetail;
+                const isWholesaleActive = effective.isWholesaleTriggered;
+                const wholesaleMinQty = Number(item.product.wholesale_min_qty) || 12;
+                const wholesaleRaw = Number(item.product.wholesale_price) || 0;
+
                 const imageSrc =
                   item.product.image_url ||
                   "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&auto=format&fit=crop&q=60";
@@ -113,10 +121,23 @@ export const CartDrawer: React.FC = () => {
                         </h4>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-xs font-black text-gray-900">₹{price}</span>
-                          {mrp > price && (
+                          {isWholesaleActive && originalRetail > price ? (
+                            <span className="text-[10px] text-gray-400 line-through">₹{originalRetail}</span>
+                          ) : mrp > price ? (
                             <span className="text-[10px] text-gray-400 line-through">₹{mrp}</span>
+                          ) : null}
+                          {isWholesaleActive && (
+                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded flex items-center gap-0.5">
+                              <Zap className="w-2.5 h-2.5 fill-emerald-600 text-emerald-600" /> Wholesale
+                            </span>
                           )}
                         </div>
+
+                        {!isWholesaleActive && wholesaleRaw > 0 && item.quantity < wholesaleMinQty && (
+                          <p className="text-[9px] text-indigo-600 font-semibold mt-0.5">
+                            💡 Add {wholesaleMinQty - item.quantity} more for Wholesale rate
+                          </p>
+                        )}
                       </div>
 
                       {/* Quantity Modifier */}
@@ -141,14 +162,19 @@ export const CartDrawer: React.FC = () => {
                           </button>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.product.id)}
-                          className="text-gray-400 hover:text-red-600 p-1 rounded-md transition-colors"
-                          title="Remove item"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="text-right flex items-center gap-2">
+                          <span className="text-xs font-black text-gray-900 tabular-nums">
+                            ₹{(price * item.quantity).toFixed(0)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeFromCart(item.product.id)}
+                            className="text-gray-400 hover:text-red-600 p-1 rounded-md transition-colors"
+                            title="Remove item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

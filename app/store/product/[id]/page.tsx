@@ -277,10 +277,14 @@ export default function ProductDetailPage() {
           )}
 
           {/* Pricing Card */}
-          <div className="bg-gradient-to-r from-purple-50/80 to-pink-50/80 rounded-2xl p-4 sm:p-5 border border-purple-100/80 space-y-2">
+          <div className="bg-gradient-to-r from-purple-50/80 to-pink-50/80 rounded-2xl p-4 sm:p-5 border border-purple-100/80 space-y-3">
             <div className="flex items-baseline gap-3">
               <span className="text-2xl sm:text-3xl font-black text-gray-900">
-                ₹{price}
+                ₹{quantity >= (Number(product.wholesale_min_qty) || 12) && Number(product.wholesale_price) > 0 && !selectedVariant
+                  ? Number(product.wholesale_price) < price * 3
+                    ? Number(product.wholesale_price)
+                    : Number((Number(product.wholesale_price) / 12).toFixed(0))
+                  : price}
               </span>
               {mrp > price && (
                 <>
@@ -299,13 +303,72 @@ export default function ProductDetailPage() {
               )}
             </div>
 
+            {/* Wholesale Tier Notice Box */}
+            {!selectedVariant && Number(product.wholesale_price) > 0 && (
+              <div
+                className={`p-3 rounded-xl border flex items-center justify-between gap-2 transition-all ${
+                  quantity >= (Number(product.wholesale_min_qty) || 12)
+                    ? "bg-emerald-50 border-emerald-300 text-emerald-900"
+                    : "bg-indigo-50/80 border-indigo-200 text-indigo-950"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Zap
+                    className={`w-4 h-4 shrink-0 ${
+                      quantity >= (Number(product.wholesale_min_qty) || 12)
+                        ? "text-emerald-600 fill-emerald-500"
+                        : "text-indigo-600"
+                    }`}
+                  />
+                  <div>
+                    <div className="text-xs font-black">
+                      Wholesale Rate: ₹
+                      {Number(product.wholesale_price) < price * 3
+                        ? Number(product.wholesale_price)
+                        : (Number(product.wholesale_price) / 12).toFixed(0)}
+                      /pc (from {product.wholesale_min_qty || 12}+ pcs)
+                    </div>
+                    <div className="text-[11px] text-gray-600">
+                      {quantity >= (Number(product.wholesale_min_qty) || 12) ? (
+                        <span className="text-emerald-700 font-bold">
+                          ⚡ Wholesale Applied! You save ₹
+                          {(
+                            (price -
+                              (Number(product.wholesale_price) < price * 3
+                                ? Number(product.wholesale_price)
+                                : Number(product.wholesale_price) / 12)) *
+                            quantity
+                          ).toFixed(0)}{" "}
+                          extra on this pack
+                        </span>
+                      ) : (
+                        <span>
+                          Buy {(Number(product.wholesale_min_qty) || 12) - quantity} more pcs to unlock wholesale price
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {quantity < (Number(product.wholesale_min_qty) || 12) && (
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(Number(product.wholesale_min_qty) || 12)}
+                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shrink-0 shadow-2xs transition-transform active:scale-95"
+                  >
+                    Select {product.wholesale_min_qty || 12} Pcs
+                  </button>
+                )}
+              </div>
+            )}
+
             {savings > 0 && (
               <p className="text-xs font-bold text-emerald-700">
-                🎉 You save ₹{savings} on this pack size! (Inclusive of all taxes)
+                🎉 You save ₹{savings} on this item! (Inclusive of all taxes)
               </p>
             )}
 
-            <div className="pt-2 flex items-center gap-2 text-xs font-semibold">
+            <div className="pt-1 flex items-center gap-2 text-xs font-semibold">
               {isOutOfStock ? (
                 <span className="text-red-600 bg-red-100 px-2.5 py-0.5 rounded-full font-bold">
                   ⚠️ Out of Stock

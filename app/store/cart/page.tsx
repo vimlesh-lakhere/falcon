@@ -14,8 +14,10 @@ import {
   ShieldCheck,
   Tag,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import { useStoreCart } from "@/store/useStoreCart";
+import { getEffectiveItemPrice } from "@/lib/units-pricing";
 
 export default function StoreCartPage() {
   const router = useRouter();
@@ -76,8 +78,14 @@ export default function StoreCartPage() {
         {/* Left: Cart Items List */}
         <div className="lg:col-span-8 space-y-3">
           {cart.map((item) => {
-            const price = Number(item.product.selling_price) || 0;
-            const mrp = Number((item.product as any).mrp) || price;
+            const effective = getEffectiveItemPrice(item.product, item.quantity, "piece");
+            const price = effective.unitPrice;
+            const originalRetail = effective.originalPrice;
+            const mrp = Number(item.product.mrp) || originalRetail;
+            const isWholesaleActive = effective.isWholesaleTriggered;
+            const wholesaleMinQty = Number(item.product.wholesale_min_qty) || 12;
+            const wholesaleRaw = Number(item.product.wholesale_price) || 0;
+
             const imageSrc =
               item.product.image_url ||
               "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&auto=format&fit=crop&q=60";
@@ -107,13 +115,26 @@ export default function StoreCartPage() {
 
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-sm font-black text-gray-900">₹{price}</span>
-                      {mrp > price && (
+                      {isWholesaleActive && originalRetail > price ? (
+                        <span className="text-xs text-gray-400 line-through">₹{originalRetail}</span>
+                      ) : mrp > price ? (
                         <span className="text-xs text-gray-400 line-through">₹{mrp}</span>
+                      ) : null}
+                      {isWholesaleActive && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <Zap className="w-3 h-3 fill-emerald-600 text-emerald-600" /> Wholesale Rate Applied
+                        </span>
                       )}
                     </div>
+
+                    {!isWholesaleActive && wholesaleRaw > 0 && item.quantity < wholesaleMinQty && (
+                      <p className="text-[10px] text-indigo-600 font-semibold mt-1 bg-indigo-50/80 border border-indigo-100 px-2 py-0.5 rounded-md inline-block">
+                        💡 Buy {wholesaleMinQty - item.quantity} more pcs to get Wholesale price (₹{Number(wholesaleRaw < originalRetail * 3 ? wholesaleRaw : wholesaleRaw / 12).toFixed(0)}/pc)
+                      </p>
+                    )}
                   </div>
 
-                  <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center justify-between pt-3">
                     {/* Quantity Selector */}
                     <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl p-1">
                       <button
@@ -133,14 +154,19 @@ export default function StoreCartPage() {
                       </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => removeFromCart(item.product.id)}
-                      className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg flex items-center gap-1 text-xs font-semibold"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      <span className="hidden sm:inline">Remove</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-black text-gray-900 tabular-nums">
+                        ₹{(price * item.quantity).toFixed(0)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(item.product.id)}
+                        className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg flex items-center gap-1 text-xs font-semibold"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span className="hidden sm:inline">Remove</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

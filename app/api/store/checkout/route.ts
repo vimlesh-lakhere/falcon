@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getEffectiveItemPrice } from "@/lib/units-pricing";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
     const productIds = cart.map((it) => it.product.id);
     const { data: dbProducts, error: prodErr } = await supabase
       .from("products")
-      .select("id, name, selling_price, current_stock, image_url, is_active")
+      .select("id, name, selling_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp")
       .in("id", productIds)
       .eq("shop_id", shopId);
 
@@ -98,7 +99,8 @@ export async function POST(req: NextRequest) {
       }
 
       const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
-      const price = Number(dbProd.selling_price) || 0;
+      const effective = getEffectiveItemPrice(dbProd as any, qty, "piece");
+      const price = effective.unitPrice;
       verifiedSubtotal += price * qty;
 
       verifiedItems.push({
@@ -109,6 +111,8 @@ export async function POST(req: NextRequest) {
         imageUrl: dbProd.image_url,
       });
     }
+
+    verifiedSubtotal = Number(verifiedSubtotal.toFixed(2));
 
     const invoiceNumber = `ORD-${Date.now().toString().slice(-6)}`;
 
