@@ -7,6 +7,7 @@ export type ConnectionType = "system" | "bluetooth";
 export type PrintEngine = "graphics" | "text";
 export type FontSizePreference = "compact" | "normal" | "large";
 export type ItemLayoutPreference = "wrap-2line" | "single-line";
+export type BillLanguage = "hindi" | "english" | "both";
 
 export interface PrinterConfig {
   paperWidth: PaperWidth;
@@ -14,6 +15,7 @@ export interface PrinterConfig {
   printEngine: PrintEngine;
   fontSize: FontSizePreference;
   itemLayout: ItemLayoutPreference;
+  billLanguage?: BillLanguage;
   autoPrint: boolean;
   shopName: string;
   shopPhone: string;
@@ -38,6 +40,7 @@ export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {
   printEngine: "graphics", // Graphics mode provides 100% Hindi/Devanagari Unicode & QR support
   fontSize: "normal",
   itemLayout: "wrap-2line", // Prevents cutting off long Hindi/English product names
+  billLanguage: "hindi", // Default: Hindi for thermal receipts & WhatsApp
   autoPrint: false,
   shopName: "AGS STORE & COSMETICS",
   shopPhone: "+91 9340362381",
@@ -54,6 +57,31 @@ export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {
   bankAccountNumber: "",
   bankIfsc: "",
 };
+
+/**
+ * Returns formatted product name based on language preference:
+ * - "hindi": Uses Hindi phonetic name (falls back to English if not available)
+ * - "english": Uses English name
+ * - "both": Uses English (Hindi)
+ */
+export function getProductDisplayName(
+  item: any,
+  language: BillLanguage = "hindi"
+): string {
+  const engName = item.product?.name || item.product_name || item.name || item.title || "";
+  const hindiName = item.product?.name_hindi || item.name_hindi || "";
+
+  if (language === "hindi") {
+    return hindiName || engName || "Item";
+  }
+  if (language === "both") {
+    if (hindiName && engName && hindiName !== engName) {
+      return `${engName} (${hindiName})`;
+    }
+    return engName || hindiName || "Item";
+  }
+  return engName || hindiName || "Item";
+}
 
 /**
  * Retrieves persisted printer configuration for the shop.
@@ -456,7 +484,7 @@ export async function buildRasterGraphicsReceipt(
   // 4. Items List (with clean 2-line wrapping for long Hindi / English names)
   const items = sale.items || [];
   items.forEach((it: any, idx: number) => {
-    const rawName = it.product?.name || it.product_name || it.name || it.title || `Item ${idx + 1}`;
+    const rawName = getProductDisplayName(it, config.billLanguage || "hindi");
     const unitLabel = it.unit_name ? ` (${it.unit_name})` : "";
     const qty = it.quantity || 1;
     const unitPrice = Number(it.unit_price) || 0;

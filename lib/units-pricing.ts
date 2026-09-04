@@ -126,10 +126,77 @@ export function getProductPricingSummary(product: Product) {
 
   return {
     piecePrice,
+    mrp: Number(product.mrp) || piecePrice,
     wholesalePerPiece: wholesaleRaw > 0 ? wholesalePerPiece : 0,
     dozenPrice,
     halfDozenPrice: calculateDefaultUnitPrice(product, "half_dozen"),
     bundle10DozPrice: calculateDefaultUnitPrice(product, "bundle_10_doz"),
+    wholesaleMinQty: Number(product.wholesale_min_qty) || 12,
+  };
+}
+
+/**
+ * Computes the active selling price for an item based on piece quantity and wholesale trigger rules.
+ * If total pieces >= wholesale_min_qty (default 12 when wholesale_price is configured):
+ * Automatically applies the wholesale rate per unit.
+ */
+export function getEffectiveItemPrice(
+  product: Product,
+  quantity: number = 1,
+  unitKey: UnitKey = "piece",
+  customMultiplier: number = 1
+): {
+  unitPrice: number;
+  originalPrice: number;
+  isWholesaleTriggered: boolean;
+  totalPieces: number;
+  savingsPerUnit: number;
+} {
+  const baseQty = getBaseQuantity(quantity, unitKey, customMultiplier);
+  const regularUnitPrice = calculateDefaultUnitPrice(product, unitKey, customMultiplier);
+  const wholesaleRaw = Number(product.wholesale_price) || 0;
+  const wholesaleMinQty = Number(product.wholesale_min_qty) || 12;
+
+  // If wholesale price is set and total pieces reach or exceed the wholesale trigger threshold
+  if (wholesaleRaw > 0 && baseQty >= wholesaleMinQty) {
+    const piecePrice = Number(product.selling_price) || 0;
+    let wholesalePerPiece = 0;
+    if (wholesaleRaw < piecePrice * 3) {
+      wholesalePerPiece = wholesaleRaw; // e.g. ₹14.50/pc
+    } else {
+      wholesalePerPiece = wholesaleRaw / 12; // e.g. ₹175 / 12 = ₹14.5833
+    }
+
+    let wholesaleUnitPrice = regularUnitPrice;
+    if (unitKey === "piece") {
+      wholesaleUnitPrice = wholesalePerPiece;
+    } else if (unitKey === "dozen") {
+      wholesaleUnitPrice = wholesalePerPiece * 12;
+    } else if (unitKey === "half_dozen") {
+      wholesaleUnitPrice = wholesalePerPiece * 6;
+    } else if (unitKey === "bundle_10_doz") {
+      wholesaleUnitPrice = wholesalePerPiece * 120 * 0.95;
+    } else {
+      wholesaleUnitPrice = wholesalePerPiece * customMultiplier;
+    }
+
+    const savings = Math.max(0, regularUnitPrice - wholesaleUnitPrice);
+
+    return {
+      unitPrice: Number(wholesaleUnitPrice.toFixed(2)),
+      originalPrice: regularUnitPrice,
+      isWholesaleTriggered: true,
+      totalPieces: baseQty,
+      savingsPerUnit: Number(savings.toFixed(2)),
+    };
+  }
+
+  return {
+    unitPrice: regularUnitPrice,
+    originalPrice: regularUnitPrice,
+    isWholesaleTriggered: false,
+    totalPieces: baseQty,
+    savingsPerUnit: 0,
   };
 }
 

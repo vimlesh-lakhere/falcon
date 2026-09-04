@@ -59,7 +59,13 @@ import {
   formatItemQuantityAndUnit,
   getBaseQuantity,
   getProductPricingSummary,
+  getEffectiveItemPrice,
 } from "@/lib/units-pricing";
+import {
+  BillLanguage,
+  getPrinterConfig,
+  savePrinterConfig,
+} from "@/lib/thermal-printer";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -154,6 +160,19 @@ export default function PosBillingPage() {
   // Mobile Active Tab (Catalog vs Cart)
   const [mobileTab, setMobileTab] = useState<"catalog" | "cart">("catalog");
 
+  // Bill Language Preference (Syncs Thermal Print & WhatsApp)
+  const [billLanguage, setBillLanguage] = useState<BillLanguage>(() => {
+    if (typeof window === "undefined") return "hindi";
+    return (getPrinterConfig(SHOP_ID).billLanguage || "hindi") as BillLanguage;
+  });
+
+  const handleSwitchBillLanguage = (lang: BillLanguage) => {
+    setBillLanguage(lang);
+    const cfg = getPrinterConfig(SHOP_ID);
+    const updated = { ...cfg, billLanguage: lang };
+    savePrinterConfig(SHOP_ID, updated);
+  };
+
   // Voice Search State
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -201,6 +220,7 @@ export default function PosBillingPage() {
           const matched = products.find(
             (p) =>
               p.name.toLowerCase() === clean.toLowerCase() ||
+              (p.name_hindi && p.name_hindi.toLowerCase() === clean.toLowerCase()) ||
               p.barcode?.toLowerCase() === clean.toLowerCase()
           );
           if (matched) {
@@ -688,7 +708,8 @@ export default function PosBillingPage() {
       (p) =>
         p.barcode?.toLowerCase() === searchQuery.trim().toLowerCase() ||
         p.sku?.toLowerCase() === searchQuery.trim().toLowerCase() ||
-        p.name.toLowerCase() === searchQuery.trim().toLowerCase()
+        p.name.toLowerCase() === searchQuery.trim().toLowerCase() ||
+        (p.name_hindi && p.name_hindi.toLowerCase() === searchQuery.trim().toLowerCase())
     );
 
     if (matched) {
@@ -714,29 +735,50 @@ export default function PosBillingPage() {
         (item) => item.product.id === product.id && item.unit === unitKey
       );
       const customPrice = customerPrices[product.id];
-      const unitPrice =
-        customPrice !== undefined && unitKey === "piece"
-          ? customPrice
-          : calculateDefaultUnitPrice(product, unitKey);
-
       const unitDef = STANDARD_UNITS[unitKey] || STANDARD_UNITS.piece;
 
       if (existingIndex > -1) {
         const updated = [...prevCart];
         const existingItem = updated[existingIndex];
+        const newQty = existingItem.quantity + initialQty;
+
+        let newUnitPrice = existingItem.unitPrice;
+        let newOriginalPrice = existingItem.originalPrice;
+
+        // Auto-recalculate wholesale price if not manually overridden by cashier and no custom customer price
+        if (!existingItem.isPriceOverridden && (customPrice === undefined || unitKey !== "piece")) {
+          const effective = getEffectiveItemPrice(product, newQty, unitKey, unitDef.multiplier);
+          newUnitPrice = effective.unitPrice;
+          newOriginalPrice = effective.originalPrice;
+        }
+
         updated[existingIndex] = {
           ...existingItem,
-          quantity: existingItem.quantity + initialQty,
+          quantity: newQty,
+          unitPrice: newUnitPrice,
+          originalPrice: newOriginalPrice,
         };
         return updated;
       } else {
+        let unitPrice: number;
+        let originalPrice: number;
+
+        if (customPrice !== undefined && unitKey === "piece") {
+          unitPrice = customPrice;
+          originalPrice = customPrice;
+        } else {
+          const effective = getEffectiveItemPrice(product, initialQty, unitKey, unitDef.multiplier);
+          unitPrice = effective.unitPrice;
+          originalPrice = effective.originalPrice;
+        }
+
         return [
           ...prevCart,
           {
             product,
             quantity: initialQty,
             unitPrice,
-            originalPrice: unitPrice,
+            originalPrice,
             isPriceOverridden: customPrice !== undefined && unitKey === "piece",
             unit: unitKey,
             unitName: unitDef.shortName,
@@ -754,7 +796,21 @@ export default function PosBillingPage() {
       const updated = [...prevCart];
       const item = updated[index];
       const unitDef = STANDARD_UNITS[newUnit] || STANDARD_UNITS.piece;
-      const newPrice = calculateDefaultUnitPrice(item.product, newUnit);
+      const customPrice = customerPrices[item.product.id];
+
+      let newPrice: number;
+      let originalPrice: number;
+      let isOverridden = false;
+
+      if (customPrice !== undefined && newUnit === "piece") {
+        newPrice = customPrice;
+        originalPrice = customPrice;
+        isOverridden = true;
+      } else {
+        const effective = getEffectiveItemPrice(item.product, item.quantity, newUnit, unitDef.multiplier);
+        newPrice = effective.unitPrice;
+        originalPrice = effective.originalPrice;
+      }
 
       updated[index] = {
         ...item,
@@ -762,8 +818,8 @@ export default function PosBillingPage() {
         unitName: unitDef.shortName,
         unitMultiplier: unitDef.multiplier,
         unitPrice: newPrice,
-        originalPrice: newPrice,
-        isPriceOverridden: false,
+        originalPrice: originalPrice,
+        isPriceOverridden: isOverridden,
       };
       return updated;
     });
@@ -781,13 +837,27 @@ export default function PosBillingPage() {
     setCart((prevCart) => {
       if (index < 0 || index >= prevCart.length) return prevCart;
       const updated = [...prevCart];
-      const newQty = updated[index].quantity + delta;
+      const item = updated[index];
+      const newQty = item.quantity + delta;
       if (newQty <= 0) {
         updated.splice(index, 1);
       } else {
+        const customPrice = customerPrices[item.product.id];
+        let newUnitPrice = item.unitPrice;
+        let newOriginalPrice = item.originalPrice;
+
+        // Automatically apply wholesale price if threshold reached, or revert to retail if quantity drops below
+        if (!item.isPriceOverridden && (customPrice === undefined || item.unit !== "piece")) {
+          const effective = getEffectiveItemPrice(item.product, newQty, item.unit, item.unitMultiplier);
+          newUnitPrice = effective.unitPrice;
+          newOriginalPrice = effective.originalPrice;
+        }
+
         updated[index] = {
-          ...updated[index],
+          ...item,
           quantity: newQty,
+          unitPrice: newUnitPrice,
+          originalPrice: newOriginalPrice,
         };
       }
       return updated;
@@ -1047,11 +1117,13 @@ export default function PosBillingPage() {
   const filteredProducts = React.useMemo(() => {
     const list = products.filter((p) => {
       const matchesCategory = selectedCategory === "all" || p.category_id === selectedCategory;
+      const q = searchQuery.toLowerCase();
       const matchesSearch =
         !searchQuery ||
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.barcode?.toLowerCase().includes(searchQuery.toLowerCase());
+        p.name.toLowerCase().includes(q) ||
+        (p.name_hindi && p.name_hindi.toLowerCase().includes(q)) ||
+        p.sku?.toLowerCase().includes(q) ||
+        p.barcode?.toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
 
@@ -1118,6 +1190,46 @@ export default function PosBillingPage() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Bill Language 1-Click Switcher (Syncs Thermal Print & WhatsApp) */}
+          <div className="flex items-center bg-brand-800/80 p-0.5 rounded-lg border border-white/10 text-xs shrink-0">
+            <button
+              type="button"
+              onClick={() => handleSwitchBillLanguage("hindi")}
+              className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                billLanguage === "hindi"
+                  ? "bg-purple-600 text-white shadow-xs"
+                  : "text-white/70 hover:text-white"
+              }`}
+              title="Receipts in Hindi (हिंदी)"
+            >
+              🇮🇳 हिंदी
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchBillLanguage("english")}
+              className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                billLanguage === "english"
+                  ? "bg-purple-600 text-white shadow-xs"
+                  : "text-white/70 hover:text-white"
+              }`}
+              title="Receipts in English"
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchBillLanguage("both")}
+              className={`hidden sm:inline-block px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                billLanguage === "both"
+                  ? "bg-purple-600 text-white shadow-xs"
+                  : "text-white/70 hover:text-white"
+              }`}
+              title="Receipts Bilingual (English + Hindi)"
+            >
+              Both
+            </button>
+          </div>
+
           {/* Printer Setup & Test Quick Button */}
           <button
             type="button"
@@ -1566,23 +1678,35 @@ export default function PosBillingPage() {
                             </div>
                           </div>
 
-                          {/* Product Name */}
-                          <h4 className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-2 leading-tight min-h-[2rem]" title={p.name}>
-                            {p.name}
-                          </h4>
+                          {/* Product Name & Hindi Subtitle */}
+                          <div>
+                            <h4 className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-2 leading-tight min-h-[1.5rem]" title={p.name}>
+                              {p.name}
+                            </h4>
+                            {p.name_hindi && (
+                              <p className="text-[11px] text-purple-700 font-semibold truncate leading-tight mt-0.5">
+                                {p.name_hindi}
+                              </p>
+                            )}
+                          </div>
                         </div>
 
                         <div className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-1.5">
                           {/* Pricing Line */}
                           <div className="flex flex-col">
-                            <div className="flex items-baseline justify-between">
-                              <div className="text-sm font-black text-purple-900 tabular-nums">
-                                {formatCurrency(effectivePiecePrice)}
+                            <div className="flex items-baseline justify-between gap-1">
+                              <div className="text-sm font-black text-purple-900 tabular-nums flex items-baseline gap-1">
+                                {pricing.mrp > effectivePiecePrice && (
+                                  <span className="text-[10px] text-gray-400 font-normal line-through">
+                                    ₹{pricing.mrp}
+                                  </span>
+                                )}
+                                <span>{formatCurrency(effectivePiecePrice)}</span>
                                 <span className="text-[10px] font-normal text-gray-500"> /pc</span>
                               </div>
                               {pricing.wholesalePerPiece > 0 && (
-                                <span className="text-[9px] text-indigo-700 font-bold bg-indigo-50 px-1 py-0.5 rounded" title="Wholesale rate per piece">
-                                  ₹{pricing.wholesalePerPiece}/pc wh.
+                                <span className="text-[9px] text-indigo-700 font-bold bg-indigo-50 px-1 py-0.5 rounded" title={`Wholesale rate applies from ${pricing.wholesaleMinQty} pcs`}>
+                                  ₹{pricing.wholesalePerPiece}/pc ({pricing.wholesaleMinQty}+)
                                 </span>
                               )}
                             </div>
@@ -1775,8 +1899,14 @@ export default function PosBillingPage() {
             ) : (
               cart.map((item, index) => {
                 const stock = Number(item.product.current_stock) || 0;
-                const baseQtyNeeded = getBaseQuantity(item.quantity, item.unit);
+                const baseQtyNeeded = getBaseQuantity(item.quantity, item.unit, item.unitMultiplier);
                 const isOverStock = baseQtyNeeded > stock;
+
+                const wholesaleMinQty = Number(item.product.wholesale_min_qty) || 12;
+                const wholesaleRaw = Number(item.product.wholesale_price) || 0;
+                const isWholesaleActive = wholesaleRaw > 0 && baseQtyNeeded >= wholesaleMinQty && !item.isPriceOverridden;
+                const mrp = Number(item.product.mrp) || 0;
+                const hasMrpSavings = mrp > 0 && mrp > item.unitPrice && item.unit === "piece";
 
                 return (
                   <div
@@ -1814,8 +1944,11 @@ export default function PosBillingPage() {
                           <div className="text-xs font-bold text-gray-900 truncate" title={item.product.name}>
                             {item.product.name}
                           </div>
-                          <div className="text-[10px] text-gray-400 font-mono">
-                            {item.product.barcode || item.product.sku || "No Barcode"}
+                          <div className="flex items-center gap-2 text-[10px] text-gray-400 font-mono">
+                            <span>{item.product.barcode || item.product.sku || "No Barcode"}</span>
+                            {hasMrpSavings && (
+                              <span className="text-gray-400 line-through">MRP: ₹{mrp}</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1829,6 +1962,30 @@ export default function PosBillingPage() {
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
+
+                    {/* Wholesale Applied Badge or Progress Hint */}
+                    {isWholesaleActive && (
+                      <div className="text-[10px] text-emerald-800 font-bold flex items-center justify-between bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md">
+                        <span className="flex items-center gap-1">
+                          <Zap className="w-3 h-3 text-emerald-600 fill-emerald-500 shrink-0" />
+                          <span>⚡ Wholesale Applied ({wholesaleMinQty}+ pcs reached)</span>
+                        </span>
+                        {item.originalPrice > item.unitPrice && (
+                          <span className="text-emerald-700 font-extrabold tabular-nums">
+                            Save ₹{((item.originalPrice - item.unitPrice) * item.quantity).toFixed(0)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {!isWholesaleActive && wholesaleRaw > 0 && !item.isPriceOverridden && baseQtyNeeded < wholesaleMinQty && (
+                      <div className="text-[9.5px] text-indigo-700 font-medium flex items-center justify-between bg-indigo-50/70 border border-indigo-100 px-2 py-0.5 rounded-md">
+                        <span>💡 Add {wholesaleMinQty - baseQtyNeeded} more pcs to unlock Wholesale rate</span>
+                        <span className="font-bold text-indigo-900">
+                          ₹{item.product.wholesale_price}{wholesaleRaw >= Number(item.product.selling_price) * 3 ? "/doz" : "/pc"}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Unit Selector Pills */}
                     <div className="flex items-center gap-1 bg-gray-100/80 p-0.5 rounded-lg">

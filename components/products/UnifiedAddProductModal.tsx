@@ -30,6 +30,7 @@ import { productsRepository } from "@/repositories/products.repo";
 import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { aiImageEnhancer } from "@/lib/ai/image-enhancer";
 import { findInIndianRetailCatalog, searchIndianRetailCatalog } from "@/lib/catalog/indian-retail-catalog";
+import { transliterateToHindi } from "@/lib/transliterate";
 
 import {
   extractProductVariants,
@@ -73,6 +74,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
   // Form State
   const [name, setName] = useState("");
+  const [nameHindi, setNameHindi] = useState("");
+  const [isTransliterating, setIsTransliterating] = useState(false);
   const [brand, setBrand] = useState("");
   const [sku, setSku] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -80,8 +83,10 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [supplierId, setSupplierId] = useState("");
   const [unitId, setUnitId] = useState("");
   const [purchasePrice, setPurchasePrice] = useState<number>(0);
+  const [mrp, setMrp] = useState<number>(0);
   const [sellingPrice, setSellingPrice] = useState<number>(0);
   const [wholesalePrice, setWholesalePrice] = useState<number>(0);
+  const [wholesaleMinQty, setWholesaleMinQty] = useState<number>(12);
   const [minSellingPrice, setMinSellingPrice] = useState<number>(0);
   const [currentStock, setCurrentStock] = useState<number>(10);
   const [minStock, setMinStock] = useState<number>(5);
@@ -141,6 +146,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   // Handler to auto-fill details from an existing product to create a new variant easily
   const handleSelectExistingProduct = (p: Product) => {
     setName(p.name);
+    setNameHindi(p.name_hindi || "");
     setBrand(p.brand || "");
     if (p.category_id) setCategoryId(p.category_id);
     if (p.supplier_id) setSupplierId(p.supplier_id);
@@ -198,8 +204,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     return searchIndianRetailCatalog(searchQuery.trim(), 10);
   }, [searchQuery]);
 
-  const handleSelectCatalogItem = (item: any) => {
-    if (item.name) setName(item.name);
+  const handleSelectCatalogItem = async (item: any) => {
+    if (item.name) {
+      setName(item.name);
+      try {
+        const hi = await transliterateToHindi(item.name);
+        if (hi) setNameHindi(hi);
+      } catch {}
+    }
     if (item.brand) setBrand(item.brand);
     if (item.barcode) setBarcode(item.barcode);
     if (item.mrp > 0) setSellingPrice(item.mrp);
@@ -249,7 +261,13 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.success && json.data) {
         const d = json.data;
-        if (d.name) setName(d.name);
+        if (d.name) {
+          setName(d.name);
+          try {
+            const hi = await transliterateToHindi(d.name);
+            if (hi) setNameHindi(hi);
+          } catch {}
+        }
         if (d.brand) setBrand(d.brand);
         if (d.barcode) setBarcode(d.barcode);
         if (d.imageUrl) setImageUrl(d.imageUrl);
@@ -334,6 +352,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     if (isOpen) {
       if (editingProduct) {
         setName(editingProduct.name || "");
+        setNameHindi(editingProduct.name_hindi || "");
         setBrand(editingProduct.brand || "");
         setSku(editingProduct.sku || "");
         setBarcode(editingProduct.barcode || "");
@@ -341,8 +360,10 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setSupplierId(editingProduct.supplier_id || suppliers[0]?.id || "");
         setUnitId(editingProduct.unit_id || units[0]?.id || "");
         setPurchasePrice(Number(editingProduct.purchase_price || 0));
+        setMrp(Number((editingProduct as any).mrp || editingProduct.selling_price || 0));
         setSellingPrice(Number(editingProduct.selling_price || 0));
         setWholesalePrice(Number(editingProduct.wholesale_price || 0));
+        setWholesaleMinQty(Number((editingProduct as any).wholesale_min_qty || 12));
         setMinSellingPrice(Number(editingProduct.minimum_selling_price || 0));
         setCurrentStock(Number(editingProduct.current_stock || 0));
         setMinStock(Number(editingProduct.minimum_stock || 5));
@@ -358,6 +379,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setBackImageUrl(bImg || "");
       } else {
         setName("");
+        setNameHindi("");
         setBrand("");
         setSku(`SKU-${Date.now().toString().slice(-4)}`);
         setBarcode("");
@@ -365,8 +387,10 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setSupplierId(suppliers[0]?.id || "");
         setUnitId(units[0]?.id || "");
         setPurchasePrice(0);
+        setMrp(0);
         setSellingPrice(0);
         setWholesalePrice(0);
+        setWholesaleMinQty(12);
         setMinSellingPrice(0);
         setCurrentStock(10);
         setMinStock(5);
@@ -411,12 +435,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   };
 
   // 100% Offline Barcode Auto-Fill from Master Indian Retail Catalog
-  const handleBarcodeAutoFill = (barcodeVal: string) => {
+  const handleBarcodeAutoFill = async (barcodeVal: string) => {
     setBarcode(barcodeVal);
     if (!editingProduct && barcodeVal && barcodeVal.length >= 6) {
       const localMatch = findInIndianRetailCatalog(barcodeVal);
       if (localMatch) {
-        if (!name || name.trim() === "") setName(localMatch.name);
+        if (!name || name.trim() === "") {
+          setName(localMatch.name);
+          try {
+            const hi = await transliterateToHindi(localMatch.name);
+            if (hi) setNameHindi(hi);
+          } catch {}
+        }
         if (!brand || brand.trim() === "") setBrand(localMatch.brand);
         if (localMatch.mrp > 0 && sellingPrice === 0) setSellingPrice(localMatch.mrp);
         if (localMatch.purchasePrice > 0 && purchasePrice === 0) setPurchasePrice(localMatch.purchasePrice);
@@ -688,6 +718,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       const payload: Partial<Product> = {
         shop_id: shopId,
         name: name.trim(),
+        name_hindi: nameHindi.trim() || null,
         sku: sku.trim() || null,
         barcode: barcode.trim() || null,
         brand: brand.trim() || null,
@@ -695,8 +726,10 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         supplier_id: supplierId || null,
         unit_id: unitId || null,
         purchase_price: purchasePrice,
+        mrp: mrp > 0 ? mrp : null,
         selling_price: sellingPrice,
         wholesale_price: wholesalePrice || null,
+        wholesale_min_qty: wholesaleMinQty > 0 ? wholesaleMinQty : 12,
         minimum_selling_price: minSellingPrice || null,
         minimum_stock: minStock,
         description: finalDescription.trim() || null,
@@ -736,12 +769,15 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
       if (andAddAnother) {
         setName("");
+        setNameHindi("");
         setBrand("");
         setSku(`SKU-${Date.now().toString().slice(-4)}`);
         setBarcode("");
         setPurchasePrice(0);
+        setMrp(0);
         setSellingPrice(0);
         setWholesalePrice(0);
+        setWholesaleMinQty(12);
         setMinSellingPrice(0);
         setCurrentStock(10);
         setDescription("");
@@ -1287,12 +1323,22 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="sm:col-span-2 relative">
                   <Input
-                    label="Product Name / Title *"
+                    label="Product Name / Title (English) *"
                     required
                     value={name}
                     onChange={(e) => {
-                      setName(e.target.value);
+                      const val = e.target.value;
+                      setName(val);
                       setIsNameSuggestionsOpen(true);
+                      if (val.trim()) {
+                        setIsTransliterating(true);
+                        transliterateToHindi(val)
+                          .then((hi) => {
+                            if (hi) setNameHindi(hi);
+                          })
+                          .catch(() => {})
+                          .finally(() => setIsTransliterating(false));
+                      }
                     }}
                     placeholder="e.g. Parachute 100% Pure Coconut Oil 100ml"
                   />
@@ -1373,6 +1419,43 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Hindi Transliterated Product Title */}
+                <div className="sm:col-span-2">
+                  <div className="relative">
+                    <Input
+                      label="🇮🇳 Hindi Name / हिंदी नाम (Auto Transliterated)"
+                      value={nameHindi}
+                      onChange={(e) => setNameHindi(e.target.value)}
+                      placeholder="उदा. पैराशूट 100% प्योर कोकोनट ऑयल 100ml"
+                    />
+                    {isTransliterating && (
+                      <span className="absolute right-3 top-8 text-[11px] text-purple-600 font-bold flex items-center gap-1 animate-pulse">
+                        <RefreshCw className="w-3 h-3 animate-spin" /> ट्रांसलेट हो रहा है...
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1 px-1">
+                    <span>💡 थर्मल बिल और WhatsApp रसीद पर हिंदी में प्रिंट करने के लिए</span>
+                    {name.trim() && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setIsTransliterating(true);
+                          try {
+                            const hi = await transliterateToHindi(name);
+                            if (hi) setNameHindi(hi);
+                          } finally {
+                            setIsTransliterating(false);
+                          }
+                        }}
+                        className="text-purple-600 hover:text-purple-800 font-bold flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" /> 🔄 Re-Generate Hindi
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -1506,12 +1589,11 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                   <div>
                     <Input
                       type="number"
-                      label="Cost Price (₹) *"
-                      required
+                      label="Cost Price (₹)"
                       placeholder="0.00"
                       value={purchasePrice === 0 ? "" : purchasePrice}
                       onChange={(e) => setPurchasePrice(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
@@ -1521,7 +1603,17 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   <div>
                     <Input
                       type="number"
-                      label="Selling / MRP (₹) *"
+                      label="Printed MRP (₹)"
+                      placeholder="0.00"
+                      value={mrp === 0 ? "" : mrp}
+                      onChange={(e) => setMrp(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div>
+                    <Input
+                      type="number"
+                      label="Retail / 1 Pc (₹) *"
                       required
                       placeholder="0.00"
                       value={sellingPrice === 0 ? "" : sellingPrice}
@@ -1542,7 +1634,17 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   <div>
                     <Input
                       type="number"
-                      label={editingProduct ? "Current Stock (Units) *" : "Opening Stock (Units) *"}
+                      label="Wholesale Min Qty *"
+                      placeholder="12"
+                      value={wholesaleMinQty === 0 ? "" : wholesaleMinQty}
+                      onChange={(e) => setWholesaleMinQty(e.target.value === "" ? 12 : parseInt(e.target.value) || 12)}
+                    />
+                  </div>
+
+                  <div>
+                    <Input
+                      type="number"
+                      label={editingProduct ? "Current Stock *" : "Opening Stock *"}
                       required
                       placeholder="0"
                       value={currentStock === 0 ? "" : currentStock}

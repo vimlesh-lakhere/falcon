@@ -77,13 +77,16 @@ export interface Product {
   category_id: string | null;
   supplier_id: string | null;
   name: string;
+  name_hindi?: string | null;
   sku: string | null;
   barcode: string | null;
   brand: string | null;
   unit_id: string | null;
   purchase_price: number;
+  mrp?: number | null;
   selling_price: number;
   wholesale_price: number | null;
+  wholesale_min_qty?: number | null;
   minimum_selling_price: number | null;
   current_stock: number;
   minimum_stock: number;

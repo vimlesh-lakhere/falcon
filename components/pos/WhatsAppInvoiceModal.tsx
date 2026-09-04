@@ -89,6 +89,7 @@ export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
     upiId: printerConfig.upiId,
     upiPayeeName: printerConfig.upiPayeeName,
     customFooter: printerConfig.customFooter,
+    billLanguage: printerConfig.billLanguage || "hindi",
   });
 
   const cleanPhone = sanitizeIndianPhone(phone);

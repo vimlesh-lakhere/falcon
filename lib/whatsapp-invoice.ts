@@ -1,6 +1,6 @@
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { Sale, Customer, Product } from "@/types/database";
-import { buildUpiPaymentUrl, parseFreightCharge } from "@/lib/thermal-printer";
+import { buildUpiPaymentUrl, parseFreightCharge, getProductDisplayName, BillLanguage } from "@/lib/thermal-printer";
 
 export interface WhatsAppInvoiceOptions {
   shopName: string;
@@ -11,6 +11,7 @@ export interface WhatsAppInvoiceOptions {
   upiId?: string;
   upiPayeeName?: string;
   customFooter?: string;
+  billLanguage?: BillLanguage;
 }
 
 /**
@@ -26,6 +27,7 @@ export function buildWhatsAppInvoiceText(
   const shopAddress = options?.shopAddress || "Main Market Road, Town Area";
   const rawGst = options?.shopGst?.trim();
   const showGst = options?.showGstin && rawGst && rawGst !== "23AAAAA0000A1Z5";
+  const lang = options?.billLanguage || "hindi";
 
   const custName = customer?.name || (sale as any).customer?.name || "Customer";
   const custPhone = customer?.phone || (sale as any).customer?.phone || "";
@@ -33,7 +35,7 @@ export function buildWhatsAppInvoiceText(
   const items = sale.items || [];
   const itemsText = items
     .map((it: any, idx: number) => {
-      const pName = it.product?.name || it.product_name || it.name || it.title || "Product";
+      const pName = getProductDisplayName(it, lang);
       const unitLabel = it.unit_name ? ` (${it.unit_name})` : "";
       const lineTotal = (Number(it.unit_price) * Number(it.quantity)).toFixed(2);
       return `${idx + 1}. *${pName}*\n   ${it.quantity}${unitLabel} × ₹${Number(it.unit_price).toFixed(2)} = *₹${lineTotal}*`;

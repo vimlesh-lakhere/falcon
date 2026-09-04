@@ -34,6 +34,8 @@ import {
   buildUpiPaymentUrl,
   parseFreightCharge,
   PaperWidth,
+  BillLanguage,
+  getProductDisplayName,
 } from "@/lib/thermal-printer";
 
 interface ThermalReceiptProps {
@@ -246,6 +248,58 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
               <Sliders className="w-3.5 h-3.5" />
             </button>
           )}
+
+          {/* Bill Language Switcher (Syncs Thermal Print & WhatsApp) */}
+          <div className="flex items-center gap-1 bg-white border border-gray-200 p-0.5 rounded-xl shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                const updated = { ...printerConfig, billLanguage: "hindi" as BillLanguage };
+                setPrinterConfig(updated);
+                savePrinterConfig(shopId, updated);
+              }}
+              className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                (printerConfig.billLanguage || "hindi") === "hindi"
+                  ? "bg-purple-600 text-white shadow-xs"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+              title="Print & WhatsApp product names in Hindi (दंत कांति)"
+            >
+              🇮🇳 हिंदी
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const updated = { ...printerConfig, billLanguage: "english" as BillLanguage };
+                setPrinterConfig(updated);
+                savePrinterConfig(shopId, updated);
+              }}
+              className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                printerConfig.billLanguage === "english"
+                  ? "bg-purple-600 text-white shadow-xs"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+              title="Print & WhatsApp product names in English (Dant Kanti)"
+            >
+              🔤 English
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const updated = { ...printerConfig, billLanguage: "both" as BillLanguage };
+                setPrinterConfig(updated);
+                savePrinterConfig(shopId, updated);
+              }}
+              className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                printerConfig.billLanguage === "both"
+                  ? "bg-purple-600 text-white shadow-xs"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+              title="Print & WhatsApp bilingual product names (English + Hindi)"
+            >
+              🌐 Both
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -357,7 +411,7 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
 
             {/* Items List with Hindi support & no text cutoff */}
             {items.map((it: any, idx: number) => {
-              const pName = it.product?.name || it.product_name || it.name || it.title || "Product";
+              const pName = getProductDisplayName(it, printerConfig.billLanguage || "hindi");
               const unitLabel = it.unit_name ? ` ${it.unit_name}` : "";
               const total = (Number(it.unit_price) * it.quantity).toFixed(2);
 

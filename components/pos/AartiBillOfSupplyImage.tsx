@@ -4,7 +4,7 @@ import React, { forwardRef } from "react";
 import { Sale, Customer } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { numberToIndianWords } from "@/lib/number-to-words";
-import { PrinterConfig } from "@/lib/thermal-printer";
+import { PrinterConfig, getProductDisplayName } from "@/lib/thermal-printer";
 
 interface AartiBillOfSupplyImageProps {
   sale: Sale;
@@ -148,7 +148,7 @@ export const AartiBillOfSupplyImage = forwardRef<HTMLDivElement, AartiBillOfSupp
             </thead>
             <tbody className="divide-y divide-gray-100">
               {items.map((it: any, idx: number) => {
-                const pName = it.product?.name || it.product_name || it.name || it.title || "Product";
+                const pName = getProductDisplayName(it, printerConfig.billLanguage || "hindi");
                 const unitLabel = it.unit_name ? ` ${it.unit_name.toUpperCase()}` : " PCS";
                 const unitPrice = Number(it.unit_price) || 0;
                 const lineTotal = unitPrice * Number(it.quantity || 1);

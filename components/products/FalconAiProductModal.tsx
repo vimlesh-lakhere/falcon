@@ -56,6 +56,7 @@ import {
 import { Product, Category, Supplier, Unit } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { transliterateToHindi } from "@/lib/transliterate";
 
 interface FalconAiProductModalProps {
   isOpen: boolean;
@@ -712,9 +713,17 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       const promoImg = aiResult?.images?.studioAssets?.promoBannerUrl || heroImg;
       const galleryList = aiResult?.images?.galleryUrls || [heroImg];
 
+      let hindiTitle: string | null = null;
+      if (formData.name) {
+        try {
+          hindiTitle = await transliterateToHindi(formData.name);
+        } catch {}
+      }
+
       const productPayload = {
         shop_id: shopId,
         name: formData.name,
+        name_hindi: hindiTitle || null,
         brand: formData.brand || null,
         category_id: formData.category_id || null,
         sku: formData.sku || `SKU-${Date.now()}`,
@@ -722,8 +731,10 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         unit_id: formData.unit_id || null,
         supplier_id: formData.supplier_id || null,
         purchase_price: Number(formData.purchase_price) || 0,
+        mrp: formData.mrp ? Number(formData.mrp) : Number(formData.selling_price) || 0,
         selling_price: Number(formData.selling_price) || 0,
         wholesale_price: formData.wholesale_price ? Number(formData.wholesale_price) : null,
+        wholesale_min_qty: (formData as any).wholesale_min_qty ? Number((formData as any).wholesale_min_qty) : 12,
         current_stock: Number(formData.current_stock) || 0,
         minimum_stock: Number(formData.minimum_stock) || 0,
         description: formData.short_description || formData.long_description || null,
