@@ -66,6 +66,7 @@ import {
   getPrinterConfig,
   savePrinterConfig,
 } from "@/lib/thermal-printer";
+import { findBestVoiceProductMatch } from "@/lib/voice-matcher";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -175,6 +176,11 @@ export default function PosBillingPage() {
 
   // Voice Search State
   const [isListening, setIsListening] = useState(false);
+  const [voiceFeedback, setVoiceFeedback] = useState<{
+    original: string;
+    matchedName: string;
+    confidence: number;
+  } | null>(null);
   const recognitionRef = useRef<any>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -202,30 +208,52 @@ export default function PosBillingPage() {
 
     try {
       const recognition = new SpeechRecognition();
-      recognition.lang = "en-IN"; // Set to English (India) so spoken product names are typed in English script
+      recognition.lang = "en-IN"; // English (India) & spoken Indian phonetics
       recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
+      recognition.maxAlternatives = 5; // capture multiple phonetic alternatives
 
       recognition.onstart = () => {
         setIsListening(true);
+        setVoiceFeedback(null);
       };
 
       recognition.onresult = (event: any) => {
-        const spokenText = event.results?.[0]?.[0]?.transcript;
-        if (spokenText) {
-          const clean = spokenText.trim();
-          setSearchQuery(clean);
+        const results = event.results?.[0];
+        if (!results || results.length === 0) return;
 
-          // If single exact match is found, add directly
-          const matched = products.find(
-            (p) =>
-              p.name.toLowerCase() === clean.toLowerCase() ||
-              (p.name_hindi && p.name_hindi.toLowerCase() === clean.toLowerCase()) ||
-              p.barcode?.toLowerCase() === clean.toLowerCase()
-          );
-          if (matched) {
-            addToCart(matched, "piece", 1);
+        const alternatives: string[] = [];
+        for (let i = 0; i < results.length; i++) {
+          if (results[i]?.transcript) {
+            alternatives.push(results[i].transcript.trim());
           }
+        }
+
+        if (alternatives.length === 0) return;
+
+        // Auto-match and auto-correct using entire active product catalog (including all newly added products)
+        const matchResult = findBestVoiceProductMatch(alternatives, products);
+
+        if (matchResult.bestMatch && matchResult.confidence >= 0.45) {
+          setSearchQuery(matchResult.bestMatch.name);
+          setVoiceFeedback({
+            original: matchResult.originalSpoken,
+            matchedName: matchResult.bestMatch.name,
+            confidence: matchResult.confidence,
+          });
+          setTimeout(() => setVoiceFeedback(null), 5000);
+
+          // If high confidence (>= 0.70), auto add to cart
+          if (matchResult.confidence >= 0.7) {
+            addToCart(matchResult.bestMatch, "piece", 1);
+          }
+        } else {
+          setSearchQuery(matchResult.originalSpoken);
+          setVoiceFeedback({
+            original: matchResult.originalSpoken,
+            matchedName: matchResult.originalSpoken,
+            confidence: 0,
+          });
+          setTimeout(() => setVoiceFeedback(null), 4000);
         }
       };
 
@@ -1450,6 +1478,33 @@ export default function PosBillingPage() {
                     <span className="hidden sm:inline">Camera</span>
                   </button>
                 </form>
+
+                {/* Voice Auto-Correction Feedback Pill */}
+                {voiceFeedback && (
+                  <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-950 text-white text-xs rounded-2xl shadow-md border border-purple-700 animate-in slide-in-from-top-2 duration-150">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-6 h-6 rounded-lg bg-pink-500/20 text-pink-400 flex items-center justify-center shrink-0">
+                        <Mic className="w-3.5 h-3.5 animate-pulse" />
+                      </div>
+                      <div className="min-w-0 truncate">
+                        <span className="text-purple-200">Voice: </span>
+                        <span className="text-purple-100 font-mono italic">"{voiceFeedback.original}"</span>
+                        {voiceFeedback.confidence > 0 && (
+                          <>
+                            <span className="text-pink-300 font-bold mx-1.5">➔ Auto-Corrected:</span>
+                            <span className="text-amber-300 font-black">{voiceFeedback.matchedName}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {voiceFeedback.confidence >= 0.7 && (
+                      <span className="text-[10px] bg-emerald-500 text-white font-black px-2 py-0.5 rounded-md shrink-0 ml-2 shadow-xs flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Added to Bill
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Real-time Math Expression Preview Card (when typing e.g. 1*30 + 2*20) */}
                 {searchMathEvaluation && (
