@@ -183,7 +183,7 @@ export default function PosBillingPage() {
 
     try {
       const recognition = new SpeechRecognition();
-      recognition.lang = "hi-IN"; // Supports Hindi and Indian English product names
+      recognition.lang = "en-IN"; // Set to English (India) so spoken product names are typed in English script
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
 
