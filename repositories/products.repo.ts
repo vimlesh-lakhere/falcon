@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { Product, Category, Unit, Supplier } from "@/types/database";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 export const productsRepository = {
   async getAll(shopId: string, options?: { categoryId?: string; search?: string; isActive?: boolean }) {
@@ -35,9 +36,14 @@ export const productsRepository = {
   },
 
   async create(product: Partial<Product>) {
+    const sanitizedProduct = {
+      ...product,
+      ...(product.name ? { name: capitalizeFirstLetter(product.name.trim()) } : {}),
+      ...(product.brand ? { brand: capitalizeFirstLetter(product.brand.trim()) } : {}),
+    };
     const { data, error } = await supabase
       .from("products")
-      .insert([product])
+      .insert([sanitizedProduct])
       .select("*, category:categories(*), supplier:suppliers(*)")
       .single();
     if (error) throw error;
@@ -45,9 +51,14 @@ export const productsRepository = {
   },
 
   async update(id: string, product: Partial<Product>) {
+    const sanitizedProduct = {
+      ...product,
+      ...(product.name ? { name: capitalizeFirstLetter(product.name.trim()) } : {}),
+      ...(product.brand ? { brand: capitalizeFirstLetter(product.brand.trim()) } : {}),
+    };
     const { data, error } = await supabase
       .from("products")
-      .update(product)
+      .update(sanitizedProduct)
       .eq("id", id)
       .select("*, category:categories(*), supplier:suppliers(*)")
       .single();

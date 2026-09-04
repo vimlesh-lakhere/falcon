@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { attachVariantsToDescription } from "@/lib/product-variants";
 import { requireStaff } from "@/lib/auth/server";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
   const auth = await requireStaff(req, ["Owner", "Admin", "Manager", "Inventory Staff"]);
@@ -83,10 +84,10 @@ export async function POST(req: NextRequest) {
         category_id: catId,
         supplier_id: null,
         unit_id: null,
-        name: String(it.name || `Item ${idx + 1}`).trim(),
+        name: capitalizeFirstLetter(String(it.name || `Item ${idx + 1}`).trim()),
         sku: cleanSku,
         barcode: cleanBarcode,
-        brand: extractBrand(it.name),
+        brand: capitalizeFirstLetter(extractBrand(it.name)),
         purchase_price: costPrice,
         selling_price: salesPrice,
         wholesale_price: salesPrice > 0 ? Math.round(salesPrice * 0.9) : 0,

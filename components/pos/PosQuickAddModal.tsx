@@ -20,6 +20,7 @@ import { Product, Category } from "@/types/database";
 import { productsRepository } from "@/repositories/products.repo";
 import { UnitKey } from "@/lib/units-pricing";
 import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 interface PosQuickAddModalProps {
   isOpen: boolean;
@@ -98,7 +99,7 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
         setBarcode(query);
         setName("");
       } else {
-        setName(query);
+        setName(capitalizeFirstLetter(query));
         setBarcode("");
       }
 
@@ -169,7 +170,7 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
 
       const productData: Partial<Product> = {
         shop_id: shopId,
-        name: name.trim(),
+        name: capitalizeFirstLetter(name.trim()),
         barcode: barcode.trim() || null,
         sku: sku.trim() || null,
         category_id: categoryId || null,
@@ -263,7 +264,8 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
               placeholder="e.g. Maybelline Matte Lipstick Red 01"
               value={name}
               onChange={(e) => {
-                setName(e.target.value);
+                const val = capitalizeFirstLetter(e.target.value);
+                setName(val);
                 setIsNameSuggestionsOpen(true);
               }}
               className="rounded-xl text-sm font-semibold focus:ring-purple-500"

@@ -31,6 +31,7 @@ import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { aiImageEnhancer } from "@/lib/ai/image-enhancer";
 import { findInIndianRetailCatalog, searchIndianRetailCatalog } from "@/lib/catalog/indian-retail-catalog";
 import { transliterateToHindi } from "@/lib/transliterate";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 import {
   extractProductVariants,
@@ -206,13 +207,13 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
   const handleSelectCatalogItem = async (item: any) => {
     if (item.name) {
-      setName(item.name);
+      setName(capitalizeFirstLetter(item.name));
       try {
         const hi = await transliterateToHindi(item.name);
         if (hi) setNameHindi(hi);
       } catch {}
     }
-    if (item.brand) setBrand(item.brand);
+    if (item.brand) setBrand(capitalizeFirstLetter(item.brand));
     if (item.barcode) setBarcode(item.barcode);
     if (item.mrp > 0) setSellingPrice(item.mrp);
     if (item.purchasePrice > 0) setPurchasePrice(item.purchasePrice);
@@ -240,7 +241,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     setVariants(generatedVars);
 
     setAiSuccessMsg(
-      `⚡ Loaded from Master Catalog: "${item.name}" • MRP: ₹${item.mrp}`
+      `⚡ Loaded from Master Catalog: "${capitalizeFirstLetter(item.name)}" • MRP: ₹${item.mrp}`
     );
     setIsCatalogDropdownOpen(false);
   };
@@ -262,13 +263,13 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       if (res.ok && json.success && json.data) {
         const d = json.data;
         if (d.name) {
-          setName(d.name);
+          setName(capitalizeFirstLetter(d.name));
           try {
             const hi = await transliterateToHindi(d.name);
             if (hi) setNameHindi(hi);
           } catch {}
         }
-        if (d.brand) setBrand(d.brand);
+        if (d.brand) setBrand(capitalizeFirstLetter(d.brand));
         if (d.barcode) setBarcode(d.barcode);
         if (d.imageUrl) setImageUrl(d.imageUrl);
         if (d.backImageUrl) setBackImageUrl(d.backImageUrl);
@@ -502,8 +503,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         const suggestedCost =
           Number(aiData.suggested_purchase_price || 0) || (extractedMrp > 0 ? Math.round(extractedMrp * 0.72) : 0);
 
-        if (aiData.product_name) setName(aiData.product_name);
-        if (aiData.brand) setBrand(aiData.brand);
+        if (aiData.product_name) setName(capitalizeFirstLetter(aiData.product_name));
+        if (aiData.brand) setBrand(capitalizeFirstLetter(aiData.brand));
         if (extractedMrp > 0) setSellingPrice(extractedMrp);
         if (suggestedCost > 0) setPurchasePrice(suggestedCost);
         if (aiData.suggested_wholesale_price > 0) setWholesalePrice(aiData.suggested_wholesale_price);
@@ -717,11 +718,11 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
       const payload: Partial<Product> = {
         shop_id: shopId,
-        name: name.trim(),
+        name: capitalizeFirstLetter(name.trim()),
         name_hindi: nameHindi.trim() || null,
         sku: sku.trim() || null,
         barcode: barcode.trim() || null,
-        brand: brand.trim() || null,
+        brand: brand.trim() ? capitalizeFirstLetter(brand.trim()) : null,
         category_id: categoryId || null,
         supplier_id: supplierId || null,
         unit_id: unitId || null,
@@ -1327,7 +1328,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     required
                     value={name}
                     onChange={(e) => {
-                      const val = e.target.value;
+                      const val = capitalizeFirstLetter(e.target.value);
                       setName(val);
                       setIsNameSuggestionsOpen(true);
                       if (val.trim()) {

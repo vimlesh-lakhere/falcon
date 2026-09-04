@@ -54,7 +54,7 @@ import {
   ImageQualityReport,
 } from "@/lib/ai/types";
 import { Product, Category, Supplier, Unit } from "@/types/database";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, capitalizeFirstLetter } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { transliterateToHindi } from "@/lib/transliterate";
 
@@ -383,8 +383,8 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
       // Populate Form Data
       setFormData({
-        name: result.productName,
-        brand: result.brandName,
+        name: capitalizeFirstLetter(result.productName),
+        brand: result.brandName ? capitalizeFirstLetter(result.brandName) : "",
         category_id: result.suggestedCategoryId || categories[0]?.id || "",
         sub_category: result.subCategory || "",
         sku: result.sku,
@@ -404,36 +404,31 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         short_description: result.descriptions.shortDescription,
         long_description: result.descriptions.longDescription,
         ingredients: result.attributes.ingredientsList?.join(", ") || "",
-        directions: result.descriptions.directionsForUse || "",
-        warnings: result.attributes.warningsList || "",
+        directions: result.attributes.directionsOfUse || "Use as indicated on packaging.",
+        warnings: result.attributes.warningsList || "Store in a cool dry place.",
         country_of_origin: result.attributes.countryOfOrigin || "India",
-        manufacturer: result.manufacturer || `${result.brandName} Pvt. Ltd.`,
+        manufacturer: result.attributes.manufacturer || `${result.brandName || "Brand"} Laboratories`,
         is_website_published: true,
       });
 
-      // Auto-generate 8K AI Commercial Showroom Master
+      // Auto-generate AI Studio Showroom Hero (DALL-E 3 / Imagen 3) in background
       try {
-        const catName =
-          categories.find((c) => c.id === (result.suggestedCategoryId || categories[0]?.id))?.name ||
-          result.productName;
-        const aiImg = await masterStudioGenerator.generateAiShowroomImage({
+        const catObj = categories.find((c) => c.id === (result.suggestedCategoryId || categories[0]?.id));
+        const resolvedCatName = catObj?.name || (typeof result.category === "string" ? result.category : (result.category as any)?.name) || "General Goods";
+        const autoHero = await masterStudioGenerator.generateAiShowroomImage({
           productName: result.productName,
           brand: result.brandName,
-          categoryName: catName,
+          categoryName: resolvedCatName,
           theme: selectedTheme,
-          packagingShape: result.packagingDetails?.packagingShape,
-          capDetails: result.packagingDetails?.capDetails,
-          containerColorMaterial: result.packagingDetails?.containerColorMaterial,
-          labelDesignColors: result.packagingDetails?.labelDesignColors,
-          exactLabelText: result.packagingDetails?.exactLabelText,
-          aspectRatio: imageAspectRatio,
+          customPrompt: `Hyper-realistic 8K commercial product showcase of ${result.productName}`,
           provider: aiEngineProvider,
           apiKey: geminiApiKey || undefined,
         });
-        if (aiImg?.imageUrl) {
-          setAiGeneratedImageUrl(aiImg.imageUrl);
-          setAiGeneratedProviderName(aiImg.provider);
-          setAiGeneratedPrompt(aiImg.prompt);
+
+        if (autoHero.imageUrl) {
+          setAiGeneratedImageUrl(autoHero.imageUrl);
+          setAiGeneratedProviderName(autoHero.provider);
+          setAiGeneratedPrompt(autoHero.prompt);
           setActiveAssetTab("ai_showroom");
         }
       } catch (imgErr) {
@@ -458,8 +453,8 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
     try {
       const lookup = await aiBarcodeLookup.lookupBarcode(inputBarcode, shopId);
       if (lookup.found) {
-        const prodName = lookup.productName || "Product " + inputBarcode;
-        const brandName = lookup.brand || "Brand";
+        const prodName = capitalizeFirstLetter(lookup.productName || "Product " + inputBarcode);
+        const brandName = lookup.brand ? capitalizeFirstLetter(lookup.brand) : "Brand";
         const mrp = lookup.mrp || 50;
 
         // Populate Form
@@ -722,9 +717,9 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
       const productPayload = {
         shop_id: shopId,
-        name: formData.name,
+        name: capitalizeFirstLetter(formData.name.trim()),
         name_hindi: hindiTitle || null,
-        brand: formData.brand || null,
+        brand: formData.brand ? capitalizeFirstLetter(formData.brand.trim()) : null,
         category_id: formData.category_id || null,
         sku: formData.sku || `SKU-${Date.now()}`,
         barcode: formData.barcode || null,
@@ -936,7 +931,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       placeholder="e.g. Lumina Hydrating Rose Facial Serum"
                       value={promptFormData.name}
                       onChange={(e) =>
-                        setPromptFormData({ ...promptFormData, name: e.target.value })
+                        setPromptFormData({ ...promptFormData, name: capitalizeFirstLetter(e.target.value) })
                       }
                       className="w-full text-xs font-bold border border-gray-300 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
                     />
@@ -1939,7 +1934,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       <input
                         type="text"
                         value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        onChange={(e) => setFormData({ ...formData, name: capitalizeFirstLetter(e.target.value) })}
                         className="w-full text-xs font-bold bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-purple-600"
                       />
                     </div>

@@ -33,3 +33,12 @@ export function formatDateTime(dateString: string | Date): string {
     minute: "2-digit",
   });
 }
+
+export function capitalizeFirstLetter(str?: string | null): string {
+  if (!str) return "";
+  const match = str.match(/^(\s*)(.*)$/);
+  if (!match) return str;
+  const [, leadingSpaces, rest] = match;
+  if (!rest) return str;
+  return leadingSpaces + rest.charAt(0).toUpperCase() + rest.slice(1);
+}
