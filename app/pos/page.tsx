@@ -230,7 +230,7 @@ export default function PosBillingPage() {
 
         if (alternatives.length === 0) return;
 
-        // Auto-match and auto-correct using entire active product catalog (including all newly added products)
+        // Auto-match and auto-correct using entire active product catalog (filter catalog only, do not auto add to cart)
         const matchResult = findBestVoiceProductMatch(alternatives, products);
 
         if (matchResult.bestMatch && matchResult.confidence >= 0.45) {
@@ -241,11 +241,6 @@ export default function PosBillingPage() {
             confidence: matchResult.confidence,
           });
           setTimeout(() => setVoiceFeedback(null), 5000);
-
-          // If high confidence (>= 0.70), auto add to cart
-          if (matchResult.confidence >= 0.7) {
-            addToCart(matchResult.bestMatch, "piece", 1);
-          }
         } else {
           setSearchQuery(matchResult.originalSpoken);
           setVoiceFeedback({
@@ -1498,9 +1493,9 @@ export default function PosBillingPage() {
                       </div>
                     </div>
 
-                    {voiceFeedback.confidence >= 0.7 && (
+                    {voiceFeedback.confidence >= 0.45 && (
                       <span className="text-[10px] bg-emerald-500 text-white font-black px-2 py-0.5 rounded-md shrink-0 ml-2 shadow-xs flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Added to Bill
+                        <CheckCircle2 className="w-3 h-3" /> Found
                       </span>
                     )}
                   </div>
