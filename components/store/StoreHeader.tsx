@@ -199,7 +199,14 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 )}
                 <button
                   type="button"
-                  onClick={logoutCustomer}
+                  onClick={async () => {
+                    logoutCustomer();
+                    try {
+                      const supabase = createClient();
+                      await supabase.auth.signOut();
+                    } catch {}
+                    window.location.href = "/login";
+                  }}
                   className="p-1 text-gray-400 hover:text-red-600 rounded ml-0.5"
                   title="Sign Out"
                 >
