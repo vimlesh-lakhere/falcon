@@ -47,8 +47,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         data: { session },
       } = await supabase.auth.getSession();
 
-      // Fetch all available stores from DB
-      const { data: storesData } = await supabase.from("stores").select("*").order("created_at", { ascending: true });
+      // Fetch all available shops
+      const { data: storesData } = await supabase.from("shops").select("*").order("created_at", { ascending: true });
       const allStores = (storesData as Store[]) || [];
       set({ availableStores: allStores });
 
@@ -69,7 +69,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Fetch profile details
       let { data: profile } = await supabase
         .from("profiles")
-        .select("*, store:stores(*), branch:branches(*)")
+        .select("*")
         .eq("id", session.user.id)
         .maybeSingle();
 
@@ -81,37 +81,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           session.user.email?.split("@")[0] ||
           "My Store";
         const storeName = `${userName}'s Store`;
+        const slugPrefix = storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const uniqueSlug = `${slugPrefix}-${Math.random().toString(36).substring(2, 6)}`;
 
-        // 1. Create a fresh dedicated store for this user
+        // 1. Create a fresh dedicated shop for this user
         const { data: newStore } = await supabase
-          .from("stores")
+          .from("shops")
           .insert([
             {
               name: storeName,
-              business_type: "Cosmetics & Retail",
+              slug: uniqueSlug,
+              business_type: "general",
               currency: "INR",
-              timezone: "Asia/Kolkata",
+              plan: "trial",
             },
           ])
           .select()
           .single();
 
         if (newStore) {
-          // 2. Create main branch
-          const { data: newBranch } = await supabase
-            .from("branches")
-            .insert([
-              {
-                store_id: newStore.id,
-                name: `${storeName} (Main Branch)`,
-                is_main_branch: true,
-                is_active: true,
-              },
-            ])
-            .select()
-            .single();
-
-          // 3. Upsert profile with new store
+          // 2. Upsert profile with new shop
           const { data: upsertedProfile } = await supabase
             .from("profiles")
             .upsert({
@@ -121,34 +110,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               avatar_url: session.user.user_metadata?.avatar_url || null,
               role: "Owner",
               store_id: newStore.id,
-              branch_id: newBranch?.id || null,
+              shop_id: newStore.id,
               is_active: true,
             })
-            .select("*, store:stores(*), branch:branches(*)")
+            .select("*")
             .single();
 
           profile = upsertedProfile;
         }
       }
 
-      // Fetch stores belonging to this user
+      // Fetch shops belonging to this user or matching profile.store_id
       let userStores: Store[] = [];
       if (profile?.store_id) {
         const { data: storesData } = await supabase
-          .from("stores")
+          .from("shops")
           .select("*")
           .eq("id", profile.store_id);
         userStores = (storesData as Store[]) || [];
       }
 
-      const activeStore = (profile?.store as Store) || userStores[0] || null;
-      const activeBranch = (profile?.branch as Branch) || null;
+      const activeStore = userStores[0] || allStores.find((s) => s.id === profile?.store_id) || allStores[0] || null;
 
       set({
         profile: profile as Profile,
-        availableStores: userStores.length > 0 ? userStores : activeStore ? [activeStore] : [],
+        availableStores: userStores.length > 0 ? userStores : allStores,
         currentStore: activeStore,
-        currentBranch: activeBranch,
+        currentBranch: null,
       });
     } catch (err) {
       console.error("Failed to fetch session", err);
@@ -166,26 +154,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.setItem("falcon_active_store_id", storeId);
     }
 
-    // Fetch primary branch for target store
-    const { data: branchData } = await supabase
-      .from("branches")
-      .select("*")
-      .eq("store_id", storeId)
-      .limit(1)
-      .single();
-
     set({
       currentStore: targetStore,
-      currentBranch: (branchData as Branch) || null,
+      currentBranch: null,
     });
 
-    // Optionally update user's profile store_id if logged in
+    // Sync profile's store_id and shop_id in database
     if (user?.id) {
       await supabase
         .from("profiles")
         .update({
           store_id: storeId,
-          branch_id: branchData?.id || null,
+          shop_id: storeId,
         })
         .eq("id", user.id);
     }

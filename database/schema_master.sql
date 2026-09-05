@@ -15,27 +15,43 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS shops (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
+  slug TEXT UNIQUE,
+  business_type TEXT NOT NULL DEFAULT 'general',
   logo_url TEXT,
   address TEXT,
   phone TEXT,
   gst_number TEXT,
   currency TEXT NOT NULL DEFAULT 'INR',
+  plan TEXT NOT NULL DEFAULT 'trial',
+  trial_ends_at TIMESTAMPTZ DEFAULT (now() + interval '14 days'),
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Ensure Default Shop Exists
-INSERT INTO shops (id, name, address, phone, currency, is_active)
+-- Safely add columns if shops table already exists
+ALTER TABLE shops ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;
+ALTER TABLE shops ADD COLUMN IF NOT EXISTS business_type TEXT NOT NULL DEFAULT 'general';
+ALTER TABLE shops ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'trial';
+ALTER TABLE shops ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT (now() + interval '14 days');
+
+-- Ensure Default Shop Exists with slug
+INSERT INTO shops (id, name, slug, business_type, address, phone, currency, plan, is_active)
 VALUES (
   'a0000000-0000-0000-0000-000000000001',
   'AGS Store',
+  'ags-store',
+  'cosmetics',
   'Main Market, Wholesale & Retail Hub',
   '+91 98765 43210',
   'INR',
+  'pro',
   true
 )
 ON CONFLICT (id) DO UPDATE 
-SET name = EXCLUDED.name;
+SET name = EXCLUDED.name,
+    slug = COALESCE(shops.slug, EXCLUDED.slug),
+    business_type = COALESCE(shops.business_type, EXCLUDED.business_type),
+    plan = COALESCE(shops.plan, EXCLUDED.plan);
 
 -- =============================================================================
 -- 2. USERS & PROFILES

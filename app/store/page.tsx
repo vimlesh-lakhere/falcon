@@ -17,14 +17,18 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { HeroBannerCarousel } from "@/components/store/HeroBannerCarousel";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { CategoryGrid } from "@/components/store/CategoryGrid";
 import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product, Category } from "@/types/database";
+import { resolveActiveShopId, DEFAULT_FALLBACK_SHOP_ID } from "@/lib/tenant";
 
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+function StoreHomeContent() {
+  const searchParams = useSearchParams();
+  const shopParam = searchParams.get("shop");
 
-export default function StoreHomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,18 +39,35 @@ export default function StoreHomePage() {
         setLoading(true);
         const supabase = createClient();
 
+        let targetShopId = resolveActiveShopId();
+
+        if (shopParam) {
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(shopParam)) {
+            targetShopId = shopParam;
+          } else {
+            const { data: matchedShop } = await supabase
+              .from("shops")
+              .select("id")
+              .eq("slug", shopParam)
+              .maybeSingle();
+            if (matchedShop?.id) {
+              targetShopId = matchedShop.id;
+            }
+          }
+        }
+
         const [{ data: prodList }, { data: catList }] = await Promise.all([
           supabase
             .from("products")
             .select("*, category:categories(*)")
-            .eq("shop_id", SHOP_ID)
+            .eq("shop_id", targetShopId)
             .eq("is_active", true)
             .order("created_at", { ascending: false })
             .limit(40),
           supabase
             .from("categories")
             .select("*")
-            .eq("shop_id", SHOP_ID)
+            .eq("shop_id", targetShopId)
             .eq("is_active", true)
             .limit(12),
         ]);
@@ -61,7 +82,7 @@ export default function StoreHomePage() {
     }
 
     loadStorefrontData();
-  }, []);
+  }, [shopParam]);
 
   // Filter sections
   const featuredProducts = products.slice(0, 8);
@@ -248,5 +269,13 @@ export default function StoreHomePage() {
         </a>
       </section>
     </div>
+  );
+}
+
+export default function StoreHomePage() {
+  return (
+    <Suspense fallback={<div className="min-h-[50vh] flex items-center justify-center text-sm font-semibold text-gray-500">Loading storefront...</div>}>
+      <StoreHomeContent />
+    </Suspense>
   );
 }

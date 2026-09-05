@@ -9,11 +9,16 @@ export type Json =
 export interface Shop {
   id: string;
   name: string;
+  slug?: string | null;
+  business_type?: string;
   logo_url: string | null;
   address: string | null;
   phone: string | null;
   gst_number: string | null;
   currency: string;
+  plan?: string;
+  trial_ends_at?: string | null;
+  is_active?: boolean;
   created_at: string;
 }
 

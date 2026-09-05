@@ -137,60 +137,53 @@ export default function RegisterBusinessPage() {
 
       const userId = authUser?.id;
 
-      // 2. Create Store in database
+      // 2. Create Shop in database (Multi-Tenant SaaS entity)
+      const storeName = data.storeName || data.businessName;
+      const slugBase = storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "store";
+      const uniqueSlug = `${slugBase}-${Math.random().toString(36).substring(2, 6)}`;
+      const fullAddress = [data.address, data.city, data.state, data.pincode].filter(Boolean).join(", ");
+
       const { data: storeData, error: storeError } = await supabase
-        .from("stores")
+        .from("shops")
         .insert([
           {
-            name: data.storeName || data.businessName,
-            business_type: data.businessType,
+            name: storeName,
+            slug: uniqueSlug,
+            business_type: data.businessType || "general",
+            phone: data.phone || null,
+            address: fullAddress || null,
             gst_number: data.gstNumber || null,
             currency: data.currency || "INR",
-            timezone: data.timezone || "Asia/Kolkata",
+            plan: "trial",
           },
         ])
         .select()
         .single();
 
       if (storeError) {
-        console.warn("Store creation warning", storeError);
+        console.warn("Shop creation warning", storeError);
       }
 
       const storeId = storeData?.id;
 
-      // 3. Create Main Branch
-      let branchId: string | null = null;
-      if (storeId) {
-        const { data: branchData } = await supabase
-          .from("branches")
-          .insert([
-            {
-              store_id: storeId,
-              name: `${data.storeName || data.businessName} (Main Branch)`,
-              address_line1: data.address,
-              city: data.city,
-              state: data.state,
-              pincode: data.pincode,
-              is_main_branch: true,
-            },
-          ])
-          .select()
-          .single();
-
-        branchId = branchData?.id || null;
-      }
-
-      // 4. Update Profile with store & branch if user exists
+      // 3. Update Profile with store & Owner role
       if (userId && storeId) {
         await supabase
           .from("profiles")
-          .update({
+          .upsert({
+            id: userId,
             store_id: storeId,
-            branch_id: branchId,
+            shop_id: storeId,
             full_name: data.ownerName,
+            email: data.email,
             phone: data.phone,
-          })
-          .eq("id", userId);
+            role: "Owner",
+            is_active: true,
+          });
+
+        if (typeof window !== "undefined") {
+          localStorage.setItem("falcon_active_store_id", storeId);
+        }
       }
 
       setCurrentStep(4); // Move to Finished Screen

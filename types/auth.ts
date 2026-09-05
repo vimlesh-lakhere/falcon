@@ -12,15 +12,20 @@ export type UserRole =
 export interface Store {
   id: string;
   name: string;
-  slug: string | null;
-  business_type: string;
-  gst_number: string | null;
-  logo_url: string | null;
-  website: string | null;
+  slug?: string | null;
+  business_type?: string;
+  gst_number?: string | null;
+  logo_url?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  website?: string | null;
   currency: string;
-  timezone: string;
+  timezone?: string;
+  plan?: string;
+  trial_ends_at?: string | null;
+  is_active?: boolean;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface Branch {
