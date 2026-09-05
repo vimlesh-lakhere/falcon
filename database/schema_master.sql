@@ -465,5 +465,46 @@ SELECT
 FROM products
 WHERE is_active = true;
 
+-- =============================================================================
+-- 13. AUTOMATIC AUTH PROFILE SYNC & PERMISSIONS (Zero Setup Disaster Recovery)
+-- Automatically creates Owner/Admin profile whenever a new user signs up in Supabase Auth
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, store_id, shop_id, full_name, email, role, is_active)
+  VALUES (
+    NEW.id,
+    'a0000000-0000-0000-0000-000000000001',
+    'a0000000-0000-0000-0000-000000000001',
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+    NEW.email,
+    'Owner',
+    true
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET role = 'Owner',
+      store_id = 'a0000000-0000-0000-0000-000000000001',
+      shop_id = 'a0000000-0000-0000-0000-000000000001',
+      is_active = true;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Grant full schema permissions for Supabase PostgREST, anon and authenticated roles
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO postgres, anon, authenticated, service_role;
+
 -- Reload schema notification for PostgREST
 NOTIFY pgrst, 'reload schema';

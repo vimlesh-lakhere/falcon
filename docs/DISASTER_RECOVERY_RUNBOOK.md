@@ -1,103 +1,86 @@
-# 🚨 Falcon ERP — 360° Disaster Recovery & Complete Revival Runbook (Zero Data Loss)
+# 🚨 Falcon ERP — 5-Minute Fast Disaster Recovery Guide (Zero Data Loss)
 
-> **उद्देश्य (Objective):** अगर Supabase database delete हो जाए, Vercel account ban/lock हो जाए, या पूरा infrastructure crash हो जाए, तो **10 से 15 मिनट के अंदर पूरे Falcon Store ERP को 0 से 100% फिर से live restart करना**।
-
----
-
-## 📋 Emergency Revival Checklist (10-Minute Timeline)
-
-| Step | Action | Time Taken | Target |
-|---|---|---|---|
-| **Step 1** | New Supabase / Postgres Instance Creation | 2 Minutes | New Database URL & Keys |
-| **Step 2** | Execute Master Schema DDL (`schema_master.sql`) | 1 Minute | All Tables, Triggers & Views recreated |
-| **Step 3** | Fetch Latest Backup from Google Drive | 2 Minutes | Latest JSON Snapshot |
-| **Step 4** | Run Restore Engine (UI or Script) | 2 Minutes | All products, customers, sales restored |
-| **Step 5** | Reconnect App & Update Environment Variables | 3 Minutes | Vercel / Next.js Live & Operational |
+> **लक्ष्य (Goal):** अगर मुख्य डेटाबेस डिलीट हो जाए या होस्टिंग बैन/क्रैश हो जाए, तो **5 से 7 मिनट के अंदर पूरे सिस्टम को 100% डेटा के साथ नए अकाउंट पर रीस्टार्ट करना**।
 
 ---
 
-## 🛠️ Step-by-Step Restoration Guide
+## ⚡ 5-Minute Quick Action Checklist
 
-### Phase 1: New Database Setup (Supabase)
-1. Login to [Supabase Dashboard](https://supabase.com/dashboard) (using any Google account).
-2. Click **"New Project"**.
-   - Project Name: `falcon-erp`
-   - Database Password: Create a strong password (save it safely).
-   - Region: `ap-south-1 (Mumbai, India)` for lowest latency.
-3. Once the database is provisioned (approx 90 seconds), go to **Project Settings** → **API**.
-4. Copy:
-   - `Project URL`
-   - `anon public key`
-   - `service_role secret key`
+| मिनट | स्टेप | क्या करना है? |
+|---|---|---|
+| **0 - 1 Min** | **Step 1: Backup डाउनलोड** | Settings → Backup से `falcon_backup_YYYY-MM-DD.json` डाउनलोड करें। |
+| **1 - 3 Min** | **Step 2: नया Supabase बनाएं** | नए Gmail से Supabase पर `falcon-erp` प्रोजेक्ट बनाएं और Keys कॉपी करें। |
+| **3 - 4 Min** | **Step 3: Schema DDL चलाएं** | Supabase SQL Editor में [`database/schema_master.sql`](file:///e:/Falcon/database/schema_master.sql) पेस्ट करके `Run` करें। |
+| **4 - 5 Min** | **Step 4: Data Restore करें** | CLI या UI के ज़रिए JSON बैकअप को नए डेटाबेस में इंजेक्ट करें। |
+| **5 - 7 Min** | **Step 5: Vercel / Netlify कनेक्ट** | नए प्रोजेक्ट में Environment Variables पेस्ट करें और `Deploy` करें। |
 
 ---
 
-### Phase 2: Schema & Architecture Initialization
-1. In Supabase Dashboard, open the **SQL Editor** on the left menu.
-2. Click **"New Query"**.
-3. Open [`database/schema_master.sql`](file:///e:/Falcon/database/schema_master.sql) from this repository, copy the entire content, and paste it into the SQL Editor.
-4. Click **Run (Ctrl + Enter)**.
-5. ✅ **Result**: 
-   - 22+ tables (`shops`, `products`, `categories`, `suppliers`, `customers`, `sales`, `sale_items`, `payments`, `stock_movements`, etc.)
-   - Stock auto-calculation triggers (`trg_stock_movement_recompute`)
-   - Customer total triggers (`trg_sale_customer_totals`)
-   - Cashier view (`products_for_cashier`)
-   - Default Store Seed (`a0000000-0000-0000-0000-000000000001`) will all be created instantly in ~15 seconds.
+## 🛠️ Step-by-Step Restoration (Step-by-Step Guide)
+
+### Step 1: Backup JSON फ़ाइल प्राप्त करें (30 Seconds)
+- **विकल्प A (सबसे तेज़):** लाइव ऐप में जाएं → **Settings** → **💾 Backup & Disaster Recovery** → **`Download Full Backup (JSON)`** पर क्लिक करें। फ़ाइल आपके डाउनलोड्स फोल्डर में आ जाएगी।
+- **विकल्प B:** अगर ऐप पूरी तरह बंद है, तो अपनी Google Drive में जाएं (`Falcon_ERP_Backups` फ़ोल्डर) और सबसे ताज़ा `.json` फ़ाइल डाउनलोड करें।
 
 ---
 
-### Phase 3: Data Restoration from Google Drive
-Aapke paas data restore karne ke **3 aasan tareeqe** hain:
+### Step 2: नया Supabase Database बनाएं (90 Seconds)
+1. [Supabase Dashboard](https://supabase.com/dashboard) खोलें (किसी भी नए Gmail से लॉगिन करें)।
+2. **`New Project`** पर क्लिक करें:
+   - **Name:** `falcon-erp-recovery`
+   - **Database Password:** कोई भी मजबूत पासवर्ड डालें।
+   - **Region:** `South Asia (Mumbai)` चुनें।
+3. प्रोजेक्ट बनने के बाद **Project Settings** → **API** में जाएं और ये 3 चीज़ें कॉपी करें:
+   - **Project URL** (`https://xxxx.supabase.co`)
+   - **`anon` `public` Key**
+   - **`service_role` `secret` Key**
+4. **Authentication** → **Providers** → **Email** में जाकर **`Confirm email`** को **OFF** करके Save कर दें (ताकि बिना ईमेल वेरिफाई किए तुरंत लॉगिन हो सके)।
 
-#### Option A: In-App UI Restore (Sabse Aasan)
-1. App open karein aur navigate karein: **Settings** → **💾 Backup & Disaster Recovery** tab.
-2. **"Restore Database"** section me jayein.
-3. Google Drive se download ki hui latest `.json` file (`falcon_backup_YYYY-MM-DD.json`) drag & drop karein.
-4. **"🔍 Analyze & Dry Run"** par click karein. Ye check karega ki kitne products, sales, aur customers file me hain.
-5. **"⚡ Execute Live Restore"** button click karein. System sabhi records ko automatically foreign key sequence me restore kar dega.
+---
 
-#### Option B: Automated Script Restore
-Terminal ya Command Prompt me run karein:
-```bash
-node scripts/restore-from-backup.js path/to/falcon_backup_YYYY-MM-DD.json
+### Step 3: Schema DDL रन करें (30 Seconds)
+1. Supabase Dashboard में बाएँ मेनू से **`SQL Editor`** खोलें।
+2. **`+ New query`** पर क्लिक करें।
+3. अपने प्रोजेक्ट की [**`database/schema_master.sql`**](file:///e:/Falcon/database/schema_master.sql) का पूरा कोड कॉपी करके पेस्ट करें।
+4. **`Run` (Ctrl + Enter)** दबाएं।
+   - *नोट:* इस फाइल में सभी टेबल्स, ट्रिगर्स, रोल्स और ऑटो-एडमिन ट्रिगर (`handle_new_user`) पहले से शामिल हैं।
+
+---
+
+### Step 4: Data Restore करें (45 Seconds)
+अपने कंप्यूटर के Terminal (PowerShell) में यह सिंगल कमांड रन करें (Keys को अपने नए Supabase क्रेडेंशियल्स से बदलें):
+
+```powershell
+$env:NEXT_PUBLIC_SUPABASE_URL="https://YOUR_NEW_PROJECT.supabase.co"; $env:SUPABASE_SERVICE_ROLE_KEY="YOUR_NEW_SERVICE_ROLE_KEY"; node scripts/restore-from-backup.js "C:\Users\vlakh\Downloads\falcon_backup_YYYY-MM-DD.json"
 ```
 
-#### Option C: Direct API Endpoint
-```bash
-curl -X POST http://localhost:3000/api/backup/restore \
-  -H "Content-Type: application/json" \
-  -d '{"backupData": <JSON_CONTENT>, "dryRun": false, "mode": "upsert"}'
-```
+✅ **परिणाम:** सभी 379+ प्रोडक्ट्स, कस्टमर्स, सेल्स, इनवॉइस और स्टॉक्स 30 सेकंड में रिस्टोर हो जाएंगे।
 
 ---
 
-### Phase 4: Vercel / Hosting Deployment Reconnection
-Agar Vercel par dikkat aayi hai:
-1. **GitHub Repository**: Code hamesha aapke GitHub repo par surakshit rehta hai.
-2. Naya Vercel project create karein ya existing project ke **Settings** → **Environment Variables** me jayein.
-3. Update karein:
+### Step 5: Vercel / Netlify पर Re-Deploy करें (2 Minutes)
+1. Vercel या Netlify Dashboard में जाएं और नया प्रोजेक्ट बनाएं (GitHub `Falcon` repo से कनेक्ट करें)।
+2. **Environment Variables** में ये 4 मुख्य वेरिएबल्स पेस्ट करें:
    ```env
-   NEXT_PUBLIC_SUPABASE_URL=https://<your-new-project-ref>.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-new-anon-key>
-   SUPABASE_SERVICE_ROLE_KEY=<your-new-service-role-key>
+   NEXT_PUBLIC_SUPABASE_URL=https://YOUR_NEW_PROJECT.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_NEW_ANON_KEY
+   SUPABASE_SERVICE_ROLE_KEY=YOUR_NEW_SERVICE_ROLE_KEY
    DEFAULT_SHOP_ID=a0000000-0000-0000-0000-000000000001
    ```
-4. Click **Redeploy**.
+3. **Deploy** पर क्लिक करें।
+4. डिप्लॉयमेंट खत्म होते ही ऐप खोलें और **Register** पेज से नया अकाउंट बनाएं — आप सीधे **Admin ERP & POS** में पहुंच जाएंगे!
 
 ---
 
-### Phase 5: Google Drive Automated Backup Configuration
-Future automatic backups ke liye Google Service Account setup:
-1. [Google Cloud Console](https://console.cloud.google.com/) me ek Service Account banayein (`falcon-backup-sa`).
-2. Google Drive API enable karein.
-3. Service Account Key (JSON) generate karein.
-4. Google Drive me ek folder banayein (`Falcon_ERP_Backups`) aur us folder ko Service Account ki email ke saath **Editor** permissions dekar share karein.
-5. `.env.local` / Vercel Environment Variables me add karein:
-   ```env
-   GOOGLE_SERVICE_ACCOUNT_EMAIL=falcon-backup-sa@project.iam.gserviceaccount.com
-   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-   GOOGLE_DRIVE_FOLDER_ID=<folder-id-from-url>
-   ```
+## ⚠️ सामान्य गलतियाँ और त्वरित समाधान (Troubleshooting Tips)
+
+1. **`Failed to fetch` एरर:**
+   - इसका मतलब है कि Environment Variables सेव करने के बाद प्रोजेक्ट को **Redeploy** नहीं किया गया। हमेशा Vercel/Netlify पर `Redeploy (Clear Cache)` जरूर करें।
+2. **लॉगिन के बाद सीधे `/store` पर रिडायरेक्ट होना:**
+   - इसका मतलब नए यूज़र को `Owner` रोल नहीं मिला था। अब हमने `schema_master.sql` में ऑटो-ओनर ट्रिगर जोड़ दिया है जिससे कोई भी नया साइनअप अपने आप Owner बन जाएगा।
+3. **Products स्टोर पर न दिखना:**
+   - अब `schema_master.sql` में डिफ़ॉल्ट परमिशन ग्रांट्स पहले से मौजूद हैं, इसलिए कभी भी RLS की समस्या नहीं आएगी।
+
 
 ---
 
