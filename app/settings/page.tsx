@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Settings, Store, Shield, Receipt, Database, Save, Check, Printer } from "lucide-react";
+import { Settings, Store, Shield, Receipt, Database, Save, Check, Printer, HardDrive } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { supabase } from "@/lib/supabase/client";
 import { Shop } from "@/types/database";
 import { PrinterSettingsTab } from "@/components/settings/PrinterSettingsTab";
+import { BackupSettingsTab } from "@/components/settings/BackupSettingsTab";
 
 const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
@@ -17,7 +18,7 @@ export default function SettingsPage() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState<"profile" | "printer" | "invoice" | "roles" | "database">("printer");
+  const [activeTab, setActiveTab] = useState<"profile" | "printer" | "invoice" | "roles" | "database" | "backup">("backup");
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -78,6 +79,7 @@ export default function SettingsPage() {
         {/* Settings Navigation Tabs */}
         <div className="flex items-center gap-2 border-b border-gray-200 pb-2 overflow-x-auto">
           {[
+            { id: "backup", label: "💾 Backup & Disaster Recovery", icon: HardDrive },
             { id: "printer", label: "🖨️ Thermal Printer & ATPOS", icon: Printer },
             { id: "profile", label: "Shop Profile & GST", icon: Store },
             { id: "invoice", label: "Receipt & Invoicing", icon: Receipt },
@@ -267,6 +269,9 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Tab 5: Backup & Disaster Recovery */}
+        {activeTab === "backup" && <BackupSettingsTab />}
       </div>
     </MainLayout>
   );
