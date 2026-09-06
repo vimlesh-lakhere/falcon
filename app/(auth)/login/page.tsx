@@ -81,7 +81,10 @@ function LoginForm() {
     try {
       setIsLoading(true);
       setErrorMessage(null);
-      const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextDestination)}`;
+      const targetOrigin = window.location.origin.includes("localhost")
+        ? window.location.origin
+        : "https://www.falcon360.in";
+      const callbackUrl = `${targetOrigin}/auth/callback?next=${encodeURIComponent(nextDestination)}`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {

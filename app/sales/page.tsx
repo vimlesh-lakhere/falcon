@@ -37,10 +37,11 @@ import { EditInvoiceModal } from "@/components/sales/EditInvoiceModal";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
 import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
 import { parseFreightCharge } from "@/lib/thermal-printer";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { useAuthStore } from "@/store/useAuthStore";
 
 function SalesHistoryContent() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const SHOP_ID = currentStore?.id || profile?.store_id || "";
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "online" ? "online" : "all";
 
@@ -56,6 +57,7 @@ function SalesHistoryContent() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const loadSales = async () => {
+    if (!SHOP_ID) return;
     try {
       setLoading(true);
       const data = await posRepository.getRecentSales(SHOP_ID, 100);
@@ -68,8 +70,14 @@ function SalesHistoryContent() {
   };
 
   useEffect(() => {
-    loadSales();
-  }, []);
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (SHOP_ID) {
+      loadSales();
+    }
+  }, [SHOP_ID]);
 
   // Update order status in Supabase
   const handleUpdateStatus = async (saleId: string, newStatus: string) => {

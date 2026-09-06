@@ -22,11 +22,9 @@ import { StockMovement, Product } from "@/types/database";
 import { formatDateTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 
-const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
-
 export default function InventoryPage() {
-  const currentStore = useAuthStore((state) => state.currentStore);
-  const activeShopId = currentStore?.id || FALLBACK_SHOP_ID;
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const activeShopId = currentStore?.id || profile?.store_id || "";
 
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
@@ -42,6 +40,7 @@ export default function InventoryPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const loadData = async () => {
+    if (!activeShopId) return;
     try {
       setLoading(true);
       const [movs, low, prods] = await Promise.all([
@@ -60,7 +59,13 @@ export default function InventoryPage() {
   };
 
   useEffect(() => {
-    loadData();
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (activeShopId) {
+      loadData();
+    }
   }, [activeShopId]);
 
   const handleAdjustSubmit = async (e: React.FormEvent) => {

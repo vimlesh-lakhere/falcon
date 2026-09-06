@@ -11,10 +11,12 @@ import { supabase } from "@/lib/supabase/client";
 import { Shop } from "@/types/database";
 import { PrinterSettingsTab } from "@/components/settings/PrinterSettingsTab";
 import { BackupSettingsTab } from "@/components/settings/BackupSettingsTab";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function SettingsPage() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const SHOP_ID = currentStore?.id || profile?.store_id || "";
+
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
@@ -26,27 +28,35 @@ export default function SettingsPage() {
   const [gstNumber, setGstNumber] = useState("");
   const [currency, setCurrency] = useState("INR");
 
-  useEffect(() => {
-    const fetchShop = async () => {
-      try {
-        setLoading(true);
-        const { data } = await supabase.from("shops").select("*").eq("id", SHOP_ID).single();
-        if (data) {
-          setShop(data);
-          setName(data.name);
-          setPhone(data.phone || "");
-          setAddress(data.address || "");
-          setGstNumber(data.gst_number || "");
-          setCurrency(data.currency || "INR");
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+  const fetchShop = async () => {
+    if (!SHOP_ID) return;
+    try {
+      setLoading(true);
+      const { data } = await supabase.from("shops").select("*").eq("id", SHOP_ID).single();
+      if (data) {
+        setShop(data);
+        setName(data.name);
+        setPhone(data.phone || "");
+        setAddress(data.address || "");
+        setGstNumber(data.gst_number || "");
+        setCurrency(data.currency || "INR");
       }
-    };
-    fetchShop();
-  }, []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (SHOP_ID) {
+      fetchShop();
+    }
+  }, [SHOP_ID]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -53,7 +53,7 @@ interface ThermalReceiptProps {
 export function ThermalReceipt({
   sale,
   customer,
-  shopId = "a0000000-0000-0000-0000-000000000001",
+  shopId = "",
   shopName,
   shopPhone,
   shopAddress,
@@ -534,7 +534,7 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
         onClose={() => setIsWhatsAppModalOpen(false)}
         sale={sale}
         customer={customer}
-        shopId={shopId || "a0000000-0000-0000-0000-000000000001"}
+        shopId={shopId}
       />
 
       {/* Done Button */}

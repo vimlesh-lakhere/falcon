@@ -28,11 +28,9 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { CustomerLedgerModal } from "@/components/customers/CustomerLedgerModal";
 import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
 
-const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
-
 export default function CustomersPage() {
-  const currentStore = useAuthStore((state) => state.currentStore);
-  const activeShopId = currentStore?.id || FALLBACK_SHOP_ID;
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const activeShopId = currentStore?.id || profile?.store_id || "";
 
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -61,6 +59,7 @@ export default function CustomersPage() {
   const [activePrices, setActivePrices] = useState<any[]>([]);
 
   const loadData = async () => {
+    if (!activeShopId) return;
     try {
       setLoading(true);
       const [custs, prods] = await Promise.all([
@@ -77,7 +76,13 @@ export default function CustomersPage() {
   };
 
   useEffect(() => {
-    loadData();
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (activeShopId) {
+      loadData();
+    }
   }, [activeShopId]);
 
   const handleCreateCustomer = async (e: React.FormEvent) => {

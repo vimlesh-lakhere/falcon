@@ -43,6 +43,7 @@ import { posRepository, CheckoutPayload } from "@/repositories/pos.repo";
 import { Product, Category, Customer, Sale } from "@/types/database";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import { offlinePosEngine } from "@/lib/offline-pos";
+import { useAuthStore } from "@/store/useAuthStore";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
 import { PosCustomerSelector } from "@/components/pos/PosCustomerSelector";
 import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
@@ -67,8 +68,6 @@ import {
   savePrinterConfig,
 } from "@/lib/thermal-printer";
 import { findBestVoiceProductMatch } from "@/lib/voice-matcher";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
 // Persistent LocalStorage keys for POS state resilience across page navigation/refresh
 const POS_CART_STORAGE_KEY = "falcon_pos_active_cart";
@@ -99,6 +98,9 @@ interface HeldBill {
 }
 
 export default function PosBillingPage() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const SHOP_ID = currentStore?.id || profile?.store_id || "";
+
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -467,6 +469,7 @@ export default function PosBillingPage() {
 
   // Load catalog data (with offline cache fallback & sales count)
   const loadCatalog = async () => {
+    if (!SHOP_ID) return;
     try {
       const [prods, cats, custs] = await Promise.all([
         productsRepository.getAll(SHOP_ID, { isActive: true }),
@@ -516,8 +519,14 @@ export default function PosBillingPage() {
   };
 
   useEffect(() => {
-    loadCatalog();
-  }, []);
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (SHOP_ID) {
+      loadCatalog();
+    }
+  }, [SHOP_ID]);
 
   // Load custom customer pricing when customer is selected
   useEffect(() => {

@@ -13,10 +13,12 @@ import { customersRepository } from "@/repositories/customers.repo";
 import { productsRepository } from "@/repositories/products.repo";
 import { ProductRequest, Customer, Product } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function CustomerRequestsPage() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const SHOP_ID = currentStore?.id || profile?.store_id || "";
+
   const [requests, setRequests] = useState<ProductRequest[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -34,6 +36,7 @@ export default function CustomerRequestsPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const loadData = async () => {
+    if (!SHOP_ID) return;
     try {
       setLoading(true);
       const [reqs, custs, prods] = await Promise.all([
@@ -52,8 +55,14 @@ export default function CustomerRequestsPage() {
   };
 
   useEffect(() => {
-    loadData();
-  }, [statusFilter]);
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (SHOP_ID) {
+      loadData();
+    }
+  }, [SHOP_ID, statusFilter]);
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();

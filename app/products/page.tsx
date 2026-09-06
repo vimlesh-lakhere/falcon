@@ -52,11 +52,9 @@ import { ManageCategoriesModal } from "@/components/products/ManageCategoriesMod
 import { BarcodeLabelGenerator } from "@/components/products/BarcodeLabelGenerator";
 import { resolveCategoryVisual } from "@/lib/category-icons";
 
-const FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
-
 export default function ProductsPage() {
-  const currentStore = useAuthStore((state) => state.currentStore);
-  const activeShopId = currentStore?.id || FALLBACK_SHOP_ID;
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const activeShopId = currentStore?.id || profile?.store_id || "";
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -109,7 +107,13 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    loadData();
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (activeShopId) {
+      loadData();
+    }
   }, [activeShopId]);
 
   // Handle URL query actions (e.g. from Quick Demand Pad or Dashboard Out-of-Stock card)

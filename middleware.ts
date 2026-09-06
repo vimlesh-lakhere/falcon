@@ -31,6 +31,16 @@ function isPublicPath(pathname: string) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = request.headers.get("host") || "";
+
+  // 1. Enforce canonical domain (Never expose vercel.app URL to user)
+  if (host.includes(".vercel.app")) {
+    const canonicalUrl = request.nextUrl.clone();
+    canonicalUrl.host = "www.falcon360.in";
+    canonicalUrl.protocol = "https";
+    canonicalUrl.port = "";
+    return NextResponse.redirect(canonicalUrl, 308);
+  }
 
   // Customer OTP & Storefront Checkout are intentionally public endpoints.
   const PUBLIC_API_PATHS = ["/api/auth/otp", "/api/store/checkout"];

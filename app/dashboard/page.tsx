@@ -28,9 +28,12 @@ import { QuickDemandPadModal } from "@/components/dashboard/QuickDemandPadModal"
 import { quickDemandNotesService } from "@/lib/quick-demand-notes";
 import { Supplier } from "@/types/database";
 
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function DashboardPage() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const shopId = currentStore?.id || profile?.store_id;
+
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeOnlineOrders, setActiveOnlineOrders] = useState<any[]>([]);
@@ -44,25 +47,27 @@ export default function DashboardPage() {
   });
 
   const updateDemandStats = () => {
-    setDemandStats(quickDemandNotesService.getStats(SHOP_ID));
+    if (!shopId) return;
+    setDemandStats(quickDemandNotesService.getStats(shopId));
   };
 
   const loadData = async () => {
+    if (!shopId) return;
     try {
       setLoading(true);
       const [data, salesRes, suppsRes] = await Promise.all([
-        dashboardRepository.getMetrics(SHOP_ID),
+        dashboardRepository.getMetrics(shopId),
         (async () => {
           const { createClient } = await import("@/lib/supabase/client");
           const supabase = createClient();
           return supabase
             .from("sales")
             .select("*, customer:customers(*)")
-            .eq("shop_id", SHOP_ID)
+            .eq("shop_id", shopId)
             .in("status", ["received", "pending", "confirmed", "packing", "out_for_delivery"])
             .order("created_at", { ascending: false });
         })(),
-        suppliersRepository.getAll(SHOP_ID).catch(() => []),
+        suppliersRepository.getAll(shopId).catch(() => []),
       ]);
 
       setMetrics(data);
@@ -78,9 +83,17 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    loadData();
-    updateDemandStats();
+    fetchSession();
+  }, [fetchSession]);
 
+  useEffect(() => {
+    if (shopId) {
+      loadData();
+      updateDemandStats();
+    }
+  }, [shopId]);
+
+  useEffect(() => {
     const handleDemandNotesUpdated = () => updateDemandStats();
     window.addEventListener("falcon_demand_notes_updated", handleDemandNotesUpdated);
     return () => window.removeEventListener("falcon_demand_notes_updated", handleDemandNotesUpdated);
@@ -526,7 +539,7 @@ export default function DashboardPage() {
         <QuickDemandPadModal
           isOpen={isQuickDemandPadOpen}
           onClose={() => setIsQuickDemandPadOpen(false)}
-          shopId={SHOP_ID}
+          shopId={shopId || ""}
           suppliers={suppliers}
           onAddAsProduct={(name, suppId) => {
             window.location.href = `/products?action=add&name=${encodeURIComponent(name)}${

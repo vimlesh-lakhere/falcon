@@ -47,11 +47,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         data: { session },
       } = await supabase.auth.getSession();
 
-      // Fetch all available shops
-      const { data: storesData } = await supabase.from("shops").select("*").order("created_at", { ascending: true });
-      const allStores = (storesData as Store[]) || [];
-      set({ availableStores: allStores });
-
       if (!session?.user) {
         set({
           user: null,
@@ -73,54 +68,62 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .eq("id", session.user.id)
         .maybeSingle();
 
-      // If user is brand new (e.g. Google OAuth) and has no profile or store assigned yet
-      if (!profile || !profile.store_id) {
+      const isMasterOwner =
+        session.user.email === "vimlesh.lakhere@gmail.com" ||
+        session.user.email === "vlakhere@gmail.com" ||
+        session.user.email === "owner_1786762700828@agsstore.com";
+
+      const needsNewStore =
+        !profile ||
+        !profile.store_id ||
+        (!isMasterOwner && profile.store_id === "a0000000-0000-0000-0000-000000000001");
+
+      // If user is brand new or non-master user mistakenly assigned master store
+      if (needsNewStore) {
         const userName =
           session.user.user_metadata?.full_name ||
           session.user.user_metadata?.name ||
           session.user.email?.split("@")[0] ||
           "My Store";
         const storeName = `${userName}'s Store`;
-        const slugPrefix = storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-        const uniqueSlug = `${slugPrefix}-${Math.random().toString(36).substring(2, 6)}`;
+        const newStoreId = crypto.randomUUID();
 
-        // 1. Create a fresh dedicated shop for this user
-        const { data: newStore } = await supabase
-          .from("shops")
-          .insert([
-            {
-              name: storeName,
-              slug: uniqueSlug,
-              business_type: "general",
-              currency: "INR",
-              plan: "trial",
-            },
-          ])
-          .select()
+        // 1. Create dedicated record in both shops and stores
+        await supabase.from("shops").insert([
+          {
+            id: newStoreId,
+            name: storeName,
+            currency: "INR",
+          },
+        ]);
+
+        await supabase.from("stores").insert([
+          {
+            id: newStoreId,
+            name: storeName,
+            currency: "INR",
+          },
+        ]);
+
+        // 2. Upsert profile with new shop
+        const { data: upsertedProfile } = await supabase
+          .from("profiles")
+          .upsert({
+            id: session.user.id,
+            email: session.user.email || "",
+            full_name: userName,
+            avatar_url: session.user.user_metadata?.avatar_url || null,
+            role: "Owner",
+            store_id: newStoreId,
+            is_active: true,
+          })
+          .select("*")
           .single();
 
-        if (newStore) {
-          // 2. Upsert profile with new shop
-          const { data: upsertedProfile } = await supabase
-            .from("profiles")
-            .upsert({
-              id: session.user.id,
-              email: session.user.email || "",
-              full_name: userName,
-              avatar_url: session.user.user_metadata?.avatar_url || null,
-              role: "Owner",
-              store_id: newStore.id,
-              shop_id: newStore.id,
-              is_active: true,
-            })
-            .select("*")
-            .single();
-
-          profile = upsertedProfile;
-        }
+        profile = upsertedProfile;
       }
 
-      // Fetch shops belonging to this user or matching profile.store_id
+      // Fetch ONLY the shop belonging to this user (Strict multi-tenancy)
       let userStores: Store[] = [];
       if (profile?.store_id) {
         const { data: storesData } = await supabase
@@ -130,11 +133,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         userStores = (storesData as Store[]) || [];
       }
 
-      const activeStore = userStores[0] || allStores.find((s) => s.id === profile?.store_id) || allStores[0] || null;
+      const activeStore = userStores[0] || null;
 
       set({
         profile: profile as Profile,
-        availableStores: userStores.length > 0 ? userStores : allStores,
+        availableStores: userStores,
         currentStore: activeStore,
         currentBranch: null,
       });

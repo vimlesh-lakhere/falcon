@@ -18,16 +18,19 @@ import { posRepository } from "@/repositories/pos.repo";
 import { productsRepository } from "@/repositories/products.repo";
 import { Sale, Product } from "@/types/database";
 import { formatCurrency, formatDate } from "@/lib/utils";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function ReportsPage() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const SHOP_ID = currentStore?.id || profile?.store_id || "";
+
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState("all");
 
   const loadData = async () => {
+    if (!SHOP_ID) return;
     try {
       setLoading(true);
       const [salesData, prods] = await Promise.all([
@@ -44,8 +47,14 @@ export default function ReportsPage() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (SHOP_ID) {
+      loadData();
+    }
+  }, [SHOP_ID]);
 
   // Compute Revenue, Cost, Gross Profit, Total Invoices
   const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total_amount || 0), 0);

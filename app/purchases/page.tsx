@@ -13,10 +13,12 @@ import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { productsRepository } from "@/repositories/products.repo";
 import { PurchaseOrder, Supplier, Product } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function PurchasesPage() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const SHOP_ID = currentStore?.id || profile?.store_id || "";
+
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -37,6 +39,7 @@ export default function PurchasesPage() {
   const [isReceiving, setIsReceiving] = useState(false);
 
   const loadData = async () => {
+    if (!SHOP_ID) return;
     try {
       setLoading(true);
       const [pos, supps, prods] = await Promise.all([
@@ -55,8 +58,14 @@ export default function PurchasesPage() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (SHOP_ID) {
+      loadData();
+    }
+  }, [SHOP_ID]);
 
   const handleAddItemRow = () => {
     setPoItems([...poItems, { productId: "", quantity: 1, unitPrice: 0 }]);

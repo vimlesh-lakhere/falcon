@@ -11,10 +11,12 @@ import { Input } from "@/components/ui/Input";
 import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { Supplier } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function SuppliersPage() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const SHOP_ID = currentStore?.id || profile?.store_id || "";
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,6 +37,7 @@ export default function SuppliersPage() {
   const [isPaying, setIsPaying] = useState(false);
 
   const loadSuppliers = async () => {
+    if (!SHOP_ID) return;
     try {
       setLoading(true);
       const data = await suppliersRepository.getAll(SHOP_ID);
@@ -47,8 +50,14 @@ export default function SuppliersPage() {
   };
 
   useEffect(() => {
-    loadSuppliers();
-  }, []);
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (SHOP_ID) {
+      loadSuppliers();
+    }
+  }, [SHOP_ID]);
 
   const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();

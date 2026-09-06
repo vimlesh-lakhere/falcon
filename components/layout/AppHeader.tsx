@@ -13,9 +13,9 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ title, subtitle, onOpenMobileMenu }: AppHeaderProps) {
-  const { currentStore, currentBranch } = useAuthStore();
-  const shopId = currentStore?.id || "a0000000-0000-0000-0000-000000000001";
-  const storeName = currentStore?.name || "AGS Store";
+  const { currentStore, currentBranch, profile } = useAuthStore();
+  const shopId = currentStore?.id || profile?.store_id || "";
+  const storeName = currentStore?.name || (profile ? "My Store" : "Falcon Store");
 
   return (
     <header className="h-14 sm:h-16 border-b border-surface-border bg-white px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20">

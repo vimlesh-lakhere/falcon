@@ -22,8 +22,7 @@ import { inventoryRepository } from "@/repositories/inventory.repo";
 import { customersRepository } from "@/repositories/customers.repo";
 import { Product, Sale, Customer } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { useAuthStore } from "@/store/useAuthStore";
 
 interface Message {
   role: "user" | "assistant";
@@ -33,6 +32,9 @@ interface Message {
 }
 
 export default function AiCenterPage() {
+  const { currentStore, profile, fetchSession } = useAuthStore();
+  const SHOP_ID = currentStore?.id || profile?.store_id || "";
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -53,23 +55,31 @@ export default function AiCenterPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
 
+  const fetchData = async () => {
+    if (!SHOP_ID) return;
+    try {
+      const [prods, sData, custs] = await Promise.all([
+        productsRepository.getAll(SHOP_ID, { isActive: true }),
+        posRepository.getRecentSales(SHOP_ID, 100),
+        customersRepository.getAll(SHOP_ID),
+      ]);
+      setProducts(prods);
+      setSales(sData);
+      setCustomers(custs);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [prods, sData, custs] = await Promise.all([
-          productsRepository.getAll(SHOP_ID, { isActive: true }),
-          posRepository.getRecentSales(SHOP_ID, 100),
-          customersRepository.getAll(SHOP_ID),
-        ]);
-        setProducts(prods);
-        setSales(sData);
-        setCustomers(custs);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchData();
-  }, []);
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (SHOP_ID) {
+      fetchData();
+    }
+  }, [SHOP_ID]);
 
   const handleSend = async (queryText?: string) => {
     const textToSend = queryText || input;

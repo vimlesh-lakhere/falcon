@@ -44,7 +44,7 @@ interface ShippingParcelLabelModalProps {
 export const ShippingParcelLabelModal: React.FC<ShippingParcelLabelModalProps> = ({
   isOpen,
   onClose,
-  shopId = "a0000000-0000-0000-0000-000000000001",
+  shopId = "",
   initialCustomerName = "",
   initialCustomerPhone = "",
   initialDestination = "",

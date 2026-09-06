@@ -51,7 +51,7 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
   onClose,
   sale,
   onSuccess,
-  shopId = "a0000000-0000-0000-0000-000000000001",
+  shopId = "",
 }) => {
   const [items, setItems] = useState<EditableItem[]>([]);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
