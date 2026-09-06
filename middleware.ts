@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { CookieOptions } from "@supabase/ssr";
 
 const PUBLIC_PATHS = [
+  "/",
   "/store",
   "/login",
   "/register",
@@ -23,7 +24,9 @@ const ERP_ROLES = new Set([
 ]);
 
 function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  return PUBLIC_PATHS.some((path) =>
+    path === "/" ? pathname === "/" : pathname === path || pathname.startsWith(`${path}/`)
+  );
 }
 
 export async function middleware(request: NextRequest) {

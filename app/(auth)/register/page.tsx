@@ -504,7 +504,7 @@ export default function RegisterBusinessPage() {
               type="button"
               onClick={async () => {
                 await fetchSession();
-                router.push("/");
+                router.push("/dashboard");
               }}
               className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs h-10 shadow-md gap-1"
             >

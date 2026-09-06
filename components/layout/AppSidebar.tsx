@@ -25,7 +25,7 @@ import { StoreSwitcher } from "@/components/layout/StoreSwitcher";
 import { useAuthStore } from "@/store/useAuthStore";
 
 const navigationItems = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard, shortcut: "G D" },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, shortcut: "G D" },
   { name: "POS / Billing", href: "/pos", icon: ShoppingCart, shortcut: "G P", highlight: true },
   { name: "Online Orders", href: "/sales?tab=online", icon: Store, badge: "Live" },
   { name: "Products", href: "/products", icon: Package },

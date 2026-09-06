@@ -25,7 +25,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextDestination = searchParams.get("next") || "/";
+  const nextDestination = searchParams.get("next") || "/dashboard";
   const urlError = searchParams.get("error");
 
   const fetchSession = useAuthStore((state) => state.fetchSession);

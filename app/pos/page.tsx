@@ -1186,9 +1186,9 @@ export default function PosBillingPage() {
             </button>
           ) : (
             <Link
-              href="/"
+              href="/dashboard"
               className="p-1.5 rounded-lg bg-brand-800 hover:bg-brand-900 transition-colors text-white shrink-0"
-              title="Home"
+              title="Dashboard"
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
