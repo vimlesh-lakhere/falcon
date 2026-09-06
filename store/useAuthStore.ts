@@ -135,6 +135,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const activeStore = userStores[0] || null;
 
+      if (typeof window !== "undefined" && activeStore?.id) {
+        localStorage.setItem("falcon_active_store_id", activeStore.id);
+        document.cookie = `falcon_active_store_id=${activeStore.id}; path=/; max-age=2592000; SameSite=Lax`;
+      }
+
       set({
         profile: profile as Profile,
         availableStores: userStores,
@@ -155,6 +160,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (typeof window !== "undefined") {
       localStorage.setItem("falcon_active_store_id", storeId);
+      document.cookie = `falcon_active_store_id=${storeId}; path=/; max-age=2592000; SameSite=Lax`;
     }
 
     set({
@@ -179,6 +185,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await supabase.auth.signOut();
       if (typeof window !== "undefined") {
         localStorage.removeItem("falcon_active_store_id");
+        document.cookie = "falcon_active_store_id=; path=/; max-age=0; SameSite=Lax";
+        document.cookie = "falcon_store_shop_id=; path=/; max-age=0; SameSite=Lax";
       }
       set({
         user: null,

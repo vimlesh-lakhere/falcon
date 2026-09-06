@@ -49,7 +49,7 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
   const pathname = usePathname();
   const { currentStore, profile } = useAuthStore();
 
-  const activeStoreName = currentStore?.name || "AGS Store";
+  const activeStoreName = currentStore?.name || (profile ? "My Store" : "Falcon Store");
   const userName = profile?.full_name || "Store Owner";
   const userInitials = userName.slice(0, 2).toUpperCase();
 

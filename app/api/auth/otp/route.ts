@@ -215,11 +215,11 @@ export async function POST(req: NextRequest) {
               .maybeSingle();
             if (updated) customerRecord = updated;
           }
-        } else {
+          const targetShopId = body.shopId || body.shop_id || req.cookies.get("falcon_active_store_id")?.value || req.cookies.get("falcon_store_shop_id")?.value || SHOP_ID;
           const { data: newCustomer, error: insertErr } = await supabase
             .from("customers")
             .insert({
-              shop_id: SHOP_ID,
+              shop_id: targetShopId,
               name: name?.trim() || `Customer ${identifier.slice(-4)}`,
               phone: cleanPhone || null,
               email: cleanEmail || null,

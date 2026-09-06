@@ -17,6 +17,11 @@ export function AppHeader({ title, subtitle, onOpenMobileMenu }: AppHeaderProps)
   const shopId = currentStore?.id || profile?.store_id || "";
   const storeName = currentStore?.name || (profile ? "My Store" : "Falcon Store");
 
+  const isMasterOwner =
+    profile?.email === "vimlesh.lakhere@gmail.com" ||
+    profile?.email === "vlakhere@gmail.com" ||
+    profile?.email === "owner_1786762700828@agsstore.com";
+
   return (
     <header className="h-14 sm:h-16 border-b border-surface-border bg-white px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20">
       {/* Left: Mobile Hamburger & Title / Breadcrumb section */}
@@ -54,18 +59,20 @@ export function AppHeader({ title, subtitle, onOpenMobileMenu }: AppHeaderProps)
           </span>
         </div>
 
-        {/* View Customer Storefront Button */}
-        <a
-          href="/store"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold transition-all shadow-2xs"
-          title="Open Customer Storefront in new tab"
-        >
-          <Store className="w-3.5 h-3.5 text-purple-600" />
-          <span className="hidden sm:inline">Store</span>
-          <span className="text-[10px] text-purple-500">↗</span>
-        </a>
+        {/* View Customer Storefront Button (Only for Master Owner) */}
+        {isMasterOwner && (
+          <a
+            href={shopId ? `/store?shop=${shopId}` : "/store"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold transition-all shadow-2xs"
+            title="Open Customer Storefront in new tab"
+          >
+            <Store className="w-3.5 h-3.5 text-purple-600" />
+            <span className="hidden sm:inline">Store</span>
+            <span className="text-[10px] text-purple-500">↗</span>
+          </a>
+        )}
 
         {/* Quick Add Menu */}
         <QuickActionMenu />

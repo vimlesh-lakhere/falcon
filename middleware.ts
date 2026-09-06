@@ -45,7 +45,16 @@ export async function middleware(request: NextRequest) {
   // Customer OTP & Storefront Checkout are intentionally public endpoints.
   const PUBLIC_API_PATHS = ["/api/auth/otp", "/api/store/checkout"];
   if (PUBLIC_API_PATHS.includes(pathname) || isPublicPath(pathname)) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    const shopParam = request.nextUrl.searchParams.get("shop");
+    if (shopParam && shopParam.trim() !== "") {
+      response.cookies.set("falcon_store_shop_id", shopParam.trim(), {
+        path: "/",
+        maxAge: 2592000,
+        sameSite: "lax",
+      });
+    }
+    return response;
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -25,7 +25,7 @@ export function StoreSwitcher() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const activeStoreName = currentStore?.name || "AGS Store";
+  const activeStoreName = currentStore?.name || "My Store";
 
   return (
     <div className="relative" ref={dropdownRef}>

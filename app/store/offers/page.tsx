@@ -7,7 +7,7 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product } from "@/types/database";
 
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { resolveActiveShopId } from "@/lib/tenant";
 
 export default function StoreOffersPage() {
   const [discountProducts, setDiscountProducts] = useState<Product[]>([]);
@@ -17,11 +17,12 @@ export default function StoreOffersPage() {
     const loadOffers = async () => {
       try {
         setLoading(true);
+        const targetShopId = resolveActiveShopId();
         const supabase = createClient();
         const { data } = await supabase
           .from("products")
           .select("*, category:categories(*)")
-          .eq("shop_id", SHOP_ID)
+          .eq("shop_id", targetShopId)
           .eq("is_active", true);
 
         const list = data || [];

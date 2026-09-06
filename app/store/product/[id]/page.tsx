@@ -32,8 +32,7 @@ import {
   stripVariantsFromDescription,
   CleanVariant,
 } from "@/lib/product-variants";
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { resolveActiveShopId } from "@/lib/tenant";
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -74,10 +73,11 @@ export default function ProductDetailPage() {
 
         // 2. Fetch Similar Products
         if (prod?.category_id) {
+          const targetShop = prod.shop_id || resolveActiveShopId();
           const { data: simList } = await supabase
             .from("products")
             .select("*, category:categories(*)")
-            .eq("shop_id", SHOP_ID)
+            .eq("shop_id", targetShop)
             .eq("category_id", prod.category_id)
             .neq("id", productId)
             .eq("is_active", true)

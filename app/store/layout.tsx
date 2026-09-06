@@ -3,13 +3,12 @@ import { StoreHeader } from "@/components/store/StoreHeader";
 import { StoreFooter } from "@/components/store/StoreFooter";
 import { CartDrawer } from "@/components/store/CartDrawer";
 import { createClient } from "@/lib/supabase/client";
+import { cookies, headers } from "next/headers";
 
 export const metadata = {
-  title: "AGS Store & Cosmetics | Online Shopping & Local Delivery",
-  description: "Authentic Cosmetics, Beauty Products, Hair Care, Herbal Oral Care, and Daily Essentials with fast local town & village delivery.",
+  title: "Online Store & Catalog | Falcon 360",
+  description: "Shop quality products with convenient local delivery and direct WhatsApp ordering.",
 };
-
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
 export default async function StoreLayout({
   children,
@@ -17,14 +16,27 @@ export default async function StoreLayout({
   children: React.ReactNode;
 }) {
   const supabase = createClient();
+  const cookieStore = cookies();
+  const headerList = headers();
+
+  const shopCookie =
+    cookieStore.get("falcon_active_store_id")?.value ||
+    cookieStore.get("falcon_store_shop_id")?.value;
+  const host = headerList.get("host") || "";
+
+  // If host is ags.falcon360.in, use AGS Store
+  // Otherwise use cookie if available, or fallback to default
+  const targetShopId = host.startsWith("ags.")
+    ? (process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001")
+    : (shopCookie || process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001");
 
   let categories: any[] = [];
   let shop: any = null;
 
   try {
     const [{ data: cats }, { data: sh }] = await Promise.all([
-      supabase.from("categories").select("*").eq("shop_id", SHOP_ID).eq("is_active", true).limit(10),
-      supabase.from("shops").select("*").eq("id", SHOP_ID).maybeSingle(),
+      supabase.from("categories").select("*").eq("shop_id", targetShopId).eq("is_active", true).limit(10),
+      supabase.from("shops").select("*").eq("id", targetShopId).maybeSingle(),
     ]);
 
     categories = cats || [];
@@ -33,9 +45,9 @@ export default async function StoreLayout({
     console.error("Store layout data fetch failed:", err);
   }
 
-  const shopName = shop?.name || "AGS Store & Cosmetics";
-  const shopPhone = shop?.phone || "919876543210";
-  const shopAddress = shop?.address || "Main Market, Town Centre, Near Bus Stand";
+  const shopName = shop?.name || "Online Store";
+  const shopPhone = shop?.phone || "";
+  const shopAddress = shop?.address || "";
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-purple-600 selection:text-white font-sans antialiased">

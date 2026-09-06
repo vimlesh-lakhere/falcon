@@ -21,9 +21,9 @@ interface StoreFooterProps {
 }
 
 export const StoreFooter: React.FC<StoreFooterProps> = ({
-  shopName = "AGS Store & Cosmetics",
-  shopPhone = "919340362381",
-  shopAddress = "Main Market, Town Centre, Near Bus Stand",
+  shopName = "Falcon Store",
+  shopPhone = "",
+  shopAddress = "",
 }) => {
   return (
     <footer className="bg-slate-900 text-white pt-12 pb-8 border-t border-slate-800">

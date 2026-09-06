@@ -33,8 +33,8 @@ interface StoreHeaderProps {
 
 export const StoreHeader: React.FC<StoreHeaderProps> = ({
   categories = [],
-  shopName = "AGS Store & Cosmetics",
-  shopPhone = "919340362381",
+  shopName = "Falcon Store",
+  shopPhone = "",
 }) => {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);

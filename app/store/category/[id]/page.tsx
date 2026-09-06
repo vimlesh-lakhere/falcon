@@ -8,7 +8,7 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product, Category } from "@/types/database";
 
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+import { resolveActiveShopId } from "@/lib/tenant";
 
 export default function CategoryCatalogPage() {
   const params = useParams();
@@ -35,10 +35,11 @@ export default function CategoryCatalogPage() {
         setCategory(cat);
 
         // 2. Fetch products in this category
+        const targetShopId = cat?.shop_id || resolveActiveShopId();
         const { data: prods } = await supabase
           .from("products")
           .select("*, category:categories(*)")
-          .eq("shop_id", SHOP_ID)
+          .eq("shop_id", targetShopId)
           .eq("category_id", categoryId)
           .eq("is_active", true)
           .order("created_at", { ascending: false });

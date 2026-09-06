@@ -22,10 +22,10 @@ import {
 import { useStoreCart, CustomerAddress } from "@/store/useStoreCart";
 import { storeOrderService } from "@/lib/store/order-service";
 import { CustomerAuthModal } from "@/components/store/CustomerAuthModal";
+import { resolveActiveShopId } from "@/lib/tenant";
 
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 const STORE_UPI_ID = "9340362381@ybl";
-const STORE_PAYEE_NAME = "AGS Store";
+const STORE_PAYEE_NAME = "Falcon Store";
 
 export default function StoreCheckoutPage() {
   const router = useRouter();
@@ -165,7 +165,7 @@ export default function StoreCheckoutPage() {
       setSavedAddress(address);
 
       const res = await storeOrderService.placeOrder({
-        shopId: SHOP_ID,
+        shopId: resolveActiveShopId(),
         cart,
         address,
         paymentMethod,
