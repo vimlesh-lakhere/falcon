@@ -427,7 +427,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       setAiGeneratedImageUrl("");
       setAiGeneratedProviderName("");
       setAiGeneratedPrompt("");
-      setActiveAssetTab("original");
+      if (result.images.studioAssets?.catalogUrl) {
+        setActiveAssetTab("catalog");
+      } else {
+        setActiveAssetTab("original");
+      }
 
       setStage(3);
     } catch (err: any) {
@@ -545,6 +549,46 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
           return updated;
         });
+
+        if (d.pos_white_url) {
+          setAiResult((prev) => {
+            if (!prev) return prev;
+            const updatedGallery = [...(prev.images.galleryUrls || [])];
+            if (updatedGallery.length > 1) {
+              updatedGallery[1] = d.pos_white_url;
+            } else if (updatedGallery.length === 1) {
+              updatedGallery.push(d.pos_white_url);
+            }
+            const existingAssets = prev.images.studioAssets;
+            const studioAssets: StudioAssetGallery = existingAssets
+              ? { ...existingAssets, catalogUrl: d.pos_white_url }
+              : {
+                  heroUrl: d.pos_white_url,
+                  catalogUrl: d.pos_white_url,
+                  lifestyleUrl: d.pos_white_url,
+                  promoBannerUrl: d.pos_white_url,
+                  socialMedia: {
+                    instagramPostUrl: d.pos_white_url,
+                    storyUrl: d.pos_white_url,
+                    landscapeBannerUrl: d.pos_white_url,
+                  },
+                  zoomUrl: d.pos_white_url,
+                  galleryUrls: updatedGallery,
+                  activeTheme: "luxury_marble",
+                };
+            return {
+              ...prev,
+              images: {
+                ...prev.images,
+                enhancedUrl: d.pos_white_url,
+                thumbnailUrl: d.pos_white_url,
+                galleryUrls: updatedGallery,
+                studioAssets,
+              },
+            };
+          });
+          setActiveAssetTab("catalog");
+        }
 
         if (scannedName) {
           toast.success(`Scanned: ${scannedName} (${scannedBrand || ""})`);

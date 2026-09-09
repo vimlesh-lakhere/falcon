@@ -204,6 +204,14 @@ export const aiVisionService = {
       activeTheme: payload.theme,
     });
 
+    if (aiData?.pos_white_url) {
+      studioSuite.studioAssets.catalogUrl = aiData.pos_white_url;
+      studioSuite.thumbnailUrl = aiData.pos_white_url;
+      if (studioSuite.studioAssets.galleryUrls && studioSuite.studioAssets.galleryUrls.length > 1) {
+        studioSuite.studioAssets.galleryUrls[1] = aiData.pos_white_url;
+      }
+    }
+
     return {
       productName: extractedName,
       brandName: extractedBrand,
@@ -226,8 +234,8 @@ export const aiVisionService = {
       provider: apiProviderUsed || "Falcon Vision AI",
       images: {
         originalUrl: studioSuite.originalUrl,
-        enhancedUrl: studioSuite.studioAssets.heroUrl, // Hero image is primary website display!
-        thumbnailUrl: studioSuite.thumbnailUrl,
+        enhancedUrl: aiData?.pos_white_url || studioSuite.studioAssets.heroUrl,
+        thumbnailUrl: aiData?.pos_white_url || studioSuite.thumbnailUrl,
         galleryUrls: studioSuite.studioAssets.galleryUrls,
         studioAssets: studioSuite.studioAssets,
         qualityReport: studioSuite.qualityReport,

@@ -127,15 +127,44 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
     }
 
     // -------------------------------------------------------------
-    // Option B: GOOGLE GEMINI VISION (Cascade: 1.5-flash -> 2.0-flash -> 1.5-pro)
+    // -------------------------------------------------------------
+    // Option B: GOOGLE GEMINI VISION (Dynamic discovery + gemini-3.6-flash)
     // -------------------------------------------------------------
     if (activeApiKey && !activeApiKey.startsWith("sk-")) {
-      const geminiModels = [
+      let geminiModels = [
+        "gemini-3.6-flash",
+        "gemini-3.1-pro-preview",
+        "gemini-3.0-flash",
         "gemini-2.5-flash",
         "gemini-2.5-pro",
         "gemini-2.0-flash-exp",
-        "gemini-1.5-flash-latest",
       ];
+
+      // Dynamically query available models supported for this key
+      try {
+        const listRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${activeApiKey}`
+        );
+        if (listRes.ok) {
+          const listJson = await listRes.json();
+          if (Array.isArray(listJson.models)) {
+            const valid = listJson.models
+              .filter((m: any) =>
+                m.supportedGenerationMethods?.includes("generateContent")
+              )
+              .map((m: any) => m.name.replace(/^models\//, ""));
+
+            const flashModels = valid.filter((m: string) => m.includes("flash"));
+            const proModels = valid.filter((m: string) => m.includes("pro"));
+            const combined = Array.from(new Set([...flashModels, ...proModels, ...valid]));
+            if (combined.length > 0) {
+              geminiModels = combined;
+            }
+          }
+        }
+      } catch (listErr) {
+        console.warn("[Gemini Discovery] ListModels fallback to defaults:", listErr);
+      }
 
       for (const modelName of geminiModels) {
         try {
@@ -175,12 +204,32 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
             .replace(/\s*```$/i, "")
             .trim();
 
-          const parsedData = JSON.parse(cleanedText);
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          const rawToParse = jsonMatch ? jsonMatch[0] : cleanedText;
+          const parsedData = JSON.parse(rawToParse);
+
+          // Clean crop product from hands/background using Sharp
+          let croppedImageUrl: string | null = null;
+          let posWhiteImageUrl: string | null = null;
+          try {
+            const { cropProductWithSharp } = await import("@/lib/ai/sharp-cropper");
+            const cropRes = await cropProductWithSharp(frontImage, parsedData.product_bounding_box);
+            if (cropRes) {
+              croppedImageUrl = cropRes.croppedDataUrl;
+              posWhiteImageUrl = cropRes.posWhiteDataUrl;
+            }
+          } catch (cropErr) {
+            console.warn("Sharp crop notice:", cropErr);
+          }
 
           return NextResponse.json({
             success: true,
             provider: `Google ${modelName}`,
-            data: parsedData,
+            data: {
+              ...parsedData,
+              cropped_image_url: croppedImageUrl,
+              pos_white_url: posWhiteImageUrl,
+            },
           });
         } catch (geminiErr) {
           console.warn(`Gemini Vision (${modelName}) failed, trying next:`, geminiErr);
