@@ -264,7 +264,8 @@ export const localImageStudio = {
   renderStudioBackdrop(
     ctx: CanvasRenderingContext2D,
     size: number,
-    theme: StudioTheme
+    theme: StudioTheme,
+    hasTransparentProduct: boolean = true
   ) {
     if (theme === "luxury_marble") {
       // 1. Ambient Light Studio Wall
@@ -282,44 +283,46 @@ export const localImageStudio = {
       ctx.fillStyle = floorGrad;
       ctx.fillRect(0, size * 0.68, size, size * 0.32);
 
-      // 3. 3D Cylindrical Marble Podium Pedestal
-      const podiumW = size * 0.72;
-      const podiumH = size * 0.16;
-      const podiumX = (size - podiumW) / 2;
-      const podiumY = size * 0.72;
+      // 3. 3D Cylindrical Marble Podium Pedestal (ONLY if product is a clean transparent cutout)
+      if (hasTransparentProduct) {
+        const podiumW = size * 0.72;
+        const podiumH = size * 0.16;
+        const podiumX = (size - podiumW) / 2;
+        const podiumY = size * 0.72;
 
-      // Podium Drop Shadow
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(size / 2, podiumY + podiumH + 8, podiumW * 0.52, 14, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(15, 23, 42, 0.15)";
-      ctx.filter = "blur(14px)";
-      ctx.fill();
-      ctx.restore();
+        // Podium Drop Shadow
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(size / 2, podiumY + podiumH + 8, podiumW * 0.52, 14, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(15, 23, 42, 0.15)";
+        ctx.filter = "blur(14px)";
+        ctx.fill();
+        ctx.restore();
 
-      // Podium Cylinder Body
-      const bodyGrad = ctx.createLinearGradient(podiumX, 0, podiumX + podiumW, 0);
-      bodyGrad.addColorStop(0, "#E2E8F0");
-      bodyGrad.addColorStop(0.3, "#F8FAFC");
-      bodyGrad.addColorStop(0.7, "#FFFFFF");
-      bodyGrad.addColorStop(1, "#CBD5E1");
-      ctx.fillStyle = bodyGrad;
-      ctx.fillRect(podiumX, podiumY, podiumW, podiumH);
+        // Podium Cylinder Body
+        const bodyGrad = ctx.createLinearGradient(podiumX, 0, podiumX + podiumW, 0);
+        bodyGrad.addColorStop(0, "#E2E8F0");
+        bodyGrad.addColorStop(0.3, "#F8FAFC");
+        bodyGrad.addColorStop(0.7, "#FFFFFF");
+        bodyGrad.addColorStop(1, "#CBD5E1");
+        ctx.fillStyle = bodyGrad;
+        ctx.fillRect(podiumX, podiumY, podiumW, podiumH);
 
-      // Podium Cylinder Top Oval
-      ctx.beginPath();
-      ctx.ellipse(size / 2, podiumY, podiumW / 2, 22, 0, 0, Math.PI * 2);
-      const topGrad = ctx.createRadialGradient(size / 2, podiumY - 4, 10, size / 2, podiumY, podiumW / 2);
-      topGrad.addColorStop(0, "#FFFFFF");
-      topGrad.addColorStop(0.7, "#F1F5F9");
-      topGrad.addColorStop(1, "#CBD5E1");
-      ctx.fillStyle = topGrad;
-      ctx.fill();
+        // Podium Cylinder Top Oval
+        ctx.beginPath();
+        ctx.ellipse(size / 2, podiumY, podiumW / 2, 22, 0, 0, Math.PI * 2);
+        const topGrad = ctx.createRadialGradient(size / 2, podiumY - 4, 10, size / 2, podiumY, podiumW / 2);
+        topGrad.addColorStop(0, "#FFFFFF");
+        topGrad.addColorStop(0.7, "#F1F5F9");
+        topGrad.addColorStop(1, "#CBD5E1");
+        ctx.fillStyle = topGrad;
+        ctx.fill();
 
-      // Subtle Gold Rim Accent on Podium
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = "rgba(217, 119, 6, 0.4)";
-      ctx.stroke();
+        // Subtle Gold Rim Accent on Podium
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = "rgba(217, 119, 6, 0.4)";
+        ctx.stroke();
+      }
 
     } else if (theme === "modern_wood") {
       // Warm Nordic Wood Tabletop & Soft Ambient Studio
@@ -466,9 +469,11 @@ export const localImageStudio = {
       drawW = drawH * aspect;
     }
 
+    const hasTransparentProduct = isAlreadyCutout || (workingCanvas !== baseCanvas);
+
     const drawX = (targetSize - drawW) / 2;
-    // Golden-ratio vertical positioning (aligned with studio floor/podium)
-    const drawY = theme === "luxury_marble"
+    // Golden-ratio vertical positioning (aligned with studio floor/podium only if transparent)
+    const drawY = (theme === "luxury_marble" && hasTransparentProduct)
       ? targetSize * 0.72 - drawH
       : targetSize * 0.50 - drawH / 2;
 
@@ -485,7 +490,7 @@ export const localImageStudio = {
     if (!masterCtx) return src;
 
     // 6.1 Render 3D Studio Backdrop
-    this.renderStudioBackdrop(masterCtx, targetSize, theme);
+    this.renderStudioBackdrop(masterCtx, targetSize, theme, hasTransparentProduct);
 
     // 6.2 Ground Physics Contact & Ambient Shadows
     if (options.addGroundShadow !== false) {

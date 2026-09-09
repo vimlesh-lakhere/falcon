@@ -41,6 +41,7 @@ Look specifically for:
 5. Net Weight/Volume (e.g. "100 ml", "50 g", "200 ml", "500 ml", "1 kg").
 6. Ingredients, Directions of use, benefits.
 7. Barcode digits if visible.
+8. Product Bounding Box: [ymin, xmin, ymax, xmax] normalized coordinates from 0 to 1000 of ONLY the product packaging / container / bottle, strictly excluding any human hands, fingers, laptop/table, or background.
 
 Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or extra commentary):
 {
@@ -54,6 +55,7 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
   "exact_label_text": "Exact text visible on packaging",
   "net_weight": "100 ml / 50 g / etc",
   "barcode": "Numeric barcode digits if visible, otherwise null",
+  "product_bounding_box": [120, 260, 880, 650],
   "mrp": 46,
   "suggested_purchase_price": 35,
   "suggested_retail_price": 46,
@@ -128,7 +130,12 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
     // Option B: GOOGLE GEMINI VISION (Cascade: 1.5-flash -> 2.0-flash -> 1.5-pro)
     // -------------------------------------------------------------
     if (activeApiKey && !activeApiKey.startsWith("sk-")) {
-      const geminiModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"];
+      const geminiModels = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-flash-latest",
+      ];
 
       for (const modelName of geminiModels) {
         try {

@@ -235,8 +235,21 @@ export const masterStudioGenerator = {
         ? "luxury_marble"
         : "pure_white";
 
+    // Check if product has transparency
+    let hasTransparentProduct = false;
+    const ctxProd = productCanvas.getContext("2d", { willReadFrequently: true });
+    if (ctxProd) {
+      const pData = ctxProd.getImageData(0, 0, productCanvas.width, productCanvas.height).data;
+      for (let i = 3; i < pData.length; i += 32) {
+        if (pData[i] < 150) {
+          hasTransparentProduct = true;
+          break;
+        }
+      }
+    }
+
     // 1. Render 3D Staging Backdrop
-    localImageStudio.renderStudioBackdrop(ctx, size, themeKey);
+    localImageStudio.renderStudioBackdrop(ctx, size, themeKey, hasTransparentProduct);
 
     const maxH = size * 0.78;
     const maxW = size * 0.78;
@@ -247,7 +260,7 @@ export const masterStudioGenerator = {
     else drawW = maxH * aspect;
 
     const drawX = (size - drawW) / 2;
-    const drawY = themeKey === "luxury_marble"
+    const drawY = (themeKey === "luxury_marble" && hasTransparentProduct)
       ? size * 0.72 - drawH
       : size * 0.50 - drawH / 2;
 

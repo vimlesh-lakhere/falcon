@@ -41,6 +41,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
+import { toast } from "sonner";
 import { aiVisionService } from "@/lib/ai/vision-analysis";
 import { aiDuplicateDetector } from "@/lib/ai/duplicate-detector";
 import { aiBarcodeLookup } from "@/lib/ai/barcode-lookup";
@@ -226,7 +227,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       setAdditionalFiles([]);
       setAiResult(null);
       setInputBarcode("");
-      setActiveAssetTab("hero");
+      setActiveAssetTab("original");
     } else {
       stopCamera();
     }
@@ -358,13 +359,19 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       setScanStepIndex((prev) => (prev < scanSteps.length - 1 ? prev + 1 : prev));
     }, 900);
 
+    const effectiveKey =
+      geminiApiKey.trim() ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("falcon_gemini_api_key") || ""
+        : "");
+
     try {
       const result = await aiVisionService.analyzeProductPackaging(
         {
           frontImage: frontImageFile || frontPreviewUrl,
           backImage: backImageFile || backPreviewUrl || null,
           additionalImages: additionalFiles,
-          apiKey: geminiApiKey,
+          apiKey: effectiveKey,
           theme: selectedTheme,
         },
         {
@@ -420,7 +427,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       setAiGeneratedImageUrl("");
       setAiGeneratedProviderName("");
       setAiGeneratedPrompt("");
-      setActiveAssetTab("hero");
+      setActiveAssetTab("original");
 
       setStage(3);
     } catch (err: any) {
@@ -538,6 +545,12 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
           return updated;
         });
+
+        if (scannedName) {
+          toast.success(`Scanned: ${scannedName} (${scannedBrand || ""})`);
+        } else {
+          toast.info("Packaging scanned. Please review details.");
+        }
       } else if (json.error) {
         alert("Gemini Scan Notice: " + json.error);
       }
@@ -1642,33 +1655,44 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1 bg-gray-100 p-1 rounded-xl text-[10px] font-bold text-gray-700">
                     <button
                       type="button"
-                      onClick={() => setActiveAssetTab("hero")}
+                      onClick={() => setActiveAssetTab("original")}
                       className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
-                        activeAssetTab === "hero"
+                        activeAssetTab === "original"
                           ? "bg-purple-600 text-white shadow-2xs font-black"
-                          : "hover:bg-gray-200"
+                          : "hover:bg-gray-200 font-medium"
                       }`}
                     >
-                      🌟 Web Hero
+                      📷 Raw Photo
                     </button>
                     <button
                       type="button"
                       onClick={() => setActiveAssetTab("catalog")}
                       className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "catalog"
-                          ? "bg-purple-600 text-white shadow-2xs"
-                          : "hover:bg-gray-200"
+                          ? "bg-purple-600 text-white shadow-2xs font-black"
+                          : "hover:bg-gray-200 font-medium"
                       }`}
                     >
                       🏢 POS White
                     </button>
                     <button
                       type="button"
+                      onClick={() => setActiveAssetTab("hero")}
+                      className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                        activeAssetTab === "hero"
+                          ? "bg-purple-600 text-white shadow-2xs font-black"
+                          : "hover:bg-gray-200 font-medium"
+                      }`}
+                    >
+                      🌟 Web Hero
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setActiveAssetTab("lifestyle")}
                       className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "lifestyle"
-                          ? "bg-purple-600 text-white shadow-2xs"
-                          : "hover:bg-gray-200"
+                          ? "bg-purple-600 text-white shadow-2xs font-black"
+                          : "hover:bg-gray-200 font-medium"
                       }`}
                     >
                       🌿 Lifestyle
@@ -1678,8 +1702,8 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       onClick={() => setActiveAssetTab("promo")}
                       className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "promo"
-                          ? "bg-purple-600 text-white shadow-2xs"
-                          : "hover:bg-gray-200"
+                          ? "bg-purple-600 text-white shadow-2xs font-black"
+                          : "hover:bg-gray-200 font-medium"
                       }`}
                     >
                       🏷️ Promo Card
@@ -1689,22 +1713,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       onClick={() => setActiveAssetTab("story")}
                       className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "story"
-                          ? "bg-purple-600 text-white shadow-2xs"
-                          : "hover:bg-gray-200"
+                          ? "bg-purple-600 text-white shadow-2xs font-black"
+                          : "hover:bg-gray-200 font-medium"
                       }`}
                     >
                       📱 Story (9:16)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveAssetTab("original")}
-                      className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
-                        activeAssetTab === "original"
-                          ? "bg-purple-600 text-white shadow-2xs"
-                          : "hover:bg-gray-200"
-                      }`}
-                    >
-                      📷 Raw Photo
                     </button>
                     {aiGeneratedImageUrl && (
                       <button

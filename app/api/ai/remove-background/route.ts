@@ -191,148 +191,15 @@ export async function POST(req: NextRequest) {
     }
 
     // -----------------------------------------------------------------
-    // TIER 3: SMART SERVER-SIDE CONTRAST & ALPHA COLOR MATTING (SHARP)
+    // TIER 3: SMART FALLBACK (DO NOT MUTILATE USER PHOTO WITH CRUDE FLOOD-FILL)
     // -----------------------------------------------------------------
-    try {
-      const sharp = (await import("sharp")).default;
-      const { data, info } = await sharp(imageBuffer)
-        .ensureAlpha()
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-
-      const w = info.width;
-      const h = info.height;
-      const channels = info.channels; // 4 (RGBA)
-      const outBuffer = Buffer.from(data);
-
-      // Sample border pixels to compute background profile
-      const borderSamples: [number, number, number][] = [];
-      const borderThickness = Math.max(3, Math.min(16, Math.floor(Math.min(w, h) * 0.03)));
-
-      for (let x = 0; x < w; x += 4) {
-        for (let y = 0; y < borderThickness; y += 2) {
-          const idx = (y * w + x) * channels;
-          borderSamples.push([data[idx], data[idx + 1], data[idx + 2]]);
-        }
-        for (let y = h - borderThickness; y < h; y += 2) {
-          const idx = (y * w + x) * channels;
-          borderSamples.push([data[idx], data[idx + 1], data[idx + 2]]);
-        }
-      }
-      for (let y = 0; y < h; y += 4) {
-        for (let x = 0; x < borderThickness; x += 2) {
-          const idx = (y * w + x) * channels;
-          borderSamples.push([data[idx], data[idx + 1], data[idx + 2]]);
-        }
-        for (let x = w - borderThickness; x < w; x += 2) {
-          const idx = (y * w + x) * channels;
-          borderSamples.push([data[idx], data[idx + 1], data[idx + 2]]);
-        }
-      }
-
-      if (borderSamples.length > 0) {
-        let totalR = 0, totalG = 0, totalB = 0;
-        for (const [r, g, b] of borderSamples) {
-          totalR += r;
-          totalG += g;
-          totalB += b;
-        }
-        const bgR = totalR / borderSamples.length;
-        const bgG = totalG / borderSamples.length;
-        const bgB = totalB / borderSamples.length;
-
-        let varSum = 0;
-        for (const [r, g, b] of borderSamples) {
-          varSum += Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
-        }
-        const tolerance = Math.max(28, Math.min(65, (varSum / borderSamples.length) * 2.2));
-
-        // Mask outer connected background
-        const mask = new Uint8Array(w * h);
-        const queue: number[] = [];
-
-        for (let x = 0; x < w; x++) {
-          queue.push(x);
-          queue.push((h - 1) * w + x);
-          mask[x] = 1;
-          mask[(h - 1) * w + x] = 1;
-        }
-        for (let y = 0; y < h; y++) {
-          queue.push(y * w);
-          queue.push(y * w + (w - 1));
-          mask[y * w] = 1;
-          mask[y * w + (w - 1)] = 1;
-        }
-
-        let head = 0;
-        while (head < queue.length) {
-          const curr = queue[head++];
-          const cx = curr % w;
-          const cy = Math.floor(curr / w);
-
-          const neighbors = [
-            cy > 0 ? curr - w : -1,
-            cy < h - 1 ? curr + w : -1,
-            cx > 0 ? curr - 1 : -1,
-            cx < w - 1 ? curr + 1 : -1,
-          ];
-
-          for (const n of neighbors) {
-            if (n !== -1 && mask[n] === 0) {
-              const pOffset = n * channels;
-              const r = data[pOffset];
-              const g = data[pOffset + 1];
-              const b = data[pOffset + 2];
-              const diff = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
-
-              if (diff <= tolerance) {
-                mask[n] = 1;
-                queue.push(n);
-              }
-            }
-          }
-        }
-
-        for (let i = 0; i < w * h; i++) {
-          const pOffset = i * channels;
-          if (mask[i] === 1) {
-            outBuffer[pOffset + 3] = 0; // Transparent background
-          } else {
-            // Anti-alias edge
-            const x = i % w;
-            const y = Math.floor(i / w);
-            const isEdge =
-              (x > 0 && mask[i - 1] === 1) ||
-              (x < w - 1 && mask[i + 1] === 1) ||
-              (y > 0 && mask[i - w] === 1) ||
-              (y < h - 1 && mask[i + w] === 1);
-            if (isEdge) {
-              outBuffer[pOffset + 3] = 180;
-            }
-          }
-        }
-      }
-
-      const pngBuffer = await sharp(outBuffer, {
-        raw: { width: w, height: h, channels: 4 },
-      })
-        .png({ compressionLevel: 8 })
-        .toBuffer();
-
-      return NextResponse.json({
-        success: true,
-        provider: "Falcon Neural Sharp Studio",
-        transparentImageUrl: `data:image/png;base64,${pngBuffer.toString("base64")}`,
-      });
-    } catch (sharpErr) {
-      console.warn("Sharp cutout notice:", sharpErr);
-      return NextResponse.json({
-        success: true,
-        provider: "Falcon Edge Studio",
-        transparentImageUrl: image,
-        fallbackUsed: true,
-      });
-    }
+    return NextResponse.json({
+      success: false,
+      provider: "Falcon Direct Clean Engine",
+      transparentImageUrl: null,
+      notice: "Cloud segmentation unavailable. Using clean original photo and browser on-device segmentation.",
+      fallbackUsed: true,
+    });
   } catch (error: any) {
     console.error("Remove background API error:", error);
     return NextResponse.json(
