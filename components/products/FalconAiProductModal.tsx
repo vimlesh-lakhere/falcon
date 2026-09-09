@@ -196,8 +196,9 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
   const [showAdvancedAttributes, setShowAdvancedAttributes] = useState(false);
   const [showDescriptions, setShowDescriptions] = useState(true);
 
-  // Gemini Vision API Key state
+  // Gemini Vision & Remove.bg API Key state
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
+  const [removeBgApiKey, setRemoveBgApiKey] = useState<string>("");
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [isScanningGemini, setIsScanningGemini] = useState(false);
 
@@ -205,14 +206,23 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
     if (typeof window !== "undefined") {
       const savedKey = localStorage.getItem("falcon_gemini_api_key") || "";
       setGeminiApiKey(savedKey);
+      const savedRbg = localStorage.getItem("falcon_remove_bg_api_key") || "";
+      setRemoveBgApiKey(savedRbg);
     }
   }, []);
 
-  const handleSaveApiKey = (key: string) => {
-    const trimmed = key.trim();
-    setGeminiApiKey(trimmed);
+  const handleSaveApiKey = (geminiKey: string, rbgKey?: string) => {
+    const trimmedGemini = geminiKey.trim();
+    setGeminiApiKey(trimmedGemini);
     if (typeof window !== "undefined") {
-      localStorage.setItem("falcon_gemini_api_key", trimmed);
+      localStorage.setItem("falcon_gemini_api_key", trimmedGemini);
+    }
+    if (rbgKey !== undefined) {
+      const trimmedRbg = rbgKey.trim();
+      setRemoveBgApiKey(trimmedRbg);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("falcon_remove_bg_api_key", trimmedRbg);
+      }
     }
   };
 
@@ -1308,24 +1318,63 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                 </div>
 
                 {showApiKeyInput && (
-                  <div className="bg-white border border-purple-200 rounded-xl p-3 flex gap-2">
-                    <input
-                      type="password"
-                      placeholder="Paste your OpenAI Key (sk-...) or Gemini Key (AIza...)"
-                      value={geminiApiKey}
-                      onChange={(e) => setGeminiApiKey(e.target.value)}
-                      className="flex-1 text-xs border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        handleSaveApiKey(geminiApiKey);
-                        setShowApiKeyInput(false);
-                      }}
-                      className="bg-purple-600 text-white text-xs font-bold"
-                    >
-                      Save Key
-                    </Button>
+                  <div className="bg-white border border-purple-200 rounded-xl p-4 space-y-3 shadow-xs">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
+                        <span>1. Gemini Vision / OpenAI OCR Key (Product Details & Barcode):</span>
+                        <span className="text-[10px] text-emerald-600 font-semibold">{geminiApiKey ? "✓ Saved" : "Required"}</span>
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Paste Google Gemini Key (AIza...) or OpenAI Key (sk-...)"
+                        value={geminiApiKey}
+                        onChange={(e) => setGeminiApiKey(e.target.value)}
+                        className="w-full text-xs border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
+                        <span>2. Remove.bg Commercial Studio Key (50 Free HD Cuts / Month):</span>
+                        <a
+                          href="https://www.remove.bg/api"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-purple-600 underline font-semibold hover:text-purple-800"
+                        >
+                          Get Free Key (remove.bg/api) →
+                        </a>
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Paste Remove.bg API Key for gold-standard studio cutouts..."
+                        value={removeBgApiKey}
+                        onChange={(e) => setRemoveBgApiKey(e.target.value)}
+                        className="w-full text-xs border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowApiKeyInput(false)}
+                        className="text-xs text-gray-500"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          handleSaveApiKey(geminiApiKey, removeBgApiKey);
+                          setShowApiKeyInput(false);
+                          toast.success("AI API Keys saved successfully!");
+                        }}
+                        className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-4"
+                      >
+                        Save API Keys
+                      </Button>
+                    </div>
                   </div>
                 )}
 

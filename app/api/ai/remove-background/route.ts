@@ -76,6 +76,47 @@ export async function POST(req: NextRequest) {
     const imageBlob = new Blob([uint8Data], { type: "image/png" });
 
     // -----------------------------------------------------------------
+    // TIER 0: REMOVE.BG COMMERCIAL STUDIO API (50 Free High-Res Products / Month)
+    // -----------------------------------------------------------------
+    const removeBgKey =
+      body.removeBgApiKey ||
+      apiKey ||
+      process.env.REMOVE_BG_API_KEY ||
+      process.env.NEXT_PUBLIC_REMOVE_BG_API_KEY;
+
+    if (removeBgKey && !removeBgKey.startsWith("AIza") && !removeBgKey.startsWith("hf_")) {
+      try {
+        const formData = new FormData();
+        formData.append("image_file", imageBlob, "product.png");
+        formData.append("size", "auto");
+        formData.append("format", "png");
+
+        const rbgRes = await fetch("https://api.remove.bg/v1.0/removebg", {
+          method: "POST",
+          headers: {
+            "X-Api-Key": removeBgKey.trim(),
+          },
+          body: formData,
+        });
+
+        if (rbgRes.ok) {
+          const rbgBuf = await rbgRes.arrayBuffer();
+          const rbgBase64 = Buffer.from(rbgBuf).toString("base64");
+          return NextResponse.json({
+            success: true,
+            provider: "Remove.bg Commercial Studio (Gold Standard)",
+            transparentImageUrl: `data:image/png;base64,${rbgBase64}`,
+          });
+        } else {
+          const errText = await rbgRes.text().catch(() => "");
+          console.warn("Remove.bg API notice:", rbgRes.status, errText);
+        }
+      } catch (rbgErr) {
+        console.warn("Remove.bg connection notice:", rbgErr);
+      }
+    }
+
+    // -----------------------------------------------------------------
     // TIER 1: ON-DEVICE / ON-PREMISE NEURAL RMBG (100% Free, Unlimited, No API Key)
     // -----------------------------------------------------------------
     try {

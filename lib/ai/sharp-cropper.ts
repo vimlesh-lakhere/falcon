@@ -26,18 +26,45 @@ export async function cropProductWithSharp(
 
     let transparentBuffer: Buffer | null = null;
 
-    // TIER 1: On-Device Neural RMBG Cutout (Removes hand, fingers, room clutter completely)
-    try {
-      const { removeBackground } = await import("@imgly/background-removal-node");
-      const blob = new Blob([new Uint8Array(inputBuffer)], { type: "image/jpeg" });
-      const cutoutBlob = await removeBackground(blob);
-      const arrayBuf = await cutoutBlob.arrayBuffer();
-      const cutBuf = Buffer.from(arrayBuf);
-      if (cutBuf && cutBuf.length > 500) {
-        transparentBuffer = cutBuf;
+    // TIER 0: Remove.bg Commercial Studio API (50 Free High-Res Products / Month)
+    const removeBgKey = process.env.REMOVE_BG_API_KEY || process.env.NEXT_PUBLIC_REMOVE_BG_API_KEY;
+    if (removeBgKey) {
+      try {
+        const formData = new FormData();
+        const blob = new Blob([new Uint8Array(inputBuffer)], { type: "image/jpeg" });
+        formData.append("image_file", blob, "product.jpg");
+        formData.append("size", "auto");
+        formData.append("format", "png");
+
+        const rbgRes = await fetch("https://api.remove.bg/v1.0/removebg", {
+          method: "POST",
+          headers: { "X-Api-Key": removeBgKey.trim() },
+          body: formData,
+        });
+
+        if (rbgRes.ok) {
+          const rbgBuf = await rbgRes.arrayBuffer();
+          transparentBuffer = Buffer.from(rbgBuf);
+        }
+      } catch (rbgErr) {
+        console.warn("Remove.bg in cropper notice:", rbgErr);
       }
-    } catch (neuralErr) {
-      console.warn("Neural cutout skipped, falling back to sharp bounding crop:", neuralErr);
+    }
+
+    // TIER 1: On-Device Neural RMBG Cutout (Removes hand, fingers, room clutter completely)
+    if (!transparentBuffer) {
+      try {
+        const { removeBackground } = await import("@imgly/background-removal-node");
+        const blob = new Blob([new Uint8Array(inputBuffer)], { type: "image/jpeg" });
+        const cutoutBlob = await removeBackground(blob);
+        const arrayBuf = await cutoutBlob.arrayBuffer();
+        const cutBuf = Buffer.from(arrayBuf);
+        if (cutBuf && cutBuf.length > 500) {
+          transparentBuffer = cutBuf;
+        }
+      } catch (neuralErr) {
+        console.warn("Neural cutout skipped, falling back to sharp bounding crop:", neuralErr);
+      }
     }
 
     let productLayer: Buffer;

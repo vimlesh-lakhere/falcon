@@ -57,10 +57,11 @@ export const masterStudioGenerator = {
     // 3. AI Neural Background Cutout & Golden-Ratio Centering
     let cutoutUrl = originalUrl;
     try {
+      const savedRbg = typeof window !== "undefined" ? localStorage.getItem("falcon_remove_bg_api_key") || undefined : undefined;
       const serverCutout = await fetch("/api/ai/remove-background", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: originalUrl }),
+        body: JSON.stringify({ image: originalUrl, removeBgApiKey: savedRbg }),
       });
       const cutJson = await serverCutout.json().catch(() => ({}));
       if (serverCutout.ok && cutJson.success && cutJson.transparentImageUrl) {
