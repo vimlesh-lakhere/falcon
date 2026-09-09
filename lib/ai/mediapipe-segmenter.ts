@@ -24,51 +24,31 @@ export const mediaPipeSegmenter = {
     initPromise = (async () => {
       try {
         isInitializing = true;
-        const { ImageSegmenter, FilesetResolver } = await import(
-          "@mediapipe/tasks-vision"
-        );
+        // Strict 1500ms timeout for MediaPipe CDN fetch to avoid blocking UI
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
 
-        const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-        );
-
-        // Use DeepLabV3 general object segmenter (supports bottles, packages, objects)
-        segmenterInstance = await ImageSegmenter.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite",
-            delegate: "GPU",
-          },
-          runningMode: "IMAGE",
-          outputCategoryMask: true,
-          outputConfidenceMasks: true,
-        });
-
-        return segmenterInstance;
-      } catch (err) {
-        console.warn("MediaPipe GPU init fallback to CPU:", err);
-        try {
-          const { ImageSegmenter, FilesetResolver } = await import(
-            "@mediapipe/tasks-vision"
-          );
+        const loader = (async () => {
+          const { ImageSegmenter, FilesetResolver } = await import("@mediapipe/tasks-vision");
           const vision = await FilesetResolver.forVisionTasks(
             "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
           );
-          segmenterInstance = await ImageSegmenter.createFromOptions(vision, {
+          return ImageSegmenter.createFromOptions(vision, {
             baseOptions: {
               modelAssetPath:
                 "https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite",
-              delegate: "CPU",
+              delegate: "GPU",
             },
             runningMode: "IMAGE",
             outputCategoryMask: true,
             outputConfidenceMasks: true,
           });
-          return segmenterInstance;
-        } catch (cpuErr) {
-          console.warn("MediaPipe segmenter initialization note (using Smart Matting):", cpuErr);
-          return null;
-        }
+        })();
+
+        segmenterInstance = await Promise.race([loader, timeout]);
+        return segmenterInstance;
+      } catch (err) {
+        console.warn("MediaPipe init fallback:", err);
+        return null;
       } finally {
         isInitializing = false;
       }

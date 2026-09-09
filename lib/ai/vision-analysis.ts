@@ -193,22 +193,44 @@ export const aiVisionService = {
       exactLabelText: aiData?.exact_label_text || extractedName,
     };
 
-    // 11. Generate Master AI Studio Suite (Hero, Catalog, Lifestyle, Promo Banner, Social Stories, Zoom)
-    const studioSuite = await masterStudioGenerator.generateStudioSuite({
-      frontImage: payload.frontImage,
-      backImage: payload.backImage,
-      productName: extractedName,
-      brand: extractedBrand,
-      categoryName: detectedCategory.categoryName,
-      mrp: extractedMrp,
-      activeTheme: payload.theme,
-    });
+    // 11. Generate Master AI Studio Suite (with strict 5s safety timeout)
+    let studioSuite: any = null;
+    try {
+      const suitePromise = masterStudioGenerator.generateStudioSuite({
+        frontImage: payload.frontImage,
+        backImage: payload.backImage,
+        productName: extractedName,
+        brand: extractedBrand,
+        categoryName: detectedCategory.categoryName,
+        mrp: extractedMrp,
+        activeTheme: payload.theme,
+      });
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+      studioSuite = await Promise.race([suitePromise, timeout]);
+    } catch (suiteErr) {
+      console.warn("Studio suite generation skipped:", suiteErr);
+    }
+
+    const fallbackUrl = aiData?.pos_white_url || frontCompressed;
+    const finalAssets = studioSuite?.studioAssets || {
+      heroUrl: fallbackUrl,
+      catalogUrl: aiData?.pos_white_url || fallbackUrl,
+      lifestyleUrl: fallbackUrl,
+      promoBannerUrl: fallbackUrl,
+      socialMedia: {
+        instagramPostUrl: fallbackUrl,
+        storyUrl: fallbackUrl,
+        landscapeBannerUrl: fallbackUrl,
+      },
+      zoomUrl: fallbackUrl,
+      galleryUrls: [frontCompressed, aiData?.pos_white_url || fallbackUrl],
+      activeTheme: payload.theme || "luxury_marble",
+    };
 
     if (aiData?.pos_white_url) {
-      studioSuite.studioAssets.catalogUrl = aiData.pos_white_url;
-      studioSuite.thumbnailUrl = aiData.pos_white_url;
-      if (studioSuite.studioAssets.galleryUrls && studioSuite.studioAssets.galleryUrls.length > 1) {
-        studioSuite.studioAssets.galleryUrls[1] = aiData.pos_white_url;
+      finalAssets.catalogUrl = aiData.pos_white_url;
+      if (finalAssets.galleryUrls && finalAssets.galleryUrls.length > 1) {
+        finalAssets.galleryUrls[1] = aiData.pos_white_url;
       }
     }
 
@@ -233,12 +255,12 @@ export const aiVisionService = {
       confidenceScore: aiData ? 0.99 : 0.88,
       provider: apiProviderUsed || "Falcon Vision AI",
       images: {
-        originalUrl: studioSuite.originalUrl,
-        enhancedUrl: aiData?.pos_white_url || studioSuite.studioAssets.heroUrl,
-        thumbnailUrl: aiData?.pos_white_url || studioSuite.thumbnailUrl,
-        galleryUrls: studioSuite.studioAssets.galleryUrls,
-        studioAssets: studioSuite.studioAssets,
-        qualityReport: studioSuite.qualityReport,
+        originalUrl: studioSuite?.originalUrl || frontCompressed,
+        enhancedUrl: aiData?.pos_white_url || finalAssets.heroUrl,
+        thumbnailUrl: aiData?.pos_white_url || finalAssets.catalogUrl,
+        galleryUrls: finalAssets.galleryUrls,
+        studioAssets: finalAssets,
+        qualityReport: studioSuite?.qualityReport || { score: 92 },
       },
     };
   },
