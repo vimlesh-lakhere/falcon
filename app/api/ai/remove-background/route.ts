@@ -76,7 +76,26 @@ export async function POST(req: NextRequest) {
     const imageBlob = new Blob([uint8Data], { type: "image/png" });
 
     // -----------------------------------------------------------------
-    // TIER 1: HUGGING FACE INFERENCE (RMBG-2.0 & RMBG-1.4)
+    // TIER 1: ON-DEVICE / ON-PREMISE NEURAL RMBG (100% Free, Unlimited, No API Key)
+    // -----------------------------------------------------------------
+    try {
+      const { removeBackground } = await import("@imgly/background-removal-node");
+      const cutoutBlob = await removeBackground(imageBlob);
+      const arrayBuf = await cutoutBlob.arrayBuffer();
+      const outputBuffer = Buffer.from(arrayBuf);
+      if (outputBuffer && outputBuffer.length > 500) {
+        return NextResponse.json({
+          success: true,
+          provider: "Falcon Neural RMBG Engine (Free On-Device AI)",
+          transparentImageUrl: `data:image/png;base64,${outputBuffer.toString("base64")}`,
+        });
+      }
+    } catch (imglyErr) {
+      console.warn("On-device neural background removal fallback to cloud:", imglyErr);
+    }
+
+    // -----------------------------------------------------------------
+    // TIER 2: HUGGING FACE INFERENCE (RMBG-2.0 & RMBG-1.4)
     // -----------------------------------------------------------------
     if (token) {
       const hf = new HfInference(token);
