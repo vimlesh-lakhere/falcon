@@ -375,6 +375,12 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         ? localStorage.getItem("falcon_gemini_api_key") || ""
         : "");
 
+    const effectiveRbgKey =
+      removeBgApiKey.trim() ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("falcon_remove_bg_api_key") || ""
+        : "");
+
     try {
       const result = await aiVisionService.analyzeProductPackaging(
         {
@@ -382,6 +388,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
           backImage: backImageFile || backPreviewUrl || null,
           additionalImages: additionalFiles,
           apiKey: effectiveKey,
+          removeBgApiKey: effectiveRbgKey,
           theme: selectedTheme,
         },
         {
@@ -511,6 +518,12 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         ? await aiImageEnhancer.fastCompress(backPreviewUrl, 1080, 0.85)
         : undefined;
 
+      const effectiveRbgKey =
+        removeBgApiKey.trim() ||
+        (typeof window !== "undefined"
+          ? localStorage.getItem("falcon_remove_bg_api_key") || ""
+          : "");
+
       const res = await fetch("/api/ai/analyze-product", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -518,6 +531,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
           frontImage: frontComp,
           backImage: backComp,
           apiKey: keyToUse,
+          removeBgApiKey: effectiveRbgKey,
         }),
       });
 

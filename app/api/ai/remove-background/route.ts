@@ -117,11 +117,23 @@ export async function POST(req: NextRequest) {
     }
 
     // -----------------------------------------------------------------
-    // TIER 1: ON-DEVICE / ON-PREMISE NEURAL RMBG (100% Free, Unlimited, No API Key)
+    // TIER 1: ON-DEVICE / ON-PREMISE NEURAL RMBG (Fast Downscaled + 8s Timeout)
     // -----------------------------------------------------------------
     try {
+      const sharp = (await import("sharp")).default;
+      const downscaledBuf = await sharp(imageBuffer)
+        .resize({ width: 512, height: 512, fit: "inside" })
+        .png()
+        .toBuffer();
+      const fastBlob = new Blob([new Uint8Array(downscaledBuf)], { type: "image/png" });
+
       const { removeBackground } = await import("@imgly/background-removal-node");
-      const cutoutBlob = await removeBackground(imageBlob);
+      const rmbgPromise = removeBackground(fastBlob);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("On-device RMBG exceeded 8s limit")), 8000)
+      );
+
+      const cutoutBlob = await Promise.race([rmbgPromise, timeoutPromise]);
       const arrayBuf = await cutoutBlob.arrayBuffer();
       const outputBuffer = Buffer.from(arrayBuf);
       if (outputBuffer && outputBuffer.length > 500) {
@@ -132,7 +144,7 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch (imglyErr) {
-      console.warn("On-device neural background removal fallback to cloud:", imglyErr);
+      console.warn("On-device neural background removal notice:", imglyErr);
     }
 
     // -----------------------------------------------------------------

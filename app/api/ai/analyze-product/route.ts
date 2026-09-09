@@ -9,7 +9,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { frontImage, backImage, provider, apiKey: clientApiKey } = body;
+    const {
+      frontImage,
+      backImage,
+      provider,
+      apiKey: clientApiKey,
+      removeBgApiKey: clientRemoveBgKey,
+    } = body;
 
     if (!frontImage) {
       return NextResponse.json(
@@ -131,42 +137,15 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
     // Option B: GOOGLE GEMINI VISION (Dynamic discovery + gemini-3.6-flash)
     // -------------------------------------------------------------
     if (activeApiKey && !activeApiKey.startsWith("sk-")) {
+      // Prioritize confirmed working ultra-fast models first to avoid ListModels network latency
       let geminiModels = [
         "gemini-3.6-flash",
-        "gemini-3.1-pro-preview",
-        "gemini-3.0-flash",
         "gemini-2.5-flash",
-        "gemini-2.5-pro",
         "gemini-2.0-flash-exp",
       ];
 
-      // Dynamically query available models supported for this key
-      try {
-        const listRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${activeApiKey}`
-        );
-        if (listRes.ok) {
-          const listJson = await listRes.json();
-          if (Array.isArray(listJson.models)) {
-            const valid = listJson.models
-              .filter((m: any) =>
-                m.supportedGenerationMethods?.includes("generateContent")
-              )
-              .map((m: any) => m.name.replace(/^models\//, ""));
-
-            const flashModels = valid.filter((m: string) => m.includes("flash"));
-            const proModels = valid.filter((m: string) => m.includes("pro"));
-            const combined = Array.from(new Set([...flashModels, ...proModels, ...valid]));
-            if (combined.length > 0) {
-              geminiModels = combined;
-            }
-          }
-        }
-      } catch (listErr) {
-        console.warn("[Gemini Discovery] ListModels fallback to defaults:", listErr);
-      }
-
-      for (const modelName of geminiModels) {
+      for (let i = 0; i < geminiModels.length; i++) {
+        const modelName = geminiModels[i];
         try {
           const genAI = new GoogleGenerativeAI(activeApiKey);
           const model = genAI.getGenerativeModel({ model: modelName });
@@ -208,12 +187,16 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
           const rawToParse = jsonMatch ? jsonMatch[0] : cleanedText;
           const parsedData = JSON.parse(rawToParse);
 
-          // Clean crop product from hands/background using Sharp
+          // Fast E-Commerce Staging & Cutout (Uses Remove.bg if key provided, otherwise 10ms Sharp Crop)
           let croppedImageUrl: string | null = null;
           let posWhiteImageUrl: string | null = null;
           try {
             const { cropProductWithSharp } = await import("@/lib/ai/sharp-cropper");
-            const cropRes = await cropProductWithSharp(frontImage, parsedData.product_bounding_box);
+            const cropRes = await cropProductWithSharp(
+              frontImage,
+              parsedData.product_bounding_box,
+              clientRemoveBgKey
+            );
             if (cropRes) {
               croppedImageUrl = cropRes.croppedDataUrl;
               posWhiteImageUrl = cropRes.posWhiteDataUrl;
@@ -232,7 +215,28 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
             },
           });
         } catch (geminiErr) {
-          console.warn(`Gemini Vision (${modelName}) failed, trying next:`, geminiErr);
+          console.warn(`Gemini Vision (${modelName}) failed:`, geminiErr);
+          // If first model failed and we haven't checked ListModels yet, query available models
+          if (i === 0 && geminiModels.length <= 3) {
+            try {
+              const listRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models?key=${activeApiKey}`
+              );
+              if (listRes.ok) {
+                const listJson = await listRes.json();
+                if (Array.isArray(listJson.models)) {
+                  const valid = listJson.models
+                    .filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
+                    .map((m: any) => m.name.replace(/^models\//, ""));
+                  if (valid.length > 0) {
+                    geminiModels = Array.from(new Set([...geminiModels, ...valid]));
+                  }
+                }
+              }
+            } catch (listErr) {
+              console.warn("ListModels fallback notice:", listErr);
+            }
+          }
         }
       }
     }

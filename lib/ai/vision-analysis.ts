@@ -9,6 +9,7 @@ export interface VisionUploadPayload {
   backImage?: File | string | null;
   additionalImages?: (File | string)[];
   apiKey?: string;
+  removeBgApiKey?: string;
   theme?: HeroTheme;
 }
 
@@ -29,14 +30,22 @@ export const aiVisionService = {
       ? await aiImageEnhancer.fastCompress(payload.backImage, 1080, 0.85)
       : undefined;
 
-    // 2. Call Multimodal Vision AI API (OpenAI GPT-4o / Gemini)
+    // 2. Resolve API Keys
+    const savedApiKey =
+      typeof window !== "undefined"
+        ? localStorage.getItem("falcon_gemini_api_key") || payload.apiKey
+        : payload.apiKey;
+
+    const savedRemoveBgKey =
+      payload.removeBgApiKey ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("falcon_remove_bg_api_key") || ""
+        : "");
+
+    // 3. Call Multimodal Vision AI API (OpenAI GPT-4o / Gemini)
     let aiData: any = null;
     let apiProviderUsed = "";
     try {
-      const savedApiKey =
-        typeof window !== "undefined"
-          ? localStorage.getItem("falcon_gemini_api_key") || payload.apiKey
-          : payload.apiKey;
 
       const res = await fetch("/api/ai/analyze-product", {
         method: "POST",
@@ -45,6 +54,7 @@ export const aiVisionService = {
           frontImage: frontCompressed,
           backImage: backCompressed,
           apiKey: savedApiKey,
+          removeBgApiKey: savedRemoveBgKey,
         }),
       });
 
@@ -204,6 +214,7 @@ export const aiVisionService = {
         categoryName: detectedCategory.categoryName,
         mrp: extractedMrp,
         activeTheme: payload.theme,
+        removeBgApiKey: savedRemoveBgKey,
       });
       const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
       studioSuite = await Promise.race([suitePromise, timeout]);

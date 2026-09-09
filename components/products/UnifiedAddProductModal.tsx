@@ -489,6 +489,11 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           ? localStorage.getItem("falcon_gemini_api_key") || undefined
           : undefined;
 
+      const savedRemoveBgKey =
+        typeof window !== "undefined"
+          ? localStorage.getItem("falcon_remove_bg_api_key") || undefined
+          : undefined;
+
       const res = await fetch("/api/ai/analyze-product", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -496,6 +501,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           frontImage: frontToScan || backToScan,
           backImage: backToScan && backToScan !== frontToScan ? backToScan : undefined,
           apiKey: savedApiKey,
+          removeBgApiKey: savedRemoveBgKey,
         }),
       });
 
