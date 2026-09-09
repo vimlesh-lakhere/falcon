@@ -70,15 +70,24 @@ export const masterStudioGenerator = {
 
     const rawCutoutImg = await localImageStudio.loadImage(cutoutUrl);
     let workingCanvas: HTMLCanvasElement;
-    const cutoutCanvas = await mediaPipeSegmenter.removeBackground(rawCutoutImg);
-    if (cutoutCanvas) {
-      workingCanvas = cutoutCanvas;
-    } else {
+    if (cutoutUrl !== originalUrl) {
+      // Server-side removeBackground already provided a transparent cutout
       const c = document.createElement("canvas");
       c.width = rawCutoutImg.naturalWidth || rawCutoutImg.width;
       c.height = rawCutoutImg.naturalHeight || rawCutoutImg.height;
       c.getContext("2d")?.drawImage(rawCutoutImg, 0, 0);
       workingCanvas = c;
+    } else {
+      const cutoutCanvas = await mediaPipeSegmenter.removeBackground(rawCutoutImg);
+      if (cutoutCanvas) {
+        workingCanvas = cutoutCanvas;
+      } else {
+        const c = document.createElement("canvas");
+        c.width = rawCutoutImg.naturalWidth || rawCutoutImg.width;
+        c.height = rawCutoutImg.naturalHeight || rawCutoutImg.height;
+        c.getContext("2d")?.drawImage(rawCutoutImg, 0, 0);
+        workingCanvas = c;
+      }
     }
 
     // Crop tightly around the product and polish surface with unsharp mask

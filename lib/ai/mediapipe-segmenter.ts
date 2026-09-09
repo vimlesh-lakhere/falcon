@@ -40,6 +40,7 @@ export const mediaPipeSegmenter = {
             delegate: "GPU",
           },
           runningMode: "IMAGE",
+          outputCategoryMask: true,
           outputConfidenceMasks: true,
         });
 
@@ -60,6 +61,7 @@ export const mediaPipeSegmenter = {
               delegate: "CPU",
             },
             runningMode: "IMAGE",
+            outputCategoryMask: true,
             outputConfidenceMasks: true,
           });
           return segmenterInstance;
@@ -265,43 +267,100 @@ export const mediaPipeSegmenter = {
         if (srcCtx) {
           srcCtx.drawImage(imgOrCanvas, 0, 0);
           const segmentationResult = segmenter.segment(srcCanvas);
-          if (segmentationResult?.confidenceMasks?.length) {
-            const mask = segmentationResult.confidenceMasks[0];
-            const maskArray = mask.getAsFloat32Array();
-            const maskW = mask.width;
-            const maskH = mask.height;
+          const catMask = segmentationResult?.categoryMask;
+          const confMasks = segmentationResult?.confidenceMasks;
 
+          if (catMask || (confMasks && confMasks.length > 0)) {
             const outCanvas = document.createElement("canvas");
             outCanvas.width = w;
             outCanvas.height = h;
-            const outCtx = outCanvas.getContext("2d");
+            const outCtx = outCanvas.getContext("2d", { willReadFrequently: true });
             if (outCtx) {
               const srcPixels = srcCtx.getImageData(0, 0, w, h).data;
               const outImgData = outCtx.createImageData(w, h);
               const outPixels = outImgData.data;
 
+              let catArray: Uint8Array | null = null;
+              let maskW = w;
+              let maskH = h;
+
+              if (catMask) {
+                catArray = catMask.getAsUint8Array();
+                maskW = catMask.width;
+                maskH = catMask.height;
+              }
+
+              let bgConfidenceArray: Float32Array | null = null;
+              if (confMasks && confMasks.length > 0) {
+                // In DeepLabV3, confidenceMasks[0] is class 0 (BACKGROUND)
+                bgConfidenceArray = confMasks[0].getAsFloat32Array();
+                if (!catMask) {
+                  maskW = confMasks[0].width;
+                  maskH = confMasks[0].height;
+                }
+              }
+
               const scaleX = maskW / w;
               const scaleY = maskH / h;
+              let fgPixels = 0;
 
               for (let y = 0; y < h; y++) {
                 const maskY = Math.min(maskH - 1, Math.floor(y * scaleY));
+                const rowOffset = maskY * maskW;
+
                 for (let x = 0; x < w; x++) {
                   const maskX = Math.min(maskW - 1, Math.floor(x * scaleX));
-                  const confidence = maskArray[maskY * maskW + maskX];
+                  const maskIdx = rowOffset + maskX;
                   const pIdx = (y * w + x) * 4;
 
                   outPixels[pIdx] = srcPixels[pIdx];
                   outPixels[pIdx + 1] = srcPixels[pIdx + 1];
                   outPixels[pIdx + 2] = srcPixels[pIdx + 2];
-                  outPixels[pIdx + 3] = confidence > 0.4 ? 255 : 0;
+
+                  let alpha = 0;
+
+                  // 1. Check DeepLabV3 category: 0 = Background; > 0 = Foreground object (bottle, person, etc.)
+                  if (catArray) {
+                    const category = catArray[maskIdx];
+                    if (category > 0) {
+                      alpha = 255;
+                    }
+                  }
+
+                  // 2. Check DeepLabV3 background confidence: confMasks[0] is background probability
+                  if (bgConfidenceArray) {
+                    const bgProb = bgConfidenceArray[maskIdx];
+                    const fgProb = 1.0 - bgProb;
+
+                    if (fgProb > 0.50) {
+                      alpha = Math.max(alpha, 255);
+                    } else if (fgProb > 0.25) {
+                      // Smooth anti-aliased edge feathering
+                      const feathered = Math.round(((fgProb - 0.25) / 0.25) * 255);
+                      alpha = Math.max(alpha, feathered);
+                    }
+                  }
+
+                  if (alpha > 50) fgPixels++;
+                  outPixels[pIdx + 3] = alpha;
                 }
               }
-              outCtx.putImageData(outImgData, 0, 0);
+
+              // Free MediaPipe memory
               try {
-                mask.close();
-                segmentationResult.close();
+                catMask?.close?.();
+                if (confMasks) {
+                  for (const m of confMasks) m?.close?.();
+                }
+                segmentationResult?.close?.();
               } catch {}
-              return outCanvas;
+
+              // Verify that neural model extracted a meaningful product (between 2% and 98% of frame)
+              const totalPixels = w * h;
+              if (fgPixels > totalPixels * 0.02 && fgPixels < totalPixels * 0.98) {
+                outCtx.putImageData(outImgData, 0, 0);
+                return outCanvas;
+              }
             }
           }
         }

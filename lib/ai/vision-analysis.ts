@@ -78,6 +78,22 @@ export const aiVisionService = {
     let extractedBarcode = opticalBarcode || (aiData?.barcode ? String(aiData.barcode).replace(/[^0-9]/g, "") : "");
     let extractedMrp = Number(aiData?.mrp || 0) || 0;
 
+    // 4b. Barcode Database Lookup (Store Inventory DB + Open Facts)
+    if (extractedBarcode) {
+      try {
+        const { aiBarcodeLookup } = await import("./barcode-lookup");
+        const lookup = await aiBarcodeLookup.lookupBarcode(extractedBarcode, (context as any)?.storeId);
+        if (lookup.found) {
+          if (!extractedName && lookup.productName) extractedName = lookup.productName;
+          if (!extractedBrand && lookup.brand) extractedBrand = lookup.brand;
+          if (!extractedMrp && lookup.mrp) extractedMrp = lookup.mrp;
+          if (!extractedVolume && lookup.netWeight) extractedVolume = lookup.netWeight;
+        }
+      } catch (lookupErr) {
+        console.warn("Barcode lookup notice:", lookupErr);
+      }
+    }
+
     // Helper: Detect whether a file name is just a camera/phone/system generated identifier
     const isSystemOrCameraFileName = (str: string) => {
       const clean = str.trim().toLowerCase();
