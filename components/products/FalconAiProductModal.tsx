@@ -132,7 +132,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
   // Active Studio Image Asset Tab in Stage 3
   const [activeAssetTab, setActiveAssetTab] = useState<
     "ai_showroom" | "hero" | "catalog" | "lifestyle" | "promo" | "story" | "zoom" | "original"
-  >("hero");
+  >("original");
 
   // Camera capture modal state
   const [isCameraActive, setIsCameraActive] = useState(false);
