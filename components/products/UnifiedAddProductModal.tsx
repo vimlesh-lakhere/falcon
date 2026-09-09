@@ -110,6 +110,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [isPhotoActionSheetOpen, setIsPhotoActionSheetOpen] = useState(false);
   const [autoScanWithAi, setAutoScanWithAi] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
+  const [studioTheme, setStudioTheme] = useState<
+    "pure_white" | "luxury_marble" | "modern_wood" | "dark_obsidian" | "botanical_fresh"
+  >("pure_white");
 
   const handleOpenGalleryPicker = () => {
     setIsPhotoActionSheetOpen(false);
@@ -579,11 +582,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         console.warn("Server AI background remover notice:", bgErr);
       }
 
-      // 2. Final Studio Polish (Framing, Centering, Gloss & Pure White #FFFFFF Background)
+      // 2. Final Studio Polish (Framing, Centering, Gloss & Staged Background)
       const polished = await aiImageEnhancer.studioPolish(imageToPolish, {
         targetSize: 1080,
-        backgroundColor: "#FFFFFF",
+        theme: studioTheme,
         addGloss: true,
+        addGroundShadow: true,
+        addReflection: true,
+        sharpnessBoost: true,
       });
 
       if (activeImageTab === "front") {
@@ -591,7 +597,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       } else {
         setBackImageUrl(polished);
       }
-      setAiSuccessMsg("✨ Studio Cleaned & Polished: Background cleaned & set on pure white backdrop!");
+      setAiSuccessMsg("✨ Studio Cleaned & Polished: Background isolated, softbox shining added & staged on 3D backdrop!");
     } catch (e) {
       console.error("Studio polish error:", e);
       setAiSuccessMsg("⚠️ Studio polish notice: Applied safe photo enhancement.");
@@ -1192,18 +1198,47 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
               {/* Studio Polish & AI Controls */}
               {(imageUrl || backImageUrl) && (
-                <div className="space-y-1.5 pt-1">
+                <div className="space-y-2 pt-1">
+                  {/* Studio Theme Presets */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                      3D Studio Staging Backdrop:
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                      {[
+                        { id: "pure_white", label: "Pure White", icon: "⚪" },
+                        { id: "luxury_marble", label: "Marble Podium", icon: "🏛️" },
+                        { id: "modern_wood", label: "Warm Wood", icon: "🪵" },
+                        { id: "dark_obsidian", label: "Obsidian Stage", icon: "🌑" },
+                      ].map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setStudioTheme(t.id as any)}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border transition-all ${
+                            studioTheme === t.id
+                              ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                              : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
+                          }`}
+                        >
+                          <span>{t.icon}</span>
+                          <span>{t.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* 1. Studio Clean & Polish Button (Works for BOTH existing and new products) */}
                   <Button
                     type="button"
                     size="sm"
                     onClick={handleStudioPolishPhoto}
                     isLoading={isPolishing}
-                    className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-xs active:scale-95 transition-all"
-                    title="Clean dust, boost lighting, add glossy reflections and place on pure white background"
+                    className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md active:scale-95 transition-all py-2"
+                    title="Isolate background, add softbox specular shine, 3D physics shadow and center on chosen stage"
                   >
                     <Sparkles className="w-3.5 h-3.5 mr-1 text-yellow-300 animate-pulse" />
-                    <span>✨ Studio Polish (Clean Dust, Shine & White BG)</span>
+                    <span>✨ 1-Click Studio Polish (Shine, Clean & 3D Stage)</span>
                   </Button>
 
                   {/* 2. AI Auto-fill (Only when creating a new product) */}

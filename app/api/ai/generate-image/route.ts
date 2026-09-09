@@ -28,21 +28,36 @@ async function generateWithFluxStudio(
     enhancedPrompt
   )}?width=${width}&height=${height}&nologo=true&enhance=true&model=flux&seed=${seed}`;
 
-  const res = await fetch(fluxUrl, {
-    headers: {
-      "User-Agent": "Falcon-Store-Studio/1.0",
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  if (!res.ok) {
-    throw new Error(`Flux engine returned HTTP ${res.status}`);
+  try {
+    const res = await fetch(fluxUrl, {
+      headers: {
+        "User-Agent": "Falcon-Store-Studio/1.0",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error(`Flux engine returned HTTP ${res.status}`);
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString("base64");
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    return `data:${contentType};base64,${base64}`;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    throw new Error(
+      err.name === "AbortError"
+        ? "Image generation timed out. Please enter a Google Gemini API Key for instant, high-resolution generation."
+        : `Free image engine unavailable: ${err.message}`
+    );
   }
-
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const base64 = buffer.toString("base64");
-  const contentType = res.headers.get("content-type") || "image/jpeg";
-  return `data:${contentType};base64,${base64}`;
 }
 
 export async function POST(req: NextRequest) {

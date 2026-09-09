@@ -406,15 +406,23 @@ export const aiImageEnhancer = {
     dataUrlOrFile: File | string,
     options: {
       targetSize?: number;
+      theme?: any;
       backgroundColor?: string;
       addGloss?: boolean;
+      addGroundShadow?: boolean;
+      addReflection?: boolean;
+      sharpnessBoost?: boolean;
     } = {}
   ): Promise<string> {
     try {
       return await localImageStudio.processStudioPhoto(dataUrlOrFile, {
         targetSize: options.targetSize || 1080,
+        theme: options.theme || "pure_white",
         backgroundColor: options.backgroundColor || "#FFFFFF",
         addGloss: options.addGloss !== false,
+        addGroundShadow: options.addGroundShadow !== false,
+        addReflection: options.addReflection !== false,
+        sharpnessBoost: options.sharpnessBoost !== false,
       });
     } catch (e) {
       console.warn("Studio polish local fallback:", e);

@@ -57,6 +57,7 @@ import { Product, Category, Supplier, Unit } from "@/types/database";
 import { formatCurrency, capitalizeFirstLetter } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { transliterateToHindi } from "@/lib/transliterate";
+import { localImageStudio, StudioTheme } from "@/lib/ai/local-image-studio";
 
 interface FalconAiProductModalProps {
   isOpen: boolean;
@@ -602,21 +603,52 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
     setIsGeneratingAiImage(true);
     try {
-      const activeCat = categories.find((c) => c.id === formData.category_id)?.name || formData.name;
-      const res = await masterStudioGenerator.generateAiShowroomImage({
-        productName: formData.name || "Product",
-        brand: formData.brand,
-        categoryName: activeCat,
-        theme: themeToUse,
-        customPrompt: promptToUse,
-        aspectRatio: imageAspectRatio,
-        provider: aiEngineProvider,
-        apiKey: geminiApiKey || undefined,
-      });
+      let finalImageUrl = "";
+      let providerName = "Falcon Smart Studio (100% Free)";
+      let promptText = `8K commercial showroom showcase of ${formData.name}`;
 
-      setAiGeneratedImageUrl(res.imageUrl);
-      setAiGeneratedProviderName(res.provider);
-      setAiGeneratedPrompt(res.prompt);
+      const rawPhotoSource = frontPreviewUrl || frontImageFile || aiResult?.images?.originalUrl;
+
+      if (aiEngineProvider === "auto" && rawPhotoSource) {
+        // Map selected hero theme to StudioTheme
+        const themeMap: Record<string, StudioTheme> = {
+          luxury_marble: "luxury_marble",
+          botanical_herbal: "botanical_fresh",
+          minimal_studio: "pure_white",
+          dark_obsidian: "dark_obsidian",
+          festival_gold: "luxury_marble",
+        };
+        const resolvedTheme: StudioTheme = themeMap[themeToUse] || "luxury_marble";
+
+        finalImageUrl = await localImageStudio.processStudioPhoto(rawPhotoSource, {
+          targetSize: 1080,
+          theme: resolvedTheme,
+          addGloss: true,
+          addGroundShadow: true,
+          addReflection: true,
+          sharpnessBoost: true,
+        });
+        providerName = "Falcon Smart Studio (Built-in)";
+      } else {
+        const activeCat = categories.find((c) => c.id === formData.category_id)?.name || formData.name;
+        const res = await masterStudioGenerator.generateAiShowroomImage({
+          productName: formData.name || "Product",
+          brand: formData.brand,
+          categoryName: activeCat,
+          theme: themeToUse,
+          customPrompt: promptToUse,
+          aspectRatio: imageAspectRatio,
+          provider: aiEngineProvider,
+          apiKey: geminiApiKey || undefined,
+        });
+        finalImageUrl = res.imageUrl;
+        providerName = res.provider;
+        promptText = res.prompt;
+      }
+
+      setAiGeneratedImageUrl(finalImageUrl);
+      setAiGeneratedProviderName(providerName);
+      setAiGeneratedPrompt(promptText);
       setActiveAssetTab("ai_showroom");
 
       // Attach to AI studio gallery
@@ -626,16 +658,16 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
               ...prev,
               images: {
                 ...prev.images,
-                enhancedUrl: res.imageUrl,
-                galleryUrls: [res.imageUrl, ...prev.images.galleryUrls.filter((u) => u !== res.imageUrl)],
+                enhancedUrl: finalImageUrl,
+                galleryUrls: [finalImageUrl, ...prev.images.galleryUrls.filter((u) => u !== finalImageUrl)],
                 studioAssets: prev.images.studioAssets
                   ? {
                       ...prev.images.studioAssets,
-                      aiGeneratedHeroUrl: res.imageUrl,
-                      aiProvider: res.provider,
-                      aiPromptUsed: res.prompt,
-                      heroUrl: res.imageUrl,
-                      galleryUrls: [res.imageUrl, ...prev.images.studioAssets.galleryUrls.filter((u) => u !== res.imageUrl)],
+                      aiGeneratedHeroUrl: finalImageUrl,
+                      aiProvider: providerName,
+                      aiPromptUsed: promptText,
+                      heroUrl: finalImageUrl,
+                      galleryUrls: [finalImageUrl, ...prev.images.studioAssets.galleryUrls.filter((u) => u !== finalImageUrl)],
                     }
                   : undefined,
               },
@@ -1040,15 +1072,15 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-gray-100 text-xs">
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-gray-700">AI Model:</span>
+                      <span className="font-bold text-gray-700">Studio Engine:</span>
                       <select
                         value={aiEngineProvider}
                         onChange={(e) => setAiEngineProvider(e.target.value as any)}
                         className="text-xs border border-gray-300 rounded-lg px-2.5 py-1 font-semibold bg-white"
                       >
-                        <option value="auto">Auto (DALL-E 3 / Imagen 3)</option>
-                        <option value="openai">OpenAI DALL-E 3 (HD)</option>
-                        <option value="google">Google Imagen 3 (Showroom)</option>
+                        <option value="auto">⚡ Falcon Smart Studio (Built-in & Free)</option>
+                        <option value="google">Google Imagen 3 (Showroom HD)</option>
+                        <option value="openai">OpenAI DALL-E 3 (Ultra HD)</option>
                       </select>
                     </div>
 
@@ -1655,8 +1687,21 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       </div>
                     )}
 
-                    {/* Download & Fullscreen Controls */}
-                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
+                    {/* Download, Compare & Fullscreen Controls */}
+                    <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                      {aiResult?.images?.originalUrl && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveAssetTab((prev) => (prev === "original" ? "hero" : "original"))
+                          }
+                          className="px-2.5 py-1 bg-black/65 hover:bg-black/85 text-white text-[10px] font-bold rounded-lg backdrop-blur-xs transition-colors flex items-center gap-1 shadow-xs"
+                          title="Toggle Original vs Studio Polished"
+                        >
+                          <Eye className="w-3 h-3 text-purple-300" />
+                          <span>{activeAssetTab === "original" ? "Show Polished" : "Compare Original"}</span>
+                        </button>
+                      )}
                       <a
                         href={getActiveDisplayImage()}
                         download={`product-${formData.name.toLowerCase().replace(/\s+/g, "-") || "photo"}.jpg`}
@@ -1777,13 +1822,13 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                           className="text-[10px] bg-white/10 text-white border border-white/20 rounded-lg px-2 py-1 font-bold focus:outline-none"
                         >
                           <option value="auto" className="bg-slate-900 text-white">
-                            Auto (DALL-E 3 / Imagen 3)
-                          </option>
-                          <option value="openai" className="bg-slate-900 text-white">
-                            OpenAI DALL-E 3 (HD)
+                            ⚡ Falcon Smart Studio (Built-in & Free)
                           </option>
                           <option value="google" className="bg-slate-900 text-white">
-                            Google Imagen 3
+                            Google Imagen 3 (Showroom HD)
+                          </option>
+                          <option value="openai" className="bg-slate-900 text-white">
+                            OpenAI DALL-E 3 (Ultra HD)
                           </option>
                         </select>
 
