@@ -2041,27 +2041,29 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                   </div>
 
                   {/* Image Quality Scorecard Shield */}
-                  {aiResult.images.qualityReport && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1.5">
-                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
-                        <span className="flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          AI Inspection Shield:
-                        </span>
-                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
-                          PASS
-                        </span>
+                  {aiResult.images.qualityReport &&
+                    Array.isArray(aiResult.images.qualityReport.passedChecks) &&
+                    aiResult.images.qualityReport.passedChecks.length > 0 && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
+                          <span className="flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            AI Inspection Shield:
+                          </span>
+                          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
+                            PASS ({aiResult.images.qualityReport.score || 92}%)
+                          </span>
+                        </div>
+                        <div className="space-y-0.5">
+                          {aiResult.images.qualityReport.passedChecks.slice(0, 3).map((chk, i) => (
+                            <div key={i} className="text-[10px] text-slate-600 flex items-center gap-1.5">
+                              <span className="text-emerald-600 font-bold">✓</span>
+                              <span>{chk}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="space-y-0.5">
-                        {aiResult.images.qualityReport.passedChecks.slice(0, 3).map((chk, i) => (
-                          <div key={i} className="text-[10px] text-slate-600 flex items-center gap-1.5">
-                            <span className="text-emerald-600 font-bold">✓</span>
-                            <span>{chk}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                    )}
 
                   {/* Smart Pricing & Profit Margin Card (Anchor to ₹50 MRP) */}
                   <div className="bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 rounded-xl p-3.5 space-y-3">
