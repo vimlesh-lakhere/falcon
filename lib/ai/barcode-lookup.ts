@@ -54,17 +54,52 @@ export const aiBarcodeLookup = {
       console.warn("DB Barcode lookup error:", err);
     }
 
-    // 2. Fallback to Known Catalog / Open EAN Lookup or AI Database
-    // Provides instant resolution for common FMCG & Ayurvedic barcodes (like 890...)
-    if (cleanBarcode.startsWith("890")) {
-      return {
-        found: true,
-        productName: "Herbal Care Product (India)",
-        brand: "Indian Ayurvedic / FMCG",
-        categoryName: "Oral Care / Personal Care",
-        mrp: 50,
-        description: "High quality authentic herbal product with natural ingredients.",
-      };
+    // 2. Query Global Open Facts Catalog (Open Beauty Facts & Open Food Facts)
+    try {
+      const openSources = [
+        `https://world.openbeautyfacts.org/api/v0/product/${cleanBarcode}.json`,
+        `https://world.openfoodfacts.org/api/v0/product/${cleanBarcode}.json`,
+        `https://world.openproductsfacts.org/api/v0/product/${cleanBarcode}.json`,
+      ];
+
+      for (const endpoint of openSources) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 2500);
+          const res = await fetch(endpoint, {
+            headers: { "User-Agent": "Falcon-Retail-ERP/1.0" },
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 1 && data.product) {
+              const p = data.product;
+              const name = p.product_name || p.product_name_en || "";
+              const brand = p.brands || "";
+              const categories = p.categories || "";
+              const netWeight = p.quantity || "";
+
+              if (name) {
+                return {
+                  found: true,
+                  productName: name,
+                  brand: brand ? brand.split(",")[0].trim() : "",
+                  categoryName: categories ? categories.split(",")[0].trim() : "Personal Care",
+                  netWeight: netWeight || undefined,
+                  mrp: 0, // Keep 0 so user enters exact store MRP
+                  description: p.generic_name || name,
+                };
+              }
+            }
+          }
+        } catch {
+          // Continue to next catalog source
+        }
+      }
+    } catch (openErr) {
+      console.warn("Open facts catalog lookup error:", openErr);
     }
 
     return {

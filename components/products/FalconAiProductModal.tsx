@@ -44,6 +44,8 @@ import { Badge } from "@/components/ui/Badge";
 import { aiVisionService } from "@/lib/ai/vision-analysis";
 import { aiDuplicateDetector } from "@/lib/ai/duplicate-detector";
 import { aiBarcodeLookup } from "@/lib/ai/barcode-lookup";
+import { aiImageEnhancer } from "@/lib/ai/image-enhancer";
+import { aiCategoryDetector } from "@/lib/ai/category-detector";
 import { masterStudioGenerator } from "@/lib/ai/studio-generator";
 import { aiImagePromptEngine } from "@/lib/ai/image-prompt-engine";
 import {
@@ -196,6 +198,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
   // Gemini Vision API Key state
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [isScanningGemini, setIsScanningGemini] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -205,9 +208,10 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
   }, []);
 
   const handleSaveApiKey = (key: string) => {
-    setGeminiApiKey(key);
+    const trimmed = key.trim();
+    setGeminiApiKey(trimmed);
     if (typeof window !== "undefined") {
-      localStorage.setItem("falcon_gemini_api_key", key);
+      localStorage.setItem("falcon_gemini_api_key", trimmed);
     }
   };
 
@@ -384,58 +388,39 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
       // Populate Form Data
       setFormData({
-        name: capitalizeFirstLetter(result.productName),
+        name: result.productName ? capitalizeFirstLetter(result.productName) : "",
         brand: result.brandName ? capitalizeFirstLetter(result.brandName) : "",
-        category_id: result.suggestedCategoryId || categories[0]?.id || "",
+        category_id: result.suggestedCategoryId || "",
         sub_category: result.subCategory || "",
         sku: result.sku,
         barcode: result.barcode,
         unit_id: units[0]?.id || "",
         supplier_id: suppliers[0]?.id || "",
-        mrp: result.mrp,
-        purchase_price: result.suggestedPurchasePrice,
-        selling_price: result.suggestedSellingPrice,
-        wholesale_price: result.suggestedWholesalePrice,
+        mrp: result.mrp || 0,
+        purchase_price: result.suggestedPurchasePrice || 0,
+        selling_price: result.suggestedSellingPrice || 0,
+        wholesale_price: result.suggestedWholesalePrice || 0,
         current_stock: 10,
         minimum_stock: 5,
         reorder_level: 10,
-        variant_name: result.attributes.variant || "Standard",
+        variant_name: result.attributes?.variant || "Standard",
         shade_color: "",
-        net_weight: result.attributes.netVolume || "50 g",
-        short_description: result.descriptions.shortDescription,
-        long_description: result.descriptions.longDescription,
-        ingredients: result.attributes.ingredientsList?.join(", ") || "",
-        directions: result.attributes.directionsOfUse || "Use as indicated on packaging.",
-        warnings: result.attributes.warningsList || "Store in a cool dry place.",
-        country_of_origin: result.attributes.countryOfOrigin || "India",
-        manufacturer: result.attributes.manufacturer || `${result.brandName || "Brand"} Laboratories`,
+        net_weight: result.attributes?.netVolume || "",
+        short_description: result.descriptions?.shortDescription || "",
+        long_description: result.descriptions?.longDescription || "",
+        ingredients: result.attributes?.ingredientsList?.join(", ") || "",
+        directions: result.attributes?.directionsOfUse || "Use as indicated on packaging.",
+        warnings: result.attributes?.warningsList || "Store in a cool dry place.",
+        country_of_origin: result.attributes?.countryOfOrigin || "India",
+        manufacturer: result.attributes?.manufacturer || (result.brandName ? `${result.brandName} Laboratories` : ""),
         is_website_published: true,
       });
 
-      // Auto-generate AI Studio Showroom Hero (DALL-E 3 / Imagen 3) in background
-      try {
-        const catObj = categories.find((c) => c.id === (result.suggestedCategoryId || categories[0]?.id));
-        const resolvedCatName = catObj?.name || (typeof result.category === "string" ? result.category : (result.category as any)?.name) || "General Goods";
-        const autoHero = await masterStudioGenerator.generateAiShowroomImage({
-          productName: result.productName,
-          brand: result.brandName,
-          categoryName: resolvedCatName,
-          theme: selectedTheme,
-          customPrompt: `Hyper-realistic 8K commercial product showcase of ${result.productName}`,
-          provider: aiEngineProvider,
-          apiKey: geminiApiKey || undefined,
-        });
-
-        if (autoHero.imageUrl) {
-          setAiGeneratedImageUrl(autoHero.imageUrl);
-          setAiGeneratedProviderName(autoHero.provider);
-          setAiGeneratedPrompt(autoHero.prompt);
-          setActiveAssetTab("ai_showroom");
-        }
-      } catch (imgErr) {
-        console.warn("AI Showroom auto-generation fallback:", imgErr);
-        setActiveAssetTab("hero");
-      }
+      // Clear synthetic showroom url so the user's real product photo is the primary hero
+      setAiGeneratedImageUrl("");
+      setAiGeneratedProviderName("");
+      setAiGeneratedPrompt("");
+      setActiveAssetTab("hero");
 
       setStage(3);
     } catch (err: any) {
@@ -481,6 +466,86 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       console.error("Barcode lookup failed:", err);
     } finally {
       setIsLookingUpBarcode(false);
+    }
+  };
+
+  // Method 2.5: Re-scan / Scan Packaging Label with Gemini Vision OCR
+  const handleScanWithGemini = async () => {
+    const photoToAnalyze = frontPreviewUrl || (aiResult?.images?.originalUrl);
+    if (!photoToAnalyze) {
+      alert("Please upload a front product photo first.");
+      return;
+    }
+
+    const keyToUse = geminiApiKey.trim() || (typeof window !== "undefined" ? localStorage.getItem("falcon_gemini_api_key") || "" : "");
+    if (!keyToUse) {
+      setShowApiKeyInput(true);
+      return;
+    }
+
+    setIsScanningGemini(true);
+    try {
+      const frontComp = await aiImageEnhancer.fastCompress(photoToAnalyze, 1080, 0.85);
+      const backComp = backPreviewUrl
+        ? await aiImageEnhancer.fastCompress(backPreviewUrl, 1080, 0.85)
+        : undefined;
+
+      const res = await fetch("/api/ai/analyze-product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          frontImage: frontComp,
+          backImage: backComp,
+          apiKey: keyToUse,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (json.success && json.data) {
+        const d = json.data;
+        const scannedName = d.product_name ? capitalizeFirstLetter(d.product_name) : "";
+        const scannedBrand = d.brand ? capitalizeFirstLetter(d.brand) : "";
+        const scannedMrp = Number(d.mrp) || 0;
+
+        setFormData((prev) => {
+          const updated = {
+            ...prev,
+            name: scannedName || prev.name,
+            brand: scannedBrand || prev.brand,
+            mrp: scannedMrp > 0 ? scannedMrp : prev.mrp,
+            selling_price: scannedMrp > 0 ? scannedMrp : prev.selling_price,
+            purchase_price: scannedMrp > 0 ? Math.round(scannedMrp * 0.7) : prev.purchase_price,
+            wholesale_price: scannedMrp > 0 ? Math.round(scannedMrp * 0.85) : prev.wholesale_price,
+            barcode: d.barcode ? String(d.barcode).replace(/[^0-9]/g, "") : prev.barcode,
+            net_weight: d.net_weight || prev.net_weight,
+            short_description: d.short_description || prev.short_description,
+            directions: d.directions || prev.directions,
+            ingredients: Array.isArray(d.ingredients) ? d.ingredients.join(", ") : prev.ingredients,
+          };
+
+          // Try matching category
+          if (d.category_name) {
+            const detected = aiCategoryDetector.detect(d.category_name, scannedBrand);
+            const matched = categories.find(
+              (c) =>
+                c.name.toLowerCase().includes(detected.categoryName.toLowerCase()) ||
+                detected.categoryName.toLowerCase().includes(c.name.toLowerCase())
+            );
+            if (matched) {
+              updated.category_id = matched.id;
+            }
+          }
+
+          return updated;
+        });
+      } else if (json.error) {
+        alert("Gemini Scan Notice: " + json.error);
+      }
+    } catch (scanErr: any) {
+      console.error("Gemini scan error:", scanErr);
+      alert("Failed to scan packaging: " + (scanErr.message || "Unknown error"));
+    } finally {
+      setIsScanningGemini(false);
     }
   };
 
@@ -727,13 +792,18 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
     const supabase = createClient();
 
     try {
-      // Prioritize AI Generated image > Studio Hero > Enhanced Cutout > Original Preview
+      // Prioritize Real Studio Hero image for Vision Scan > Enhanced Cutout > Original Preview
       const heroImg =
-        aiGeneratedImageUrl ||
-        aiResult?.images?.studioAssets?.aiGeneratedHeroUrl ||
-        aiResult?.images?.studioAssets?.heroUrl ||
-        aiResult?.images?.enhancedUrl ||
-        frontPreviewUrl;
+        creationMethod === "prompt" && aiGeneratedImageUrl
+          ? aiGeneratedImageUrl
+          : activeAssetTab === "catalog" && aiResult?.images?.studioAssets?.catalogUrl
+          ? aiResult.images.studioAssets.catalogUrl
+          : activeAssetTab === "lifestyle" && aiResult?.images?.studioAssets?.lifestyleUrl
+          ? aiResult.images.studioAssets.lifestyleUrl
+          : aiResult?.images?.studioAssets?.heroUrl ||
+            aiResult?.images?.enhancedUrl ||
+            frontPreviewUrl ||
+            aiGeneratedImageUrl;
 
       const catalogImg = aiResult?.images?.studioAssets?.catalogUrl || heroImg;
       const lifestyleImg = aiResult?.images?.studioAssets?.lifestyleUrl || heroImg;
@@ -1572,22 +1642,10 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1 bg-gray-100 p-1 rounded-xl text-[10px] font-bold text-gray-700">
                     <button
                       type="button"
-                      onClick={() => setActiveAssetTab("ai_showroom")}
-                      className={`py-1 px-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
-                        activeAssetTab === "ai_showroom"
-                          ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-2xs font-black"
-                          : "hover:bg-gray-200 text-purple-900"
-                      }`}
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      AI Showroom
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setActiveAssetTab("hero")}
-                      className={`py-1 rounded-lg transition-all ${
+                      className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "hero"
-                          ? "bg-purple-600 text-white shadow-2xs"
+                          ? "bg-purple-600 text-white shadow-2xs font-black"
                           : "hover:bg-gray-200"
                       }`}
                     >
@@ -1596,7 +1654,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveAssetTab("catalog")}
-                      className={`py-1 rounded-lg transition-all ${
+                      className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "catalog"
                           ? "bg-purple-600 text-white shadow-2xs"
                           : "hover:bg-gray-200"
@@ -1607,7 +1665,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveAssetTab("lifestyle")}
-                      className={`py-1 rounded-lg transition-all ${
+                      className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "lifestyle"
                           ? "bg-purple-600 text-white shadow-2xs"
                           : "hover:bg-gray-200"
@@ -1618,7 +1676,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveAssetTab("promo")}
-                      className={`py-1 rounded-lg transition-all ${
+                      className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "promo"
                           ? "bg-purple-600 text-white shadow-2xs"
                           : "hover:bg-gray-200"
@@ -1629,7 +1687,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveAssetTab("story")}
-                      className={`py-1 rounded-lg transition-all ${
+                      className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "story"
                           ? "bg-purple-600 text-white shadow-2xs"
                           : "hover:bg-gray-200"
@@ -1640,7 +1698,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveAssetTab("original")}
-                      className={`py-1 rounded-lg transition-all ${
+                      className={`py-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
                         activeAssetTab === "original"
                           ? "bg-purple-600 text-white shadow-2xs"
                           : "hover:bg-gray-200"
@@ -1648,6 +1706,20 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     >
                       📷 Raw Photo
                     </button>
+                    {aiGeneratedImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveAssetTab("ai_showroom")}
+                        className={`py-1 px-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                          activeAssetTab === "ai_showroom"
+                            ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-2xs font-black"
+                            : "hover:bg-gray-200 text-purple-900"
+                        }`}
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        AI Concept Art
+                      </button>
+                    )}
                   </div>
 
                   {/* Main High-Definition Display Frame */}
@@ -1672,22 +1744,34 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                           </div>
                           <span>
                             {isGeneratingAiImage
-                              ? "Creating 8K Showroom with DALL-E 3 / Imagen 3..."
-                              : "Rendering Theme Assets..."}
+                              ? "Rendering AI Scene..."
+                              : "Staging Studio 3D Backdrop..."}
                           </span>
                         </div>
                       </div>
                     )}
 
-                    {/* AI Badge indicator */}
-                    {activeAssetTab === "ai_showroom" && aiGeneratedImageUrl && (
-                      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-purple-950/85 text-white text-[10px] font-black px-2.5 py-1 rounded-lg backdrop-blur-md shadow-md border border-purple-500/40">
-                        <Sparkles className="w-3 h-3 text-pink-400" />
-                        <span>AI Showroom • {aiGeneratedProviderName || "Production AI"}</span>
-                      </div>
-                    )}
+                    {/* Studio Theme Badge (bottom-left, prevents collision with top-right buttons) */}
+                    <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-md shadow-md border border-white/10">
+                      <Sparkles className="w-3 h-3 text-purple-300" />
+                      <span>
+                        {activeAssetTab === "hero"
+                          ? `3D Stage: ${selectedTheme.replace(/_/g, " ")}`
+                          : activeAssetTab === "catalog"
+                          ? "POS Pure White"
+                          : activeAssetTab === "lifestyle"
+                          ? "Lifestyle Staging"
+                          : activeAssetTab === "promo"
+                          ? "Promo Card"
+                          : activeAssetTab === "story"
+                          ? "Story (9:16)"
+                          : activeAssetTab === "original"
+                          ? "Raw Uploaded Photo"
+                          : "AI Concept Art"}
+                      </span>
+                    </div>
 
-                    {/* Download, Compare & Fullscreen Controls */}
+                    {/* Download, Compare & Fullscreen Controls (top right) */}
                     <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
                       {aiResult?.images?.originalUrl && (
                         <button
@@ -1695,11 +1779,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                           onClick={() =>
                             setActiveAssetTab((prev) => (prev === "original" ? "hero" : "original"))
                           }
-                          className="px-2.5 py-1 bg-black/65 hover:bg-black/85 text-white text-[10px] font-bold rounded-lg backdrop-blur-xs transition-colors flex items-center gap-1 shadow-xs"
+                          className="px-2.5 py-1 bg-black/65 hover:bg-black/85 text-white text-[10px] font-bold rounded-lg backdrop-blur-xs transition-colors flex items-center gap-1 shadow-xs border border-white/10"
                           title="Toggle Original vs Studio Polished"
                         >
                           <Eye className="w-3 h-3 text-purple-300" />
-                          <span>{activeAssetTab === "original" ? "Show Polished" : "Compare Original"}</span>
+                          <span>{activeAssetTab === "original" ? "Show Studio Cutout" : "Compare Original"}</span>
                         </button>
                       )}
                       <a
@@ -1707,22 +1791,59 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                         download={`product-${formData.name.toLowerCase().replace(/\s+/g, "-") || "photo"}.jpg`}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-xs transition-colors"
+                        className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-xs transition-colors border border-white/10"
                         title="Download Asset"
                       >
                         <Download className="w-3.5 h-3.5" />
                       </a>
                     </div>
 
-                    <span className="absolute bottom-2 right-2 text-[9px] font-bold px-2 py-0.5 bg-black/65 text-white rounded-md backdrop-blur-xs">
+                    <span className="absolute bottom-2 right-2 text-[9px] font-bold px-2 py-0.5 bg-black/65 text-white rounded-md backdrop-blur-xs border border-white/10">
                       {activeAssetTab === "hero"
-                        ? "1080×1080 Showroom Master"
+                        ? "1080×1080 Studio Hero"
                         : activeAssetTab === "story"
                         ? "1080×1920 Story"
-                        : activeAssetTab === "ai_showroom"
-                        ? "1024×1024 8K Commercial"
                         : "1080×1080 High-Res"}
                     </span>
+                  </div>
+
+                  {/* 1-Click 3D Studio Stage Selector Pills */}
+                  <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl p-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-purple-950 flex items-center gap-1">
+                        <Palette className="w-3.5 h-3.5 text-purple-600" />
+                        1-Click 3D Studio Stage:
+                      </span>
+                      <span className="text-[10px] text-purple-600 font-semibold">
+                        Real-time 3D lighting & shadows
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { id: "luxury_marble", label: "🌟 Luxury Marble" },
+                        { id: "minimal_studio", label: "📸 Pure Studio White" },
+                        { id: "botanical_herbal", label: "🌿 Botanical Fresh" },
+                        { id: "dark_obsidian", label: "🖤 Dark Obsidian" },
+                        { id: "festival_gold", label: "🪵 Modern Wood" },
+                      ].map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTheme(t.id as HeroTheme);
+                            handleSwitchTheme(t.id as HeroTheme);
+                            setActiveAssetTab("hero");
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                            selectedTheme === t.id && activeAssetTab === "hero"
+                              ? "bg-purple-600 text-white shadow-xs"
+                              : "bg-white text-gray-700 hover:bg-purple-100 border border-purple-200/60"
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Direct Image URL & Manufacturer Catalog Upload Override */}
@@ -1964,6 +2085,88 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
               {/* RIGHT: Extracted Editable Specifications & Inventory (7 cols) */}
               <div className="lg:col-span-7 space-y-3.5">
+                {/* Gemini OCR Scanner Quick Banner */}
+                <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border border-purple-200/90 rounded-2xl p-3.5 space-y-2.5 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-purple-950 flex items-center gap-1.5">
+                          Packaging OCR & Label Reader
+                          {geminiApiKey && (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-1.5 py-0.2 rounded-full">
+                              Connected
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-purple-800/80">
+                          {geminiApiKey
+                            ? "Reads product name, brand, MRP & ingredients directly from the photo."
+                            : "Add your Free Google Gemini API Key from Google AI Studio for 1-click OCR."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {geminiApiKey ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleScanWithGemini}
+                          disabled={isScanningGemini}
+                          className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-1.5 h-auto rounded-lg shadow-xs"
+                        >
+                          {isScanningGemini ? (
+                            <span className="flex items-center gap-1.5">
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              Reading Label...
+                            </span>
+                          ) : (
+                            "⚡ Auto-Scan Label"
+                          )}
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+                          className="border-purple-300 text-purple-800 hover:bg-purple-100 text-xs font-bold px-3 py-1.5 h-auto rounded-lg"
+                        >
+                          {showApiKeyInput ? "Cancel" : "+ Add Free Gemini Key"}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {showApiKeyInput && (
+                    <div className="bg-white border border-purple-200 rounded-xl p-2.5 flex gap-2">
+                      <input
+                        type="password"
+                        placeholder="Paste Free Google Gemini API Key (AIzaSy...)"
+                        value={geminiApiKey}
+                        onChange={(e) => setGeminiApiKey(e.target.value)}
+                        className="flex-1 text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          handleSaveApiKey(geminiApiKey);
+                          setShowApiKeyInput(false);
+                          if (geminiApiKey.trim()) {
+                            handleScanWithGemini();
+                          }
+                        }}
+                        className="bg-purple-600 text-white text-xs font-bold shrink-0"
+                      >
+                        Save & Scan
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 {/* General Information Card */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3 shadow-xs">
                   <div className="text-xs font-bold text-gray-900 flex items-center justify-between border-b border-gray-100 pb-2">
@@ -1978,6 +2181,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       </label>
                       <input
                         type="text"
+                        placeholder="e.g. Sofy AntiBacteria Sanitary Pads (Extra Long)"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: capitalizeFirstLetter(e.target.value) })}
                         className="w-full text-xs font-bold bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-purple-600"
@@ -1990,6 +2194,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       </label>
                       <input
                         type="text"
+                        placeholder="e.g. Sofy, Whisper, Parachute"
                         value={formData.brand}
                         onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
                         className="w-full text-xs bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-800"
@@ -2005,6 +2210,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                         onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
                         className="w-full text-xs bg-white border border-gray-300 rounded-lg px-3 py-2 font-medium text-gray-900 focus:ring-2 focus:ring-purple-600"
                       >
+                        <option value="">-- Select Store Category --</option>
                         {categories.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.name}

@@ -72,26 +72,35 @@ export const aiVisionService = {
     }
 
     // 4. Structured Data Population from Vision AI
-    let extractedName = aiData?.product_name || "";
-    let extractedBrand = aiData?.brand || "";
-    let extractedVolume = aiData?.net_weight || "100 ml / 100 g";
+    let extractedName = (aiData?.product_name || "").trim();
+    let extractedBrand = (aiData?.brand || "").trim();
+    let extractedVolume = aiData?.net_weight || "";
     let extractedBarcode = opticalBarcode || (aiData?.barcode ? String(aiData.barcode).replace(/[^0-9]/g, "") : "");
-    let extractedMrp = Number(aiData?.mrp || 0) || 99;
+    let extractedMrp = Number(aiData?.mrp || 0) || 0;
+
+    // Helper: Detect whether a file name is just a camera/phone/system generated identifier
+    const isSystemOrCameraFileName = (str: string) => {
+      const clean = str.trim().toLowerCase();
+      if (!clean || clean.length < 2) return true;
+      // Camera and screenshot patterns: Capture..., IMG_..., DSC_..., PXL_..., Screenshot_...
+      if (/^(capture|img|dsc|pxl|pic|screenshot|photo|image|scan|upload|file|whatsapp)[\s_\-\d]/i.test(clean)) return true;
+      // Pure numbers or epoch timestamps e.g. 1788929497640
+      if (/^\d{5,}$/.test(clean)) return true;
+      // Hex strings or UUIDs
+      if (/^[a-f0-9_\-]{12,}$/i.test(clean)) return true;
+      return false;
+    };
 
     if (!extractedName) {
-      const fileName =
+      const rawFileName =
         typeof payload.frontImage !== "string" && payload.frontImage.name
-          ? payload.frontImage.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ")
+          ? payload.frontImage.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").trim()
           : "";
-      if (fileName && !fileName.toLowerCase().includes("photo") && !fileName.toLowerCase().includes("image") && !fileName.toLowerCase().includes("upload")) {
-        extractedName = fileName;
+      if (rawFileName && !isSystemOrCameraFileName(rawFileName)) {
+        extractedName = rawFileName;
       } else {
-        extractedName = "New Retail Product";
+        extractedName = ""; // Leave blank so user can clearly type the real product title
       }
-    }
-
-    if (!extractedBrand) {
-      extractedBrand = "General Brand";
     }
 
     // 5. Category Detection
@@ -101,7 +110,7 @@ export const aiVisionService = {
     );
 
     let matchedCatId: string | undefined = undefined;
-    if (context?.storeCategories && context.storeCategories.length > 0) {
+    if (context?.storeCategories && context.storeCategories.length > 0 && (aiData?.category_name || extractedName)) {
       const found = context.storeCategories.find(
         (c) =>
           c.name.toLowerCase().includes(detectedCategory.categoryName.toLowerCase()) ||
@@ -114,12 +123,12 @@ export const aiVisionService = {
 
     // 6. Extract Product Attributes
     const attributes: ExtractedAttributes = {
-      brand: extractedBrand,
-      netVolume: extractedVolume,
+      brand: extractedBrand || "",
+      netVolume: extractedVolume || "1 Unit",
       variant: "Standard",
-      packagingType: "Container / Bottle",
+      packagingType: "Retail Packaging",
       countryOfOrigin: "India",
-      manufacturer: `${extractedBrand} Pvt. Ltd.`,
+      manufacturer: extractedBrand ? `${extractedBrand} Pvt. Ltd.` : "Consumer Goods Ltd.",
       gender: "Unisex",
       ageGroup: "All Ages",
     };
@@ -149,15 +158,15 @@ export const aiVisionService = {
     }
 
     // 8. Generate SKU
-    const brandCode = (extractedBrand.slice(0, 3) || "PRD").toUpperCase();
-    const catCode = (detectedCategory.categoryName.slice(0, 3) || "GEN").toUpperCase();
+    const brandCode = extractedBrand ? extractedBrand.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase() : "PRD";
+    const catCode = detectedCategory.categoryName ? detectedCategory.categoryName.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase() : "GEN";
     const randomCode = Math.floor(100 + Math.random() * 900);
-    const sku = `${brandCode}-${catCode}-${randomCode}`;
+    const sku = `${brandCode || "PRD"}-${catCode || "GEN"}-${randomCode}`;
 
-    // 9. Dynamic Pricing Math (Anchor to ₹50 MRP)
-    const suggestedSellingPrice = extractedMrp;
-    const suggestedPurchasePrice = Math.round(extractedMrp * 0.7);
-    const suggestedWholesalePrice = Math.round(extractedMrp * 0.85);
+    // 9. Dynamic Pricing Math
+    const suggestedSellingPrice = extractedMrp > 0 ? extractedMrp : 0;
+    const suggestedPurchasePrice = extractedMrp > 0 ? Math.round(extractedMrp * 0.7) : 0;
+    const suggestedWholesalePrice = extractedMrp > 0 ? Math.round(extractedMrp * 0.85) : 0;
 
     // 10. Extract Physical Packaging Reconstruction Details
     const packagingDetails = {
