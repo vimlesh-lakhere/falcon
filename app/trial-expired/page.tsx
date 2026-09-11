@@ -14,15 +14,29 @@ import {
   Sparkles,
   CheckCircle2,
   RefreshCw,
+  CreditCard,
+  Check,
+  Zap,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Shop } from "@/types/database";
+import { SUBSCRIPTION_PLANS, PricingPlan } from "@/lib/plans";
+import { initiateRazorpayCheckout } from "@/lib/razorpay-client";
 
 export default function TrialExpiredPage() {
   const [loading, setLoading] = useState(true);
   const [shop, setShop] = useState<Shop | null>(null);
   const [userName, setUserName] = useState<string>("Store Owner");
+  const [userEmail, setUserEmail] = useState<string>("");
   const [retentionDaysLeft, setRetentionDaysLeft] = useState<number>(16);
+
+  // Pricing & Payment State
+  const [selectedPlan, setSelectedPlan] = useState<PricingPlan>(
+    SUBSCRIPTION_PLANS.find((p) => p.isBestValue) || SUBSCRIPTION_PLANS[3]
+  );
+  const [isPaying, setIsPaying] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   useEffect(() => {
     async function checkStoreStatus() {
@@ -32,6 +46,7 @@ export default function TrialExpiredPage() {
         } = await supabase.auth.getUser();
 
         if (user) {
+          if (user.email) setUserEmail(user.email);
           const { data: profile } = await supabase
             .from("profiles")
             .select("full_name, store_id")
@@ -52,8 +67,13 @@ export default function TrialExpiredPage() {
             if (shopData) {
               setShop(shopData);
 
-              // If already activated, redirect to dashboard!
-              if (shopData.plan !== "trial" || (shopData.is_active && shopData.status === "active")) {
+              // If already activated or renewed, redirect to dashboard!
+              if (
+                shopData.plan !== "trial" &&
+                shopData.is_active &&
+                shopData.status === "active" &&
+                (!shopData.subscription_ends_at || new Date() < new Date(shopData.subscription_ends_at))
+              ) {
                 window.location.href = "/dashboard";
                 return;
               }
@@ -82,13 +102,49 @@ export default function TrialExpiredPage() {
     window.location.href = "/login";
   };
 
-  const getWhatsAppReactivationUrl = () => {
+  const getWhatsAppReactivationUrl = (plan?: PricingPlan) => {
     const storeName = shop?.name || "My Store";
     const phone = shop?.phone || "";
+    const chosen = plan || selectedPlan;
     const text = encodeURIComponent(
-      `Namaste Vimlesh ji,\nMy 14-day free trial for "${storeName}" on Falcon 360 ERP has ended.\nOwner: ${userName}\nPhone: ${phone}\n\nI want to reactivate my account and upgrade to the Pro plan. Please share the subscription details!`
+      `Namaste Vimlesh ji,\nMy trial/subscription for "${storeName}" on Falcon 360 ERP has ended.\nOwner: ${userName}\nPhone: ${phone}\n\nI want to reactivate my account and upgrade to ${chosen.name} (${chosen.durationLabel} for ₹${chosen.price}). Please share QR / payment link!`
     );
     return `https://wa.me/919340362381?text=${text}`;
+  };
+
+  const handlePayOnline = async () => {
+    try {
+      setIsPaying(true);
+      setPaymentError(null);
+      setPaymentSuccess(null);
+
+      await initiateRazorpayCheckout({
+        plan: selectedPlan,
+        shopId: shop?.id,
+        customerName: userName,
+        customerEmail: userEmail,
+        customerPhone: shop?.phone || "",
+        onSuccess: (paymentId) => {
+          setPaymentSuccess(
+            `🎉 Payment Successful! (ID: ${paymentId}). Your store is reactivated for ${selectedPlan.durationLabel}. Redirecting...`
+          );
+          setTimeout(() => {
+            window.location.href = "/dashboard";
+          }, 1500);
+        },
+        onError: (err) => {
+          setPaymentError(err);
+        },
+        onRequiresConfig: () => {
+          // Fallback to direct WhatsApp payment when admin hasn't set razorpay keys yet
+          window.open(getWhatsAppReactivationUrl(selectedPlan), "_blank");
+        },
+      });
+    } catch (err: any) {
+      setPaymentError(err.message || "Failed to start payment.");
+    } finally {
+      setIsPaying(false);
+    }
   };
 
   return (
@@ -122,145 +178,173 @@ export default function TrialExpiredPage() {
       </nav>
 
       {/* Main Content Area */}
-      <main className="relative z-10 flex-1 max-w-4xl mx-auto px-4 py-12 flex flex-col items-center justify-center text-center">
+      <main className="relative z-10 flex-1 max-w-5xl mx-auto px-4 py-10 flex flex-col items-center justify-center text-center">
         {/* Status Badge */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs font-semibold mb-6 animate-pulse">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs font-semibold mb-5 animate-pulse">
           <Clock className="w-4 h-4 text-rose-400" />
-          <span>14-Day Free Trial Concluded</span>
+          <span>Software Deactivated • Subscription Renewal Required</span>
         </div>
 
         {/* Primary Heading */}
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-tight max-w-2xl">
-          Your Free Trial Has Ended.
+          Continue Using Falcon 360.
           <span className="block mt-2 bg-gradient-to-r from-rose-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
-            Activate Now to Continue.
+            Select a Plan to Reactivate Instantly.
           </span>
         </h1>
 
-        <p className="mt-4 text-sm sm:text-base text-slate-400 max-w-xl leading-relaxed">
-          Hello <strong className="text-slate-200">{userName}</strong>! The 14-day evaluation period for{" "}
-          <strong className="text-indigo-300">{shop?.name || "your store"}</strong> has completed. Your account is temporarily
-          deactivated until activated by the Falcon administrator.
+        <p className="mt-3 text-sm text-slate-400 max-w-xl leading-relaxed">
+          Hello <strong className="text-slate-200">{userName}</strong>! The trial or subscription for{" "}
+          <strong className="text-indigo-300">{shop?.name || "your store"}</strong> has completed. Choose your preferred
+          plan below to pay online via Razorpay (UPI, GPay, PhonePe, Cards) or WhatsApp.
         </p>
 
-        {/* 30-Day Data Retention Guarantee Card */}
-        <div className="w-full mt-8 p-6 rounded-2xl bg-[#0F1422] border border-indigo-500/20 shadow-xl text-left relative overflow-hidden">
-          <div className="absolute top-0 right-0 transform translate-x-4 -translate-y-4 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+        {/* Payment Alert Banners */}
+        {paymentSuccess && (
+          <div className="w-full mt-4 p-4 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-xs font-semibold flex items-center justify-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{paymentSuccess}</span>
+          </div>
+        )}
 
+        {paymentError && (
+          <div className="w-full mt-4 p-4 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center justify-center gap-2 animate-in fade-in">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{paymentError}</span>
+          </div>
+        )}
+
+        {/* Interactive Subscription Plan Cards */}
+        <div className="w-full mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
+          {SUBSCRIPTION_PLANS.map((plan) => {
+            const isSelected = selectedPlan.id === plan.id;
+            return (
+              <div
+                key={plan.id}
+                onClick={() => setSelectedPlan(plan)}
+                className={`cursor-pointer rounded-2xl p-5 transition-all relative flex flex-col justify-between border ${
+                  isSelected
+                    ? "bg-gradient-to-b from-indigo-950/80 to-[#0F1423] border-indigo-500 shadow-xl shadow-indigo-950/50 scale-[1.02]"
+                    : "bg-[#0C101D]/70 border-white/10 hover:border-white/20 hover:bg-[#0F1423]"
+                }`}
+              >
+                {plan.badge && (
+                  <span
+                    className={`absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      plan.isBestValue
+                        ? "bg-gradient-to-r from-amber-400 to-orange-400 text-slate-950 shadow-md"
+                        : "bg-indigo-500/30 text-indigo-300 border border-indigo-500/40"
+                    }`}
+                  >
+                    {plan.badge}
+                  </span>
+                )}
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white">{plan.name}</h3>
+                    <div
+                      className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                        isSelected ? "border-indigo-400 bg-indigo-600 text-white" : "border-white/20"
+                      }`}
+                    >
+                      {isSelected && <Check className="w-2.5 h-2.5" />}
+                    </div>
+                  </div>
+
+                  <div className="flex items-baseline gap-1.5 pt-1">
+                    <span className="text-2xl font-black text-white font-mono">₹{plan.price}</span>
+                    <span className="text-xs text-slate-400 line-through">₹{plan.originalPrice}</span>
+                  </div>
+
+                  <div className="text-[11px] font-semibold text-emerald-400">
+                    Effective ₹{plan.perMonthPrice}/mo • {plan.durationLabel}
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-snug pt-1">{plan.description}</p>
+                </div>
+
+                <div className="pt-4 mt-4 border-t border-white/10 space-y-1.5 text-[11px] text-slate-300">
+                  {plan.features.slice(0, 3).map((f, i) => (
+                    <div key={i} className="flex items-start gap-1.5">
+                      <Check className="w-3 h-3 text-indigo-400 shrink-0 mt-0.5" />
+                      <span className="line-clamp-1">{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Selected Plan Summary & Razorpay Instant Pay Button */}
+        <div className="w-full mt-6 p-5 rounded-2xl bg-gradient-to-r from-indigo-950/60 via-[#0F1423] to-purple-950/60 border border-indigo-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-left space-y-0.5">
+            <div className="text-xs text-indigo-300 font-semibold flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>Selected: <strong>{selectedPlan.name}</strong> ({selectedPlan.durationLabel})</span>
+            </div>
+            <div className="text-xl font-black text-white font-mono">
+              Total: ₹{selectedPlan.price}{" "}
+              <span className="text-xs font-normal text-slate-400 font-sans">
+                (Save {selectedPlan.savingsPercentage}%)
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            {/* Online Razorpay Pay Button */}
+            <button
+              onClick={handlePayOnline}
+              disabled={isPaying}
+              className="w-full sm:w-auto px-7 py-3 rounded-xl bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] disabled:opacity-50"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>{isPaying ? "Opening Razorpay..." : `Pay ₹${selectedPlan.price} via Razorpay (UPI/Card)`}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+
+            {/* WhatsApp Alternative */}
+            <a
+              href={getWhatsAppReactivationUrl(selectedPlan)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition-all"
+            >
+              <MessageCircle className="w-4 h-4 text-white" />
+              <span>Pay via WhatsApp QR</span>
+            </a>
+          </div>
+        </div>
+
+        {/* 30-Day Data Retention Guarantee Card */}
+        <div className="w-full mt-8 p-5 rounded-2xl bg-[#0F1422] border border-indigo-500/20 shadow-xl text-left relative overflow-hidden">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-                <Database className="w-5 h-5 text-indigo-400" />
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
+                <Database className="w-4 h-4 text-indigo-400" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white">30-Day Data Retention Policy Active</h2>
-                <p className="text-xs text-slate-400">
-                  Your products, inventory, customers, and billing records are safe.
+                <h2 className="text-xs font-bold text-white">30-Day Data Retention Policy Active</h2>
+                <p className="text-[11px] text-slate-400">
+                  Your products, inventory, customers, and billing records are safe on our servers.
                 </p>
               </div>
             </div>
 
-            <div className="px-3.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold font-mono">
-              ⏳ {retentionDaysLeft} Days Left Until Purge
+            <div className="px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold font-mono">
+              ⏳ {retentionDaysLeft} Days Remaining Until Purge
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-300">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Catalog & Products Saved</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Customer Invoices Saved</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>One-Click Store Reactivation</span>
-            </div>
-          </div>
-
-          <p className="mt-3 text-[11px] text-slate-500">
-            Note: If your subscription is not confirmed within the 30-day window, unconfirmed trial data is permanently
-            deleted from our cloud servers.
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-          {/* WhatsApp Direct */}
-          <a
-            href={getWhatsAppReactivationUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 transition-all flex items-center justify-center gap-2.5 group"
-          >
-            <MessageCircle className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
-            <span>Chat on WhatsApp to Activate</span>
-            <ArrowRight className="w-4 h-4" />
-          </a>
-
-          {/* Direct Phone Call */}
-          <a
-            href="tel:+919340362381"
-            className="px-6 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 font-bold text-sm transition-all flex items-center justify-center gap-2.5"
-          >
-            <Phone className="w-4 h-4 text-indigo-400" />
-            <span>Call Support (+91 9340362381)</span>
-          </a>
-
-          {/* Check Again Button */}
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-3.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-semibold text-xs transition-all flex items-center justify-center gap-1.5"
-            title="Refresh if admin just activated your store"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Refresh Status</span>
-          </button>
-        </div>
-
-        {/* Pro Plan Feature Bullets */}
-        <div className="mt-12 w-full max-w-2xl text-left border-t border-white/10 pt-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="w-4 h-4 text-indigo-400" />
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Included When You Upgrade to Falcon 360 Pro
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-400">
-            <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-start gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-indigo-500 mt-1 shrink-0" />
-              <div>
-                <strong className="text-white block font-semibold">High-Speed POS & Billing</strong>
-                <span>Thermal receipts, barcode scanner integration & Hindi print support.</span>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-start gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-indigo-500 mt-1 shrink-0" />
-              <div>
-                <strong className="text-white block font-semibold">Real-Time Multi-Branch Stock</strong>
-                <span>Automated inventory tracking, low-stock alerts & warehouse transfers.</span>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-start gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-indigo-500 mt-1 shrink-0" />
-              <div>
-                <strong className="text-white block font-semibold">Automated GST & P&L Reports</strong>
-                <span>Generate GSTR reports, profit & loss statements, and daily sales summaries.</span>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-start gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-indigo-500 mt-1 shrink-0" />
-              <div>
-                <strong className="text-white block font-semibold">Daily Cloud Backups</strong>
-                <span>Encrypted Google Drive backups with one-click disaster recovery.</span>
-              </div>
-            </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+            <span>Support Helpline: <strong>+91 9340362381</strong> (Vimlesh Lakhere)</span>
+            <button
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center gap-1 text-indigo-400 hover:underline text-xs"
+            >
+              <RefreshCw className="w-3 h-3" /> Check Activation Status
+            </button>
           </div>
         </div>
       </main>

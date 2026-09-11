@@ -29,7 +29,11 @@ import {
   Users,
   Menu,
   X,
+  CreditCard,
+  AlertTriangle,
 } from "lucide-react";
+import { SUBSCRIPTION_PLANS, LIFETIME_PLAN, PricingPlan } from "@/lib/plans";
+import { initiateRazorpayCheckout } from "@/lib/razorpay-client";
 
 export default function FalconHomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -44,6 +48,66 @@ export default function FalconHomePage() {
     phone: "",
     message: "",
   });
+
+  // Razorpay Self-Checkout Modal State
+  const [selectedPlanForPayment, setSelectedPlanForPayment] = useState<PricingPlan | null>(null);
+  const [customerContact, setCustomerContact] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    businessName: "",
+  });
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentSuccessNotice, setPaymentSuccessNotice] = useState<string | null>(null);
+  const [paymentErrorNotice, setPaymentErrorNotice] = useState<string | null>(null);
+
+  const handleOpenPaymentModal = (plan: PricingPlan) => {
+    setSelectedPlanForPayment(plan);
+    setPaymentSuccessNotice(null);
+    setPaymentErrorNotice(null);
+  };
+
+  const handleExecutePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPlanForPayment) return;
+    if (!customerContact.phone || !customerContact.name) {
+      setPaymentErrorNotice("Please provide your name and WhatsApp/mobile phone number.");
+      return;
+    }
+
+    try {
+      setIsProcessingPayment(true);
+      setPaymentErrorNotice(null);
+
+      await initiateRazorpayCheckout({
+        plan: selectedPlanForPayment,
+        customerName: customerContact.name,
+        customerEmail: customerContact.email,
+        customerPhone: customerContact.phone,
+        onSuccess: (paymentId) => {
+          setPaymentSuccessNotice(
+            `🎉 Payment Successful! (ID: ${paymentId}). Plan ${selectedPlanForPayment.name} activated. Welcome to Falcon 360!`
+          );
+          setTimeout(() => {
+            setSelectedPlanForPayment(null);
+          }, 3500);
+        },
+        onError: (errMsg) => {
+          setPaymentErrorNotice(errMsg);
+        },
+        onRequiresConfig: () => {
+          const text = encodeURIComponent(
+            `Namaste Vimlesh ji,\nI want to subscribe to Falcon 360 ERP!\nPlan: ${selectedPlanForPayment.name} (${selectedPlanForPayment.durationLabel} for ₹${selectedPlanForPayment.price})\nName: ${customerContact.name}\nBusiness: ${customerContact.businessName || "My Store"}\nPhone: ${customerContact.phone}\n\nPlease share payment QR / UPI!`
+          );
+          window.open(`https://wa.me/919340362381?text=${text}`, "_blank");
+        },
+      });
+    } catch (err: any) {
+      setPaymentErrorNotice(err.message || "Could not launch checkout.");
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
 
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,11 +177,12 @@ export default function FalconHomePage() {
           </Link>
 
           {/* Desktop Nav Links */}
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+          <div className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-300">
             <a href="#erp" className="hover:text-white transition-colors">Cloud ERP</a>
             <a href="#pos" className="hover:text-white transition-colors">Smart POS</a>
             <a href="#custom-web" className="hover:text-white transition-colors">Custom Websites</a>
             <a href="#demos" className="hover:text-white transition-colors">Live Demos</a>
+            <a href="#pricing" className="hover:text-white transition-colors text-indigo-400 font-bold">Pricing Plans</a>
             <a href="#contact" className="hover:text-white transition-colors">Contact & Quote</a>
           </div>
 
@@ -165,6 +230,7 @@ export default function FalconHomePage() {
               <a onClick={() => setMobileMenuOpen(false)} href="#pos" className="py-1 hover:text-indigo-400">Smart POS</a>
               <a onClick={() => setMobileMenuOpen(false)} href="#custom-web" className="py-1 hover:text-indigo-400">Custom Websites</a>
               <a onClick={() => setMobileMenuOpen(false)} href="#demos" className="py-1 hover:text-indigo-400">Live Demos</a>
+              <a onClick={() => setMobileMenuOpen(false)} href="#pricing" className="py-1 text-indigo-400 font-bold">Pricing Plans</a>
               <a onClick={() => setMobileMenuOpen(false)} href="#contact" className="py-1 hover:text-indigo-400">Contact & Quote</a>
             </div>
             <div className="pt-3 border-t border-white/10 flex flex-col gap-2.5">
@@ -706,6 +772,153 @@ export default function FalconHomePage() {
         </div>
       </section>
 
+      {/* PRICING PLANS SECTION */}
+      <section id="pricing" className="relative z-10 py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-white/10">
+        <div className="text-center max-w-3xl mx-auto space-y-4 mb-16">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs font-semibold tracking-wide">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Transparent Indian Pricing • No Hidden Costs</span>
+          </div>
+
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+            Plans Built For Indian Retail & Business Growth.
+          </h2>
+
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl mx-auto">
+            Choose your billing duration. Pay online with instant Razorpay activation (UPI, GPay, PhonePe, Cards) or start with a 14-day free trial.
+          </p>
+        </div>
+
+        {/* 4 Pricing Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+          {SUBSCRIPTION_PLANS.map((plan) => {
+            const isFeatured = plan.isBestValue;
+            return (
+              <div
+                key={plan.id}
+                className={`rounded-3xl p-6 sm:p-7 flex flex-col justify-between transition-all relative ${
+                  isFeatured
+                    ? "bg-gradient-to-b from-indigo-950/90 via-[#0F1424] to-[#0B0F19] border-2 border-indigo-500 shadow-2xl shadow-indigo-950/60 lg:-translate-y-2"
+                    : "bg-[#0B0F19]/80 border border-white/10 hover:border-white/20 hover:bg-[#0E1322]"
+                }`}
+              >
+                {plan.badge && (
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                    <span
+                      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md ${
+                        plan.isBestValue
+                          ? "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 text-slate-950 font-black"
+                          : "bg-indigo-600 text-white"
+                      }`}
+                    >
+                      {plan.badge}
+                    </span>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-white">{plan.name}</h3>
+                    <p className="text-xs text-slate-400 mt-1 min-h-[32px]">{plan.description}</p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl sm:text-4xl font-black text-white font-mono">
+                        ₹{plan.price}
+                      </span>
+                      <span className="text-xs text-slate-400 line-through">₹{plan.originalPrice}</span>
+                    </div>
+
+                    <div className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>
+                        Effective ₹{plan.perMonthPrice}/mo ({plan.durationLabel})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Feature Checklist */}
+                  <div className="space-y-2.5 pt-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      What's Included:
+                    </span>
+                    <ul className="space-y-2 text-xs text-slate-300">
+                      {plan.features.map((feature, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                          <span className="leading-snug">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Card CTA Buttons */}
+                <div className="pt-6 mt-6 border-t border-white/10 space-y-2.5">
+                  <button
+                    onClick={() => handleOpenPaymentModal(plan)}
+                    className={`w-full py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md ${
+                      isFeatured
+                        ? "bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-indigo-500/25 hover:scale-[1.02]"
+                        : "bg-white/10 hover:bg-indigo-600 text-white"
+                    }`}
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>Pay with Razorpay (Instant)</span>
+                  </button>
+
+                  <Link
+                    href="/register"
+                    className="w-full py-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-slate-300 hover:text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <span>Start 14-Day Free Trial</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Lifetime License Callout Box */}
+        <div className="mt-12 rounded-3xl bg-gradient-to-r from-[#0E1324] via-[#12182E] to-[#0E1324] border border-indigo-500/30 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+          <div className="space-y-2 text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 text-amber-300 text-xs font-bold">
+              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+              <span>Looking for Zero Recurring Fees?</span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-bold text-white">
+              Falcon 360 Lifetime Enterprise License — ₹{LIFETIME_PLAN.price}{" "}
+              <span className="text-xs font-normal text-slate-400 line-through">₹{LIFETIME_PLAN.originalPrice}</span>
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
+              Pay once and own the cloud software forever. Lifetime updates, unlimited products, unlimited billing counters, multi-branch, and 24/7 dedicated support included.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 shrink-0 w-full md:w-auto">
+            <button
+              onClick={() => handleOpenPaymentModal(LIFETIME_PLAN as any)}
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Get Lifetime License</span>
+            </button>
+
+            <a
+              href="https://wa.me/919340362381?text=Namaste%20Vimlesh%20ji,%20I%20am%20interested%20in%20the%20Falcon%20360%20Lifetime%20License%20for%20Rs%2014999.%20Please%20guide%20me!"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>WhatsApp Us</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* WHY CHOOSE FALCON 360 */}
       <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-white/10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
@@ -949,6 +1162,139 @@ export default function FalconHomePage() {
           </div>
         </div>
       </footer>
+
+      {/* Razorpay Online Checkout Modal */}
+      {selectedPlanForPayment && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0D121F] rounded-3xl max-w-md w-full border border-indigo-500/30 shadow-2xl overflow-hidden animate-in zoom-in-95 text-slate-100">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-white/10 bg-gradient-to-r from-indigo-950/80 to-purple-950/80 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Subscribe to Falcon 360</h3>
+                  <p className="text-xs text-indigo-300 font-semibold">
+                    {selectedPlanForPayment.name} • ₹{selectedPlanForPayment.price} ({selectedPlanForPayment.durationLabel})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedPlanForPayment(null)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleExecutePayment} className="p-6 space-y-4 text-left">
+              {paymentSuccessNotice && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{paymentSuccessNotice}</span>
+                </div>
+              )}
+
+              {paymentErrorNotice && (
+                <div className="p-3.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{paymentErrorNotice}</span>
+                </div>
+              )}
+
+              <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs space-y-1">
+                <div className="flex justify-between font-bold text-white">
+                  <span>Plan Duration:</span>
+                  <span className="text-indigo-300">{selectedPlanForPayment.durationLabel}</span>
+                </div>
+                <div className="flex justify-between font-mono text-sm font-black text-white pt-1 border-t border-white/10">
+                  <span>Payable Amount:</span>
+                  <span className="text-emerald-400">₹{selectedPlanForPayment.price}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300">Your Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh Patel"
+                  value={customerContact.name}
+                  onChange={(e) => setCustomerContact({ ...customerContact, name: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300">WhatsApp / Mobile Number *</label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="e.g. 9876543210"
+                  value={customerContact.phone}
+                  onChange={(e) => setCustomerContact({ ...customerContact, phone: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <p className="text-[10px] text-slate-400">We will send your invoice & login details here.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300">Email Address (Optional)</label>
+                <input
+                  type="email"
+                  placeholder="e.g. store@gmail.com"
+                  value={customerContact.email}
+                  onChange={(e) => setCustomerContact({ ...customerContact, email: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300">Shop / Business Name (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Patel Supermarket"
+                  value={customerContact.businessName}
+                  onChange={(e) => setCustomerContact({ ...customerContact, businessName: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="pt-3">
+                <button
+                  type="submit"
+                  disabled={isProcessingPayment}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>
+                    {isProcessingPayment
+                      ? "Opening Razorpay Gateway..."
+                      : `Proceed to Pay ₹${selectedPlanForPayment.price} (UPI / Card)`}
+                  </span>
+                </button>
+              </div>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = encodeURIComponent(
+                      `Namaste Vimlesh ji,\nI want to pay ₹${selectedPlanForPayment.price} for ${selectedPlanForPayment.name} via UPI QR.\nMy Name: ${customerContact.name || "Customer"}\nPhone: ${customerContact.phone}`
+                    );
+                    window.open(`https://wa.me/919340362381?text=${text}`, "_blank");
+                  }}
+                  className="text-xs text-emerald-400 hover:underline inline-flex items-center gap-1"
+                >
+                  <MessageCircle className="w-3 h-3" /> Or Pay via WhatsApp UPI QR Code
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

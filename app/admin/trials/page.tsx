@@ -126,7 +126,7 @@ export default function AdminTrialsCrmPage() {
     });
     setSelectedPlan(shop.plan === "enterprise" ? "enterprise" : "pro");
     setSelectedDurationMonths(1);
-    setAmountPaid(999);
+    setAmountPaid(599);
   };
 
   const handleConfirmActivation = async () => {
@@ -959,11 +959,11 @@ export default function AdminTrialsCrmPage() {
                   <label className="text-xs font-bold text-gray-700">Select Subscription Duration:</label>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { months: 1, label: "1 Month", days: "30 Days", defaultPrice: 999 },
-                      { months: 3, label: "3 Months", days: "90 Days", defaultPrice: 2499, tag: "Popular" },
-                      { months: 6, label: "6 Months", days: "180 Days", defaultPrice: 4499 },
-                      { months: 12, label: "1 Year", days: "365 Days", defaultPrice: 7999, tag: "Best Value" },
-                      { months: 0, label: "Lifetime", days: "Unlimited", defaultPrice: 19999 },
+                      { months: 1, label: "1 Month", days: "30 Days", defaultPrice: 599 },
+                      { months: 3, label: "3 Months", days: "90 Days", defaultPrice: 1499, tag: "Popular" },
+                      { months: 6, label: "6 Months", days: "180 Days", defaultPrice: 2599 },
+                      { months: 12, label: "1 Year", days: "365 Days", defaultPrice: 4499, tag: "Best Value" },
+                      { months: 0, label: "Lifetime", days: "Unlimited", defaultPrice: 14999 },
                     ].map((item) => (
                       <button
                         key={item.months}

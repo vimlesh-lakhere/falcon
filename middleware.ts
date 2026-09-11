@@ -49,6 +49,8 @@ export async function middleware(request: NextRequest) {
     "/api/store/checkout",
     "/api/leads",
     "/api/cron/trials-maintenance",
+    "/api/billing/razorpay/order",
+    "/api/billing/razorpay/verify",
   ];
   if (PUBLIC_API_PATHS.includes(pathname) || isPublicPath(pathname)) {
     const response = NextResponse.next();
