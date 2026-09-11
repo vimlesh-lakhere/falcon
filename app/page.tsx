@@ -182,6 +182,7 @@ export default function FalconHomePage() {
             <a href="#custom-web" className="hover:text-white transition-colors">Custom Websites</a>
             <a href="#demos" className="hover:text-white transition-colors">Live Demos</a>
             <a href="#pricing" className="hover:text-white transition-colors text-indigo-400 font-bold">Pricing Plans</a>
+            <Link href="/pay" className="hover:text-teal-300 text-teal-400 transition-colors font-semibold">Client Pay</Link>
             <a href="#contact" className="hover:text-white transition-colors">Contact & Quote</a>
           </div>
 
@@ -230,6 +231,7 @@ export default function FalconHomePage() {
               <a onClick={() => setMobileMenuOpen(false)} href="#custom-web" className="py-1 hover:text-indigo-400">Custom Websites</a>
               <a onClick={() => setMobileMenuOpen(false)} href="#demos" className="py-1 hover:text-indigo-400">Live Demos</a>
               <a onClick={() => setMobileMenuOpen(false)} href="#pricing" className="py-1 text-indigo-400 font-bold">Pricing Plans</a>
+              <Link onClick={() => setMobileMenuOpen(false)} href="/pay" className="py-1 text-teal-400 font-semibold">Client Invoice Pay</Link>
               <a onClick={() => setMobileMenuOpen(false)} href="#contact" className="py-1 hover:text-indigo-400">Contact & Quote</a>
             </div>
             <div className="pt-3 border-t border-white/10 flex flex-col gap-2.5">
@@ -656,32 +658,66 @@ export default function FalconHomePage() {
               </div>
             </div>
 
-            <div className="rounded-2xl bg-[#07090E] border border-white/10 p-6 space-y-4 shadow-xl">
-              <div className="text-xs font-mono text-slate-400 border-b border-white/10 pb-3 flex justify-between">
-                <span>SHOWCASE: AGS STOREFRONT</span>
-                <span className="text-pink-400">STATUS: LIVE PRODUCTION</span>
-              </div>
-              <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold">
-                    AGS
+            <div className="space-y-4">
+              {/* Showcase 1: The House of HRB (Delhi Wholesale) */}
+              <div className="rounded-2xl bg-[#07090E] border border-amber-500/20 p-5 space-y-3 shadow-xl">
+                <div className="text-[11px] font-mono text-slate-400 border-b border-white/10 pb-2.5 flex justify-between">
+                  <span className="text-amber-300 font-bold">CLIENT SHOWCASE: THE HOUSE OF HRB</span>
+                  <span className="text-emerald-400">DELIVERED</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-2.5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs">
+                      HRB
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white">HRB® (Harsh Rubber Band)</h4>
+                      <p className="text-[10px] text-slate-400">Rui Mandi, Sadar Bazar, Delhi (Est. 1998)</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">AGS Cosmetics & Retail Store</h4>
-                    <p className="text-xs text-slate-400">Custom E-Commerce Portal Powered by Falcon</p>
+                  <p className="text-[11px] text-slate-300 leading-snug">
+                    40+ hair accessory product lines, dual base/carton pricing, B2B RFQ Cart, master carton packing calculator & online invoicing.
+                  </p>
+                  <div className="pt-1 flex items-center justify-between">
+                    <Link
+                      href="/pay?phone=8375053689&code=HRBFIRST"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-400 hover:underline"
+                    >
+                      <span>Pay Client Invoice Online</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
                   </div>
                 </div>
-                <p className="text-xs text-slate-300">
-                  Featuring instant product search, category browsing, wishlist, live customer cart, and direct WhatsApp order fulfillment.
-                </p>
-                <div className="pt-2">
-                  <Link
-                    href="/store"
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-pink-400 hover:underline"
-                  >
-                    <span>Browse AGS Storefront</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </Link>
+              </div>
+
+              {/* Showcase 2: AGS Storefront */}
+              <div className="rounded-2xl bg-[#07090E] border border-white/10 p-5 space-y-3 shadow-xl">
+                <div className="text-[11px] font-mono text-slate-400 border-b border-white/10 pb-2.5 flex justify-between">
+                  <span>SHOWCASE: AGS STOREFRONT</span>
+                  <span className="text-pink-400">LIVE PRODUCTION</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-2.5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold text-xs">
+                      AGS
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white">AGS Cosmetics & Retail Store</h4>
+                      <p className="text-[10px] text-slate-400">Custom E-Commerce Portal Powered by Falcon</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-snug">
+                    Featuring instant product search, category browsing, wishlist, live customer cart, and direct WhatsApp order fulfillment.
+                  </p>
+                  <div className="pt-1">
+                    <Link
+                      href="/store"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-pink-400 hover:underline"
+                    >
+                      <span>Browse AGS Storefront</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>

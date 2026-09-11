@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   "/verify-email",
   "/auth",
   "/trial-expired",
+  "/pay",
 ];
 
 const ERP_ROLES = new Set([

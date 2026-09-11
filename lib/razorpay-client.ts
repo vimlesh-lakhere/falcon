@@ -36,7 +36,9 @@ export function loadRazorpayScript(): Promise<boolean> {
 }
 
 export interface InitiateCheckoutOptions {
-  plan: PricingPlan;
+  plan?: PricingPlan;
+  customAmount?: number;
+  customDescription?: string;
   shopId?: string;
   customerName?: string;
   customerEmail?: string;
@@ -48,6 +50,8 @@ export interface InitiateCheckoutOptions {
 
 export async function initiateRazorpayCheckout({
   plan,
+  customAmount,
+  customDescription,
   shopId,
   customerName,
   customerEmail,
@@ -62,7 +66,9 @@ export async function initiateRazorpayCheckout({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        planId: plan.id,
+        planId: plan?.id,
+        customAmount,
+        customDescription,
         shopId,
         customerName,
         customerEmail,
@@ -97,8 +103,8 @@ export async function initiateRazorpayCheckout({
       key: keyId,
       amount: data.amount,
       currency: data.currency || "INR",
-      name: "Falcon 360 ERP",
-      description: `${plan.name} (${plan.durationLabel}) Subscription`,
+      name: "Falcon 360",
+      description: customDescription || (plan ? `${plan.name} (${plan.durationLabel})` : "Client Project Payment"),
       order_id: data.orderId,
       prefill: {
         name: customerName || "",
@@ -120,7 +126,9 @@ export async function initiateRazorpayCheckout({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               ...response,
-              planId: plan.id,
+              planId: plan?.id,
+              customAmount,
+              customDescription,
               shopId,
               customerName,
               customerEmail,

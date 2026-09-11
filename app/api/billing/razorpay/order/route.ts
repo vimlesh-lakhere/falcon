@@ -5,11 +5,27 @@ import { SUBSCRIPTION_PLANS, LIFETIME_PLAN } from "@/lib/plans";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { planId, shopId, customerName, customerEmail, customerPhone } = body;
+    const {
+      planId,
+      customAmount,
+      customDescription,
+      shopId,
+      customerName,
+      customerEmail,
+      customerPhone,
+    } = body;
 
-    const plan = [...SUBSCRIPTION_PLANS, LIFETIME_PLAN].find((p) => p.id === planId);
-    if (!plan) {
-      return NextResponse.json({ error: "Invalid subscription plan selected." }, { status: 400 });
+    let finalAmount = 0;
+    let plan = null;
+
+    if (customAmount && Number(customAmount) > 0) {
+      finalAmount = Number(customAmount);
+    } else {
+      plan = [...SUBSCRIPTION_PLANS, LIFETIME_PLAN].find((p) => p.id === planId);
+      if (!plan) {
+        return NextResponse.json({ error: "Invalid subscription plan or amount selected." }, { status: 400 });
+      }
+      finalAmount = plan.price;
     }
 
     const DEFAULT_KEY_ID = "rzp_live_TakMuhWA7kMBGw";
@@ -40,13 +56,12 @@ export async function POST(request: Request) {
     });
 
     const options = {
-      amount: plan.price * 100, // in paise
+      amount: Math.round(finalAmount * 100), // in paise
       currency: "INR",
-      receipt: `rcpt_${Date.now().toString().slice(-8)}_${(shopId || "store").slice(0, 6)}`,
+      receipt: `rcpt_${Date.now().toString().slice(-8)}_${(shopId || "client").slice(0, 6)}`,
       notes: {
-        planId: plan.id,
-        planName: plan.name,
-        durationMonths: plan.durationMonths.toString(),
+        planId: plan ? plan.id : "custom_project",
+        planName: plan ? plan.name : (customDescription || "Website Development Payment"),
         shopId: shopId || "",
         customerName: customerName || "",
         customerEmail: customerEmail || "",

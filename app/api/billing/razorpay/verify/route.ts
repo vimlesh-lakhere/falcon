@@ -14,6 +14,8 @@ export async function POST(request: Request) {
       razorpay_payment_id,
       razorpay_signature,
       planId,
+      customAmount,
+      customDescription,
       shopId,
       customerName,
       customerEmail,
@@ -34,14 +36,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Cryptographic signature verification failed." }, { status: 400 });
     }
 
-    // 2. Identify the purchased plan
+    // 2. Identify plan or custom project amount
     const plan = [...SUBSCRIPTION_PLANS, LIFETIME_PLAN].find((p) => p.id === planId);
-    if (!plan) {
-      return NextResponse.json({ error: "Plan not found." }, { status: 400 });
-    }
+    const amountPaid = Number(customAmount) || (plan ? plan.price : 0);
+    const serviceName = customDescription || (plan ? `Cloud ERP (${plan.name})` : "Custom Website Development");
 
     // 3. If a shopId is provided (e.g., active trial or expired store purchasing subscription)
-    if (shopId && shopId !== MASTER_SHOP_ID) {
+    if (shopId && shopId !== MASTER_SHOP_ID && plan) {
       await saasTrialsRepository.activateShop(shopId, {
         plan: "pro",
         durationMonths: plan.durationMonths,
@@ -59,17 +60,17 @@ export async function POST(request: Request) {
         },
       ]);
     } else {
-      // 4. If purchased directly from website without existing shopId yet
+      // 4. If purchased directly from website / client payment portal
       await supabase.from("leads").insert([
         {
-          name: customerName || "New Customer",
+          name: customerName || "Harsh (The House of HRB)",
           phone: customerPhone || "",
           email: customerEmail || "",
-          business_name: customerName ? `${customerName}'s Store` : "Paid Customer",
-          service: `Cloud ERP (${plan.name})`,
-          message: `Paid online via Razorpay. Payment ID: ${razorpay_payment_id}, Order ID: ${razorpay_order_id}`,
+          business_name: customerName ? `${customerName}` : "The House of HRB (Delhi)",
+          service: serviceName,
+          message: `Paid online via Razorpay. Payment ID: ${razorpay_payment_id}, Order ID: ${razorpay_order_id}. Coupon applied if any.`,
           status: "won",
-          deal_value: plan.price,
+          deal_value: amountPaid,
         },
       ]);
 
@@ -77,16 +78,18 @@ export async function POST(request: Request) {
         {
           shop_id: MASTER_SHOP_ID,
           type: "new_lead",
-          message: `🎉 New Direct Customer Payment: ${customerName || "Customer"} paid ₹${plan.price} for ${plan.name} via Razorpay! Contact phone: ${customerPhone}.`,
+          message: `🎉 Client Payment Received: ${customerName || "Harsh"} paid ₹${amountPaid} for "${serviceName}" via Razorpay! Contact: ${customerPhone}. Payment ID: ${razorpay_payment_id}.`,
         },
       ]);
     }
 
     return NextResponse.json({
       success: true,
-      message: `Payment of ₹${plan.price} verified! Plan ${plan.name} (${plan.durationLabel}) activated.`,
+      message: `Payment of ₹${amountPaid} verified successfully!`,
       paymentId: razorpay_payment_id,
-      durationMonths: plan.durationMonths,
+      durationMonths: plan ? plan.durationMonths : 12,
+      plan: plan || null,
+      amountPaid,
     });
   } catch (err: any) {
     console.error("Razorpay verification error:", err);
