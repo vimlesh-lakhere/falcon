@@ -32,8 +32,11 @@ export default function ForgotPasswordPage() {
       setIsLoading(true);
       setErrorMessage(null);
 
+      const targetOrigin = window.location.origin.includes("localhost")
+        ? window.location.origin
+        : "https://www.falcon360.in";
       const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: `${targetOrigin}/reset-password`,
       });
 
       if (error) {
