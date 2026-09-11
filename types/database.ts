@@ -24,6 +24,10 @@ export interface Shop {
   owner_name?: string | null;
   owner_email?: string | null;
   service_type?: "erp" | "pos" | "custom-web" | "all" | string;
+  subscription_starts_at?: string | null;
+  subscription_ends_at?: string | null;
+  subscription_duration_months?: number | null;
+  subscription_amount?: number | null;
   created_at: string;
 }
 

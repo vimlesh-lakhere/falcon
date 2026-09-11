@@ -114,7 +114,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(storeUrl);
   }
 
-  // Check 14-Day Free Trial expiration (Exempt Master Owners)
+  // Check 14-Day Free Trial & Paid Subscription expiration (Exempt Master Owners)
   const isMasterOwner =
     user.email === "vimlesh.lakhere@gmail.com" ||
     user.email === "vlakhere@gmail.com" ||
@@ -123,16 +123,20 @@ export async function middleware(request: NextRequest) {
   if (!isMasterOwner && profile.store_id) {
     const { data: shop } = await supabase
       .from("shops")
-      .select("plan, trial_ends_at, is_active, status")
+      .select("plan, trial_ends_at, subscription_ends_at, is_active, status")
       .eq("id", profile.store_id)
       .maybeSingle();
 
     if (shop) {
       const isTrial = shop.plan === "trial";
-      const isPastTrial = shop.trial_ends_at && new Date() > new Date(shop.trial_ends_at);
-      const isDeactivated = !shop.is_active || shop.status === "trial_expired";
+      const isPastTrial = isTrial && shop.trial_ends_at && new Date() > new Date(shop.trial_ends_at);
+      const isPastSubscription = !isTrial && shop.subscription_ends_at && new Date() > new Date(shop.subscription_ends_at);
+      const isDeactivated =
+        !shop.is_active ||
+        shop.status === "trial_expired" ||
+        shop.status === "subscription_expired";
 
-      if (isTrial && (isPastTrial || isDeactivated)) {
+      if (isPastTrial || isPastSubscription || isDeactivated) {
         const expiredUrl = request.nextUrl.clone();
         expiredUrl.pathname = "/trial-expired";
         return NextResponse.redirect(expiredUrl);

@@ -60,6 +60,19 @@ export default function AdminTrialsCrmPage() {
   const [selectedTemplateIndex, setSelectedTemplateIndex] = useState(0);
   const [customMessage, setCustomMessage] = useState("");
 
+  // Subscription Activation Modal State
+  const [activationTarget, setActivationTarget] = useState<{
+    id: string;
+    name: string;
+    ownerName: string;
+    phone: string;
+    currentPlan?: string;
+  } | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<string>("pro");
+  const [selectedDurationMonths, setSelectedDurationMonths] = useState<number>(1);
+  const [amountPaid, setAmountPaid] = useState<number>(999);
+  const [isActivating, setIsActivating] = useState(false);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -88,7 +101,7 @@ export default function AdminTrialsCrmPage() {
       const data = await res.json();
       if (data.success) {
         setStatusMessage(
-          `Sync complete: ${data.summary.deactivatedExpiredTrials} expired trials locked, ${data.summary.alertedExpiringSoon} deals alerted, ${data.summary.purged30DayStores} stores purged.`
+          `Sync complete: ${data.summary.deactivatedExpiredTrials} trials locked, ${data.summary.deactivatedExpiredSubscriptions || 0} expired subscriptions locked, ${data.summary.alertedExpiringSoon} deals alerted.`
         );
       }
       await loadData();
@@ -101,14 +114,41 @@ export default function AdminTrialsCrmPage() {
     }
   };
 
-  const handleActivateStore = async (shopId: string) => {
-    if (!confirm("Are you sure you want to activate this store to Pro? Trial limits will be removed.")) return;
+  const handleOpenActivationModal = (shop: TenantShopWithMetrics) => {
+    const ownerName = shop.ownerProfile?.full_name || shop.owner_name || "Store Owner";
+    const phone = shop.phone || shop.ownerProfile?.phone || "";
+    setActivationTarget({
+      id: shop.id,
+      name: shop.name,
+      ownerName,
+      phone,
+      currentPlan: shop.plan,
+    });
+    setSelectedPlan(shop.plan === "enterprise" ? "enterprise" : "pro");
+    setSelectedDurationMonths(1);
+    setAmountPaid(999);
+  };
+
+  const handleConfirmActivation = async () => {
+    if (!activationTarget) return;
     try {
-      await saasTrialsRepository.activateShop(shopId, "pro");
-      setStatusMessage("Store activated to Pro successfully!");
-      loadData();
+      setIsActivating(true);
+      await saasTrialsRepository.activateShop(activationTarget.id, {
+        plan: selectedPlan,
+        durationMonths: selectedDurationMonths,
+        amountPaid: Number(amountPaid) || 0,
+      });
+      setStatusMessage(
+        `🎉 Paid subscription activated for "${activationTarget.name}" for ${
+          selectedDurationMonths > 0 ? `${selectedDurationMonths} month(s)` : "Lifetime"
+        }!`
+      );
+      setActivationTarget(null);
+      await loadData();
     } catch (err: any) {
-      alert("Error: " + err.message);
+      alert("Activation failed: " + err.message);
+    } finally {
+      setIsActivating(false);
     }
   };
 
@@ -484,9 +524,19 @@ export default function AdminTrialsCrmPage() {
                         {/* Plan & Status */}
                         <td className="py-3.5 px-4">
                           {isPro ? (
-                            <Badge variant="success" className="font-mono">
-                              PRO ACTIVE
-                            </Badge>
+                            shop.isSubscriptionExpired ? (
+                              <Badge variant="danger" className="font-mono">
+                                SUB EXPIRED
+                              </Badge>
+                            ) : shop.isSubscriptionExpiringSoon ? (
+                              <Badge variant="warning" className="font-mono animate-pulse">
+                                RENEW &lt;7D
+                              </Badge>
+                            ) : (
+                              <Badge variant="success" className="font-mono">
+                                {shop.subscription_duration_months ? `PRO (${shop.subscription_duration_months}M)` : "PRO ACTIVE"}
+                              </Badge>
+                            )
                           ) : shop.isExpired || !shop.is_active ? (
                             <Badge variant="danger" className="font-mono">
                               TRIAL LOCKED
@@ -502,13 +552,37 @@ export default function AdminTrialsCrmPage() {
                           )}
                         </td>
 
-                        {/* 14-Day Timeline */}
+                        {/* 14-Day Timeline / Paid Subscription Timeline */}
                         <td className="py-3.5 px-4">
                           {isPro ? (
-                            <span className="text-emerald-700 font-semibold text-[11px] flex items-center gap-1">
-                              <Check className="w-3.5 h-3.5" />
-                              Unlimited
-                            </span>
+                            shop.subscription_ends_at ? (
+                              <div className="space-y-1 max-w-[140px]">
+                                <div className="flex items-center justify-between text-[10px] font-bold">
+                                  <span className={shop.isSubscriptionExpired ? "text-rose-600" : shop.isSubscriptionExpiringSoon ? "text-amber-600" : "text-emerald-700"}>
+                                    {shop.isSubscriptionExpired ? "Expired" : `${shop.subscriptionDaysRemaining}d left`}
+                                  </span>
+                                  <span className="text-gray-400 font-mono">
+                                    {new Date(shop.subscription_ends_at).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      shop.isSubscriptionExpired
+                                        ? "bg-rose-500 w-full"
+                                        : shop.isSubscriptionExpiringSoon
+                                        ? "bg-amber-500 w-[85%]"
+                                        : "bg-emerald-600 w-[60%]"
+                                    }`}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-emerald-700 font-semibold text-[11px] flex items-center gap-1">
+                                <Check className="w-3.5 h-3.5" />
+                                Lifetime Permanent
+                              </span>
+                            )
                           ) : (
                             <div className="space-y-1 max-w-[140px]">
                               <div className="flex items-center justify-between text-[10px] font-bold">
@@ -580,27 +654,38 @@ export default function AdminTrialsCrmPage() {
                               <span>WhatsApp</span>
                             </Button>
 
-                            {/* Activate to Pro */}
+                            {/* Activate to Paid / Renew Subscription */}
                             {!isPro ? (
                               <Button
                                 size="sm"
-                                onClick={() => handleActivateStore(shop.id)}
-                                className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] h-7 px-2 flex items-center gap-1 shadow-xs"
-                                title="Instantly convert and activate to Pro"
+                                onClick={() => handleOpenActivationModal(shop)}
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] h-7 px-2.5 flex items-center gap-1 shadow-xs"
+                                title="Activate Paid Subscription (1, 3, 6, 12 months or lifetime)"
                               >
                                 <Check className="w-3.5 h-3.5" />
                                 <span>Activate</span>
                               </Button>
                             ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDeactivateStore(shop.id)}
-                                className="text-gray-500 hover:text-rose-600 text-[11px] h-7 px-2"
-                                title="Lock Store"
-                              >
-                                <Lock className="w-3.5 h-3.5" />
-                              </Button>
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleOpenActivationModal(shop)}
+                                  className="bg-amber-600 hover:bg-amber-500 text-white text-[11px] h-7 px-2 flex items-center gap-1 shadow-xs"
+                                  title="Renew Paid Subscription"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  <span>Renew</span>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeactivateStore(shop.id)}
+                                  className="text-gray-500 hover:text-rose-600 text-[11px] h-7 px-2"
+                                  title="Lock Store"
+                                >
+                                  <Lock className="w-3.5 h-3.5" />
+                                </Button>
+                              </>
                             )}
 
                             {/* Extend Trial */}
@@ -783,6 +868,218 @@ export default function AdminTrialsCrmPage() {
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>Send on WhatsApp</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Paid Subscription Activation & Renewal Modal */}
+        {activationTarget && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-200 overflow-hidden animate-in zoom-in-95">
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-xs">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-gray-900">
+                      {activationTarget.currentPlan === "pro" || activationTarget.currentPlan === "enterprise"
+                        ? "Renew Paid Subscription"
+                        : "Activate Paid Subscription (End Free Trial)"}
+                    </h3>
+                    <p className="text-[11px] text-indigo-800">
+                      Store: <strong className="text-indigo-950">{activationTarget.name}</strong> • Owner: {activationTarget.ownerName}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActivationTarget(null)}
+                  className="p-1 text-gray-400 hover:text-gray-700 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 space-y-4">
+                {/* Notice banner */}
+                <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Free Trial Removal & Instant Activation</p>
+                    <p className="text-[11px] text-indigo-700 mt-0.5">
+                      Activating immediately clears the free trial and assigns a paid plan with an exact expiry date. Once expired, the software automatically locks and prompts for renewal.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Plan Selection */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700">Choose ERP Edition:</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPlan("pro")}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        selectedPlan === "pro"
+                          ? "bg-indigo-50 border-indigo-400 text-indigo-950 shadow-2xs font-bold"
+                          : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black">Pro ERP</span>
+                        {selectedPlan === "pro" && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-0.5 font-normal">Billing, Inventory, GST, Barcodes</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPlan("enterprise")}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        selectedPlan === "enterprise"
+                          ? "bg-purple-50 border-purple-400 text-purple-950 shadow-2xs font-bold"
+                          : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black">Enterprise ERP</span>
+                        {selectedPlan === "enterprise" && <Check className="w-3.5 h-3.5 text-purple-600" />}
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-0.5 font-normal">Multi-branch, AI, Unlimited Users</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Duration Selection (1, 3, 6, 12 Months, Lifetime) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700">Select Subscription Duration:</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { months: 1, label: "1 Month", days: "30 Days", defaultPrice: 999 },
+                      { months: 3, label: "3 Months", days: "90 Days", defaultPrice: 2499, tag: "Popular" },
+                      { months: 6, label: "6 Months", days: "180 Days", defaultPrice: 4499 },
+                      { months: 12, label: "1 Year", days: "365 Days", defaultPrice: 7999, tag: "Best Value" },
+                      { months: 0, label: "Lifetime", days: "Unlimited", defaultPrice: 19999 },
+                    ].map((item) => (
+                      <button
+                        key={item.months}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDurationMonths(item.months);
+                          setAmountPaid(item.defaultPrice);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all relative ${
+                          selectedDurationMonths === item.months
+                            ? "bg-indigo-600 border-indigo-600 text-white shadow-xs"
+                            : "bg-white border-gray-200 text-gray-800 hover:bg-gray-50"
+                        }`}
+                      >
+                        {item.tag && (
+                          <span
+                            className={`absolute -top-1.5 right-1 px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider ${
+                              selectedDurationMonths === item.months
+                                ? "bg-amber-400 text-amber-950"
+                                : "bg-indigo-100 text-indigo-700"
+                            }`}
+                          >
+                            {item.tag}
+                          </span>
+                        )}
+                        <div className="text-xs font-bold">{item.label}</div>
+                        <div
+                          className={`text-[10px] ${
+                            selectedDurationMonths === item.months ? "text-indigo-100" : "text-gray-500"
+                          }`}
+                        >
+                          {item.days}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Expiry & Lifecycle Preview */}
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                      Activation Date:
+                    </span>
+                    <span className="font-semibold text-gray-800">
+                      {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                      Valid Until (Auto-Expiry):
+                    </span>
+                    <span className="font-bold text-indigo-700">
+                      {selectedDurationMonths > 0
+                        ? new Date(Date.now() + selectedDurationMonths * 30 * 86400000).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "Never (Lifetime Access)"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-200 text-[11px]">
+                    <span className="text-gray-500">Auto-Expiry Behavior:</span>
+                    <span className="text-amber-700 font-semibold">Automatically locks software on expiry date</span>
+                  </div>
+                </div>
+
+                {/* Amount Paid Recording */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700">Amount Paid (₹):</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-bold">₹</span>
+                    <Input
+                      type="number"
+                      value={amountPaid}
+                      onChange={(e) => setAmountPaid(Number(e.target.value))}
+                      className="pl-7 text-xs font-bold font-mono"
+                      placeholder="Enter amount paid"
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    Will be recorded as Won Deal value in your CRM metrics.
+                  </p>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-5 py-3.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActivationTarget(null)}
+                  disabled={isActivating}
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  onClick={handleConfirmActivation}
+                  disabled={isActivating}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 px-5 py-2 rounded-xl shadow-md shadow-indigo-600/20"
+                >
+                  {isActivating ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Activating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Confirm & Activate Subscription</span>
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

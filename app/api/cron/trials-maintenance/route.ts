@@ -149,6 +149,92 @@ async function handleMaintenance() {
       }
     }
 
+    // =========================================================================
+    // 4. AUTO-DEACTIVATE EXPIRED PAID SUBSCRIPTIONS (1, 3, 6, 12 MONTHS)
+    // =========================================================================
+    let expiredSubscriptionCount = 0;
+    const { data: expiredSubs } = await supabase
+      .from("shops")
+      .select("id, name, phone, subscription_ends_at, subscription_duration_months")
+      .neq("plan", "trial")
+      .eq("is_active", true)
+      .neq("id", MASTER_SHOP_ID)
+      .not("subscription_ends_at", "is", null)
+      .lt("subscription_ends_at", nowIso);
+
+    if (expiredSubs && expiredSubs.length > 0) {
+      for (const shop of expiredSubs) {
+        await supabase
+          .from("shops")
+          .update({
+            is_active: false,
+            status: "subscription_expired",
+          })
+          .eq("id", shop.id);
+
+        await supabase.from("profiles").update({ is_active: false }).eq("store_id", shop.id);
+
+        await supabase.from("notifications").insert([
+          {
+            shop_id: MASTER_SHOP_ID,
+            type: "subscription_expired",
+            entity_table: "shops",
+            entity_id: shop.id,
+            message: `⚠️ Paid Subscription Expired: "${shop.name}". Their ${
+              shop.subscription_duration_months || 1
+            }-month plan ended today. Account locked until renewed. Follow up on WhatsApp!`,
+          },
+        ]);
+
+        expiredSubscriptionCount++;
+      }
+    }
+
+    // =========================================================================
+    // 5. PAID SUBSCRIPTION RENEWAL REMINDER (ENDING IN <= 5 DAYS)
+    // =========================================================================
+    const in5Days = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: renewalSubs } = await supabase
+      .from("shops")
+      .select("id, name, subscription_ends_at, subscription_duration_months")
+      .neq("plan", "trial")
+      .eq("is_active", true)
+      .neq("id", MASTER_SHOP_ID)
+      .not("subscription_ends_at", "is", null)
+      .gte("subscription_ends_at", nowIso)
+      .lte("subscription_ends_at", in5Days);
+
+    if (renewalSubs && renewalSubs.length > 0) {
+      for (const shop of renewalSubs) {
+        const { data: existingAlerts } = await supabase
+          .from("notifications")
+          .select("id")
+          .eq("shop_id", MASTER_SHOP_ID)
+          .eq("type", "subscription_renewal_due")
+          .eq("entity_id", shop.id)
+          .gte("created_at", new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString())
+          .limit(1);
+
+        if (!existingAlerts || existingAlerts.length === 0) {
+          const daysLeft = Math.max(
+            1,
+            Math.round(
+              (new Date(shop.subscription_ends_at!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+            )
+          );
+          await supabase.from("notifications").insert([
+            {
+              shop_id: MASTER_SHOP_ID,
+              type: "subscription_renewal_due",
+              entity_table: "shops",
+              entity_id: shop.id,
+              message: `🔔 Renewal Due Soon: "${shop.name}" subscription ends in ${daysLeft} days! Message them on WhatsApp for renewal discount.`,
+            },
+          ]);
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       timestamp: nowIso,
@@ -156,6 +242,7 @@ async function handleMaintenance() {
         deactivatedExpiredTrials: deactivatedCount,
         alertedExpiringSoon: alertedSoonCount,
         purged30DayStores: purgedCount,
+        deactivatedExpiredSubscriptions: expiredSubscriptionCount,
       },
     });
   } catch (err: any) {

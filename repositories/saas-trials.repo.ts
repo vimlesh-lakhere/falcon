@@ -4,9 +4,12 @@ import { Shop } from "@/types/database";
 export interface TenantShopWithMetrics extends Shop {
   trialDaysRemaining: number;
   retentionDaysRemaining: number;
-  isExpiringSoon: boolean; // within 48h
+  subscriptionDaysRemaining: number;
+  isExpiringSoon: boolean; // within 48h for trial
   isExpired: boolean;
   isPurgeReady: boolean; // past 30 days
+  isSubscriptionExpired: boolean;
+  isSubscriptionExpiringSoon: boolean; // within 7 days
   ownerProfile?: {
     full_name: string;
     email: string;
@@ -16,7 +19,7 @@ export interface TenantShopWithMetrics extends Shop {
 
 export const saasTrialsRepository = {
   /**
-   * Fetch all tenant shops with calculated trial metrics
+   * Fetch all tenant shops with calculated trial & paid subscription metrics
    */
   async getAllTenantShops(): Promise<TenantShopWithMetrics[]> {
     const { data: shops, error: shopsError } = await supabase
@@ -50,6 +53,7 @@ export const saasTrialsRepository = {
     return (shops || []).map((shop: Shop) => {
       const trialEnds = shop.trial_ends_at ? new Date(shop.trial_ends_at).getTime() : null;
       const retentionEnds = shop.data_retention_until ? new Date(shop.data_retention_until).getTime() : null;
+      const subEnds = shop.subscription_ends_at ? new Date(shop.subscription_ends_at).getTime() : null;
 
       let trialDaysRemaining = 0;
       let isExpiringSoon = false;
@@ -71,30 +75,67 @@ export const saasTrialsRepository = {
         isPurgeReady = isExpired && diffMs <= 0;
       }
 
+      let subscriptionDaysRemaining = 0;
+      let isSubscriptionExpired = false;
+      let isSubscriptionExpiringSoon = false;
+
+      if (subEnds) {
+        const diffMs = subEnds - now;
+        subscriptionDaysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        isSubscriptionExpired = diffMs <= 0;
+        isSubscriptionExpiringSoon = !isSubscriptionExpired && diffMs <= 7 * 24 * 60 * 60 * 1000; // <= 7 days
+      }
+
       return {
         ...shop,
         trialDaysRemaining,
         retentionDaysRemaining,
+        subscriptionDaysRemaining,
         isExpiringSoon,
         isExpired,
         isPurgeReady,
+        isSubscriptionExpired,
+        isSubscriptionExpiringSoon,
         ownerProfile: profileMap.get(shop.id) || null,
       };
     });
   },
 
   /**
-   * Activate / upgrade a shop (Convert to Pro/Enterprise)
+   * Activate / upgrade a shop to a Paid Subscription with specific duration
+   * @param shopId Store ID
+   * @param options durationMonths: 1 (1 mo), 3 (3 mo), 6 (6 mo), 12 (1 yr), or 0 for lifetime
    */
-  async activateShop(shopId: string, plan: string = "pro"): Promise<Shop> {
+  async activateShop(
+    shopId: string,
+    options?: {
+      plan?: string;
+      durationMonths?: number;
+      amountPaid?: number;
+    }
+  ): Promise<Shop> {
+    const plan = options?.plan || "pro";
+    const durationMonths = options?.durationMonths !== undefined ? options.durationMonths : 1;
+    const amountPaid = options?.amountPaid || 0;
+
+    let subscriptionEndsAt: string | null = null;
+    if (durationMonths > 0) {
+      const endsDate = new Date(Date.now() + durationMonths * 30 * 24 * 60 * 60 * 1000);
+      subscriptionEndsAt = endsDate.toISOString();
+    }
+
     const { data, error } = await supabase
       .from("shops")
       .update({
         plan,
         is_active: true,
         status: "active",
-        trial_ends_at: null, // Pro accounts don't expire
+        trial_ends_at: null, // Removes Free Trial!
         data_retention_until: null,
+        subscription_starts_at: new Date().toISOString(),
+        subscription_ends_at: subscriptionEndsAt,
+        subscription_duration_months: durationMonths,
+        subscription_amount: amountPaid,
       })
       .eq("id", shopId)
       .select()
@@ -102,11 +143,27 @@ export const saasTrialsRepository = {
 
     if (error) throw error;
 
-    // Also ensure profiles for this store are active
+    // Ensure profiles for this store are active
     await supabase.from("profiles").update({ is_active: true }).eq("store_id", shopId);
 
     // Update corresponding lead status if exists
-    await supabase.from("leads").update({ status: "won" }).eq("store_id", shopId);
+    await supabase
+      .from("leads")
+      .update({ status: "won", deal_value: amountPaid })
+      .eq("store_id", shopId);
+
+    // Alert Master Admin of successful paid activation
+    await supabase.from("notifications").insert([
+      {
+        shop_id: "a0000000-0000-0000-0000-000000000001",
+        type: "subscription_activated",
+        entity_table: "shops",
+        entity_id: shopId,
+        message: `🎉 Paid Subscription Activated: "${data.name}" upgraded to ${plan.toUpperCase()} for ${
+          durationMonths > 0 ? `${durationMonths} month(s)` : "Lifetime"
+        } (Expires: ${subscriptionEndsAt ? new Date(subscriptionEndsAt).toLocaleDateString() : "Never"}). Amount: ₹${amountPaid}`,
+      },
+    ]);
 
     return data as Shop;
   },

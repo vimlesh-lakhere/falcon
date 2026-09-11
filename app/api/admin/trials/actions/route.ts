@@ -4,7 +4,7 @@ import { saasTrialsRepository } from "@/repositories/saas-trials.repo";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { action, shopId, plan, additionalDays } = body;
+    const { action, shopId, plan, additionalDays, durationMonths, amountPaid } = body;
 
     if (!action) {
       return NextResponse.json({ error: "Action is required." }, { status: 400 });
@@ -12,8 +12,18 @@ export async function POST(request: Request) {
 
     if (action === "activate") {
       if (!shopId) return NextResponse.json({ error: "shopId is required" }, { status: 400 });
-      const shop = await saasTrialsRepository.activateShop(shopId, plan || "pro");
-      return NextResponse.json({ success: true, shop, message: "Store activated successfully." });
+      const shop = await saasTrialsRepository.activateShop(shopId, {
+        plan: plan || "pro",
+        durationMonths: durationMonths !== undefined ? Number(durationMonths) : 1,
+        amountPaid: amountPaid ? Number(amountPaid) : 0,
+      });
+      return NextResponse.json({
+        success: true,
+        shop,
+        message: `Store activated to ${plan || "pro"} for ${
+          durationMonths > 0 ? `${durationMonths} month(s)` : "Lifetime"
+        } successfully.`,
+      });
     }
 
     if (action === "extend") {
