@@ -16,10 +16,35 @@ export interface Shop {
   phone: string | null;
   gst_number: string | null;
   currency: string;
-  plan?: string;
+  plan?: "trial" | "pro" | "enterprise" | "lifetime" | string;
   trial_ends_at?: string | null;
+  data_retention_until?: string | null;
   is_active?: boolean;
+  status?: "trial_active" | "trial_expired" | "active" | "suspended" | "purged" | string;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  service_type?: "erp" | "pos" | "custom-web" | "all" | string;
   created_at: string;
+}
+
+export interface Lead {
+  id: string;
+  name: string;
+  business_name?: string | null;
+  phone: string;
+  email?: string | null;
+  service: "all" | "erp" | "pos" | "custom-web" | string;
+  message?: string | null;
+  status: "new" | "trial_active" | "contacted" | "negotiating" | "won" | "lost" | "expired" | string;
+  store_id?: string | null;
+  trial_started_at?: string | null;
+  trial_ends_at?: string | null;
+  data_retention_until?: string | null;
+  deal_value?: number | null;
+  admin_notes?: string | null;
+  last_contacted_at?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface User {

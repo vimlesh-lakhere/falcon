@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Store, Menu } from "lucide-react";
+import Link from "next/link";
+import { Store, Menu, Clock, Sparkles } from "lucide-react";
 import { NotificationsDropdown } from "@/components/ui/NotificationsDropdown";
 import { QuickActionMenu } from "@/components/ui/QuickActionMenu";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -21,6 +22,13 @@ export function AppHeader({ title, subtitle, onOpenMobileMenu }: AppHeaderProps)
     profile?.email === "vimlesh.lakhere@gmail.com" ||
     profile?.email === "vlakhere@gmail.com" ||
     profile?.email === "owner_1786762700828@agsstore.com";
+
+  const isTrial = !isMasterOwner && currentStore?.plan === "trial";
+  let trialDaysLeft = 14;
+  if (isTrial && currentStore?.trial_ends_at) {
+    const diff = new Date(currentStore.trial_ends_at).getTime() - Date.now();
+    trialDaysLeft = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  }
 
   return (
     <header className="h-14 sm:h-16 border-b border-surface-border bg-white px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20">
@@ -50,6 +58,19 @@ export function AppHeader({ title, subtitle, onOpenMobileMenu }: AppHeaderProps)
 
       {/* Action icons & utilities */}
       <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        {/* Trial Days Countdown Badge for Tenants */}
+        {isTrial && (
+          <Link
+            href="/trial-expired"
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold transition-all shadow-2xs"
+            title="14-Day Free Trial Active"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span>{trialDaysLeft}d Trial</span>
+            <span className="hidden md:inline text-[10px] text-amber-700 bg-amber-200/70 px-1 rounded">Upgrade</span>
+          </Link>
+        )}
+
         {/* Branch / Status badge (Desktop) */}
         <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -58,6 +79,18 @@ export function AppHeader({ title, subtitle, onOpenMobileMenu }: AppHeaderProps)
             {currentBranch?.name ? currentBranch.name.replace(`${storeName} `, "") : "Main"}
           </span>
         </div>
+
+        {/* SaaS Leads & Trials CRM Button (For Master Owner) */}
+        {isMasterOwner && (
+          <Link
+            href="/admin/trials"
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-all shadow-2xs"
+            title="SaaS Leads & 14-Day Trials CRM"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">Leads & Trials</span>
+          </Link>
+        )}
 
         {/* View Customer Storefront Button (Only for Master Owner) */}
         {isMasterOwner && (

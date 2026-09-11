@@ -23,7 +23,9 @@ export interface Store {
   timezone?: string;
   plan?: string;
   trial_ends_at?: string | null;
+  data_retention_until?: string | null;
   is_active?: boolean;
+  status?: string;
   created_at: string;
   updated_at?: string;
 }

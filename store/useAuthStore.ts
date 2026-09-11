@@ -88,12 +88,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const storeName = `${userName}'s Store`;
         const newStoreId = crypto.randomUUID();
 
+        const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+        const retentionUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
         // 1. Create dedicated record in both shops and stores
         await supabase.from("shops").insert([
           {
             id: newStoreId,
             name: storeName,
             currency: "INR",
+            plan: "trial",
+            trial_ends_at: trialEndsAt,
+            data_retention_until: retentionUntil,
+            is_active: true,
+            status: "trial_active",
+            owner_name: userName,
+            owner_email: session.user.email || null,
           },
         ]);
 

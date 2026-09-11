@@ -52,6 +52,25 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
   const activeStoreName = currentStore?.name || (profile ? "My Store" : "Falcon Store");
   const userName = profile?.full_name || "Store Owner";
   const userInitials = userName.slice(0, 2).toUpperCase();
+  const isMasterOwner =
+    profile?.email === "vimlesh.lakhere@gmail.com" ||
+    profile?.email === "vlakhere@gmail.com" ||
+    profile?.email === "owner_1786762700828@agsstore.com";
+
+  const dynamicNavItems = [
+    ...navigationItems,
+    ...(isMasterOwner
+      ? [
+          {
+            name: "Leads & Trials (CRM)",
+            href: "/admin/trials",
+            icon: Sparkles,
+            badge: "SaaS",
+            highlight: true,
+          },
+        ]
+      : []),
+  ];
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-white select-none">
@@ -90,7 +109,7 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
 
       {/* Navigation List */}
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-        {navigationItems.map((item) => {
+        {dynamicNavItems.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
           const Icon = item.icon;
 

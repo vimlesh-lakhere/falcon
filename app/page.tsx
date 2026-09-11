@@ -35,6 +35,8 @@ export default function FalconHomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"erp" | "pos" | "web">("erp");
   const [inquirySubmitted, setInquirySubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     businessName: "",
@@ -43,17 +45,35 @@ export default function FalconHomePage() {
     message: "",
   });
 
-  const handleInquirySubmit = (e: React.FormEvent) => {
+  const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.phone) return;
-    setInquirySubmitted(true);
+    setIsSubmitting(true);
+    setSubmitError("");
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to submit inquiry.");
+      }
+      setInquirySubmitted(true);
+    } catch (err: any) {
+      console.error(err);
+      setSubmitError(err.message || "Failed to submit inquiry. Please connect via WhatsApp directly.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const generateWhatsAppUrl = () => {
     const text = encodeURIComponent(
-      `Hi Falcon 360 Team, I am interested in your solutions.\nName: ${formData.name || "Client"}\nBusiness: ${formData.businessName || "Retail/Enterprise"}\nService: ${formData.service}\nPhone: ${formData.phone}`
+      `Hi Vimlesh ji (Falcon 360),\nI am interested in your solutions.\nName: ${formData.name || "Client"}\nBusiness: ${formData.businessName || "Retail Store"}\nService: ${formData.service}\nPhone: ${formData.phone}\nMessage: ${formData.message || "Please provide 14-day free trial setup and pricing details."}`
     );
-    return `https://wa.me/919999999999?text=${text}`;
+    return `https://wa.me/919340362381?text=${text}`;
   };
 
   return (
@@ -67,7 +87,7 @@ export default function FalconHomePage() {
 
       {/* Top Banner: Quick Access */}
       <div className="relative z-50 bg-gradient-to-r from-indigo-950/80 via-purple-950/80 to-indigo-950/80 border-b border-indigo-500/20 px-4 py-2 text-center text-xs text-indigo-200">
-        <span className="font-semibold text-white">✨ Falcon 360 Ecosystem Live</span> — Cloud ERP, Fast POS, and Tailor-made Websites for Indian Retailers & Enterprises.
+        <span className="font-semibold text-white">🚀 14-Day Free Trial Live</span> — Get instant full access to Cloud ERP, Smart POS & Web Store. Zero setup fee, 30-day secure data retention.
       </div>
 
       {/* Navigation Bar */}
@@ -112,10 +132,18 @@ export default function FalconHomePage() {
             </Link>
 
             <Link
-              href="/login"
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/25 transition-all flex items-center gap-1.5"
+              href="/register"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-1.5"
             >
-              <span>ERP Portal Login</span>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Start 14-Day Free Trial</span>
+            </Link>
+
+            <Link
+              href="/login"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 text-white border border-white/10 transition-all flex items-center gap-1.5"
+            >
+              <span>Login</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
@@ -816,12 +844,19 @@ export default function FalconHomePage() {
                   />
                 </div>
 
+                {submitError && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
+                    {submitError}
+                  </div>
+                )}
+
                 <div className="pt-2 flex flex-col sm:flex-row gap-3">
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+                    disabled={isSubmitting}
+                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
                   >
-                    <span>Submit Inquiry</span>
+                    <span>{isSubmitting ? "Submitting Inquiry..." : "Submit Inquiry & Request Trial"}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
@@ -834,6 +869,13 @@ export default function FalconHomePage() {
                     <MessageCircle className="w-4 h-4 text-emerald-400" />
                     <span>WhatsApp Direct</span>
                   </a>
+                </div>
+
+                <div className="pt-2 text-center text-xs text-slate-400">
+                  Prefer immediate self-service?{" "}
+                  <Link href="/register" className="text-indigo-400 font-semibold hover:underline">
+                    Start Instant 14-Day Free Trial →
+                  </Link>
                 </div>
               </form>
             )}

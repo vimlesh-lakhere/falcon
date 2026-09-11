@@ -143,6 +143,9 @@ export default function RegisterBusinessPage() {
       const uniqueSlug = `${slugBase}-${Math.random().toString(36).substring(2, 6)}`;
       const fullAddress = [data.address, data.city, data.state, data.pincode].filter(Boolean).join(", ");
 
+      const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const retentionUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
       const { data: storeData, error: storeError } = await supabase
         .from("shops")
         .insert([
@@ -155,6 +158,12 @@ export default function RegisterBusinessPage() {
             gst_number: data.gstNumber || null,
             currency: data.currency || "INR",
             plan: "trial",
+            trial_ends_at: trialEndsAt,
+            data_retention_until: retentionUntil,
+            is_active: true,
+            status: "trial_active",
+            owner_name: data.ownerName,
+            owner_email: data.email,
           },
         ])
         .select()
@@ -184,6 +193,33 @@ export default function RegisterBusinessPage() {
         if (typeof window !== "undefined") {
           localStorage.setItem("falcon_active_store_id", storeId);
         }
+
+        // Notify Master Admin of new trial registration
+        await supabase.from("notifications").insert([
+          {
+            shop_id: "a0000000-0000-0000-0000-000000000001",
+            type: "new_trial_signup",
+            entity_table: "shops",
+            entity_id: storeId,
+            message: `🎉 New 14-Day Trial Started: "${storeName}" by ${data.ownerName} (${data.phone || data.email}). Follow up to close deal!`,
+          },
+        ]);
+
+        // Record in CRM leads table
+        await supabase.from("leads").insert([
+          {
+            name: data.ownerName,
+            business_name: storeName,
+            phone: data.phone || "",
+            email: data.email,
+            service: "erp",
+            status: "trial_active",
+            store_id: storeId,
+            trial_started_at: new Date().toISOString(),
+            trial_ends_at: trialEndsAt,
+            data_retention_until: retentionUntil,
+          },
+        ]);
       }
 
       setCurrentStep(4); // Move to Finished Screen

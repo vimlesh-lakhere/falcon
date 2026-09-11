@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/verify-email",
   "/auth",
+  "/trial-expired",
 ];
 
 const ERP_ROLES = new Set([
@@ -42,8 +43,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(canonicalUrl, 308);
   }
 
-  // Customer OTP & Storefront Checkout are intentionally public endpoints.
-  const PUBLIC_API_PATHS = ["/api/auth/otp", "/api/store/checkout"];
+  // Customer OTP, Storefront Checkout, Public Leads & Cron Maintenance are public endpoints.
+  const PUBLIC_API_PATHS = [
+    "/api/auth/otp",
+    "/api/store/checkout",
+    "/api/leads",
+    "/api/cron/trials-maintenance",
+  ];
   if (PUBLIC_API_PATHS.includes(pathname) || isPublicPath(pathname)) {
     const response = NextResponse.next();
     const shopParam = request.nextUrl.searchParams.get("shop");
@@ -106,6 +112,32 @@ export async function middleware(request: NextRequest) {
     const storeUrl = request.nextUrl.clone();
     storeUrl.pathname = "/store";
     return NextResponse.redirect(storeUrl);
+  }
+
+  // Check 14-Day Free Trial expiration (Exempt Master Owners)
+  const isMasterOwner =
+    user.email === "vimlesh.lakhere@gmail.com" ||
+    user.email === "vlakhere@gmail.com" ||
+    user.email === "owner_1786762700828@agsstore.com";
+
+  if (!isMasterOwner && profile.store_id) {
+    const { data: shop } = await supabase
+      .from("shops")
+      .select("plan, trial_ends_at, is_active, status")
+      .eq("id", profile.store_id)
+      .maybeSingle();
+
+    if (shop) {
+      const isTrial = shop.plan === "trial";
+      const isPastTrial = shop.trial_ends_at && new Date() > new Date(shop.trial_ends_at);
+      const isDeactivated = !shop.is_active || shop.status === "trial_expired";
+
+      if (isTrial && (isPastTrial || isDeactivated)) {
+        const expiredUrl = request.nextUrl.clone();
+        expiredUrl.pathname = "/trial-expired";
+        return NextResponse.redirect(expiredUrl);
+      }
+    }
   }
 
   return response;
