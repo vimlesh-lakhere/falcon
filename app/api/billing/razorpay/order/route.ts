@@ -12,8 +12,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid subscription plan selected." }, { status: 400 });
     }
 
-    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const DEFAULT_KEY_ID = "rzp_live_TakMuhWA7kMBGw";
+    const DEFAULT_KEY_SECRET = "ssdPgkth99A3bjuPccXVZG1z";
+
+    const keyId =
+      process.env.RAZORPAY_KEY_ID ||
+      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
+      DEFAULT_KEY_ID;
+    const keySecret =
+      process.env.RAZORPAY_KEY_SECRET ||
+      DEFAULT_KEY_SECRET;
 
     if (!keyId || !keySecret) {
       return NextResponse.json(

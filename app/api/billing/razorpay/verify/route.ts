@@ -20,10 +20,7 @@ export async function POST(request: Request) {
       customerPhone,
     } = body;
 
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    if (!keySecret) {
-      return NextResponse.json({ error: "Razorpay Secret Key not configured on server." }, { status: 500 });
-    }
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || "ssdPgkth99A3bjuPccXVZG1z";
 
     // 1. Verify Razorpay cryptographic signature
     const text = `${razorpay_order_id}|${razorpay_payment_id}`;

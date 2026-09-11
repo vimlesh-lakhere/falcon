@@ -96,10 +96,7 @@ export default function FalconHomePage() {
           setPaymentErrorNotice(errMsg);
         },
         onRequiresConfig: () => {
-          const text = encodeURIComponent(
-            `Namaste Vimlesh ji,\nI want to subscribe to Falcon 360 ERP!\nPlan: ${selectedPlanForPayment.name} (${selectedPlanForPayment.durationLabel} for ₹${selectedPlanForPayment.price})\nName: ${customerContact.name}\nBusiness: ${customerContact.businessName || "My Store"}\nPhone: ${customerContact.phone}\n\nPlease share payment QR / UPI!`
-          );
-          window.open(`https://wa.me/919340362381?text=${text}`, "_blank");
+          setPaymentErrorNotice("Payment gateway is initializing. Please try again in a moment.");
         },
       });
     } catch (err: any) {

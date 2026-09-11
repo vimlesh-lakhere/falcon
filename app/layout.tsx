@@ -31,6 +31,8 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
+import Script from "next/script";
+
 export default function RootLayout({
   children,
 }: {
@@ -38,6 +40,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+      </head>
       <body className="bg-surface-canvas min-h-screen text-gray-900 antialiased selection:bg-purple-500 selection:text-white">
         {children}
         <PwaRegister />

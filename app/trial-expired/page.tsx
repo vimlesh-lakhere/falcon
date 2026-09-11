@@ -136,8 +136,7 @@ export default function TrialExpiredPage() {
           setPaymentError(err);
         },
         onRequiresConfig: () => {
-          // Fallback to direct WhatsApp payment when admin hasn't set razorpay keys yet
-          window.open(getWhatsAppReactivationUrl(selectedPlan), "_blank");
+          setPaymentError("Payment gateway is initializing. Please try again in a moment.");
         },
       });
     } catch (err: any) {

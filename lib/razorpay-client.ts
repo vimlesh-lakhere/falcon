@@ -16,8 +16,19 @@ export function loadRazorpayScript(): Promise<boolean> {
       resolve(true);
       return;
     }
+    const existing = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existing) {
+      if (window.Razorpay) {
+        resolve(true);
+      } else {
+        existing.addEventListener("load", () => resolve(true), { once: true });
+        existing.addEventListener("error", () => resolve(false), { once: true });
+      }
+      return;
+    }
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
     script.onload = () => resolve(true);
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
@@ -65,25 +76,25 @@ export async function initiateRazorpayCheckout({
       if (data.requiresConfig) {
         if (onRequiresConfig) {
           onRequiresConfig();
-        } else {
-          alert(
-            "Razorpay API Keys are not yet added in .env.local. Admin can add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to accept live payments."
-          );
+        } else if (onError) {
+          onError("Razorpay payment gateway is not yet configured. Please contact support.");
         }
         return;
       }
       throw new Error(data.error || "Could not initialize checkout order");
     }
 
-    // 2. Load script
+    // 2. Ensure checkout.js script is loaded
     const loaded = await loadRazorpayScript();
-    if (!loaded) {
+    if (!loaded || !window.Razorpay) {
       throw new Error("Unable to connect to Razorpay payment gateway. Please check your internet connection.");
     }
 
+    const keyId = data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_live_TakMuhWA7kMBGw";
+
     // 3. Open Razorpay modal
     const options = {
-      key: data.keyId,
+      key: keyId,
       amount: data.amount,
       currency: data.currency || "INR",
       name: "Falcon 360 ERP",
@@ -135,6 +146,12 @@ export async function initiateRazorpayCheckout({
     };
 
     const rzp = new window.Razorpay(options);
+    rzp.on("payment.failed", function (failResponse: any) {
+      console.error("Razorpay Payment Failed:", failResponse.error);
+      if (onError) {
+        onError(failResponse.error?.description || "Payment was declined or cancelled.");
+      }
+    });
     rzp.open();
   } catch (err: any) {
     console.error("Checkout initiation error:", err);
