@@ -680,10 +680,10 @@ export default function FalconHomePage() {
                   </p>
                   <div className="pt-1 flex items-center justify-between">
                     <Link
-                      href="/pay?phone=8375053689&code=HRBFIRST"
+                      href="/pay"
                       className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-400 hover:underline"
                     >
-                      <span>Pay Client Invoice Online</span>
+                      <span>Client Invoicing & Payment Portal</span>
                       <ExternalLink className="w-3 h-3" />
                     </Link>
                   </div>

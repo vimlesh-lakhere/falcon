@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -9,25 +9,21 @@ import {
   Sparkles,
   CreditCard,
   Tag,
-  ArrowRight,
   ArrowLeft,
   Search,
   Phone,
-  Building2,
-  Calendar,
   FileText,
   Printer,
   Share2,
-  ExternalLink,
-  Check,
   AlertCircle,
-  HelpCircle,
   Clock,
-  Zap,
+  RotateCcw,
+  Check,
 } from "lucide-react";
 import { initiateRazorpayCheckout } from "@/lib/razorpay-client";
 
 interface ProjectInvoice {
+  id: string;
   clientName: string;
   businessName: string;
   phone: string;
@@ -35,39 +31,71 @@ interface ProjectInvoice {
   invoiceNo: string;
   invoiceDate: string;
   projectTitle: string;
+  projectDescription?: string;
   baseAmount: number;
   deliverables: string[];
+  couponRules?: {
+    code: string;
+    discount: number;
+  }[];
 }
 
-const DEFAULT_HRB_INVOICE: ProjectInvoice = {
-  clientName: "Harsh",
-  businessName: "The House of HRB (Harsh Rubber Band)",
-  phone: "8375053689",
-  location: "Rui Mandi, Sadar Bazar, Delhi (Est. 1998)",
-  invoiceNo: "INV-FLC-2026-HRB01",
-  invoiceDate: "11 Sep 2026",
-  projectTitle: "B2B Wholesale Catalog Web Application & Payment Gateway Development",
-  baseAmount: 19000,
-  deliverables: [
-    "Full Custom Wholesale Web Application (The House of HRB)",
-    "40+ Hair Accessories Product Lines with Dual Unit/Carton Pricing",
-    "Interactive B2B RFQ Cart Drawer & A4 Proforma Invoice Modal",
-    "Master Carton Packing (₹500/ctn) & Transport Bilty/LR Calculator",
-    "Integrated Razorpay Online Payment Gateway & Direct WhatsApp Ordering",
-    "Responsive Mobile-First Architecture & Cloud CDN Deployment",
-    "1 Year Priority Cloud Hosting & Technical Maintenance",
-  ],
+interface PaidRecord {
+  status: "PAID";
+  paymentId: string;
+  amount: number;
+  invoiceNo: string;
+  clientName: string;
+  businessName: string;
+  phone: string;
+  paidAt: string;
+  timestamp: number;
+}
+
+// Pre-registered client database in Falcon 360
+const CLIENT_INVOICES_REGISTRY: Record<string, ProjectInvoice> = {
+  "8375053689": {
+    id: "hrb-harsh-01",
+    clientName: "Harsh",
+    businessName: "The House of HRB (Harsh Rubber Band)",
+    phone: "8375053689",
+    location: "Rui Mandi, Sadar Bazar, Delhi (Est. 1998)",
+    invoiceNo: "INV-FLC-2026-HRB01",
+    invoiceDate: "11 Sep 2026",
+    projectTitle: "B2B Wholesale Catalog Web Application & Payment Gateway Development",
+    projectDescription:
+      "Custom wholesale digital presence for Sadar Bazar's premier manufacturer and wholesale distributor of fashion hair accessories, pure rubber bands, and salon essentials.",
+    baseAmount: 19000,
+    deliverables: [
+      "Full Custom Wholesale Web Application (The House of HRB)",
+      "40+ Hair Accessories Product Lines with Dual Unit/Carton Pricing",
+      "Interactive B2B RFQ Cart Drawer & A4 Proforma Invoice Modal",
+      "Master Carton Packing (₹500/ctn) & Transport Bilty/LR Booking Calculator",
+      "Integrated Razorpay Online Payment Gateway & Direct WhatsApp Ordering",
+      "Responsive Mobile-First Architecture & Cloud CDN Deployment",
+      "1 Year Priority Cloud Hosting & Technical Maintenance",
+    ],
+    couponRules: [
+      {
+        code: "HRBFIRST",
+        discount: 10000,
+      },
+    ],
+  },
 };
 
-export default function ClientPaymentPage() {
+const STORAGE_KEY_PAID = "falcon_settled_invoices";
+
+function ClientPaymentContent() {
   const searchParams = useSearchParams();
 
-  // Input states
+  // Search & input state - completely empty by default
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [isSearched, setIsSearched] = useState(false);
   const [activeInvoice, setActiveInvoice] = useState<ProjectInvoice | null>(null);
+  const [isSearched, setIsSearched] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
 
-  // Coupon state
+  // Coupon state - empty by default, no hints
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
@@ -75,47 +103,136 @@ export default function ClientPaymentPage() {
 
   // Payment states
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentSuccessId, setPaymentSuccessId] = useState<string | null>(null);
+  const [paidRecord, setPaidRecord] = useState<PaidRecord | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  // Handle URL query parameters (e.g. /pay?phone=8375053689&code=HRBFIRST)
+  // Helper to retrieve saved settlements from localStorage
+  const getSavedSettlement = (invoiceNo?: string, phone?: string): PaidRecord | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_PAID);
+      if (!raw) return null;
+      const parsed: Record<string, PaidRecord> = JSON.parse(raw);
+      if (invoiceNo && parsed[invoiceNo]) return parsed[invoiceNo];
+      if (phone && parsed[phone]) return parsed[phone];
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Helper to persist paid record to localStorage
+  const saveSettlement = (record: PaidRecord) => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_PAID);
+      const records: Record<string, PaidRecord> = raw ? JSON.parse(raw) : {};
+      records[record.invoiceNo] = record;
+      records[record.phone] = record;
+      localStorage.setItem(STORAGE_KEY_PAID, JSON.stringify(records));
+    } catch (e) {
+      console.error("Failed to save settlement record:", e);
+    }
+  };
+
+  // Check URL query parameters only if explicitly provided in link (e.g. from an invoice SMS/WhatsApp)
   useEffect(() => {
     const urlPhone = searchParams.get("phone");
-    const urlCode = searchParams.get("code") || searchParams.get("coupon");
+    const urlInvoice = searchParams.get("invoice");
 
     if (urlPhone) {
       const clean = urlPhone.replace(/[^0-9]/g, "").slice(-10);
       setPhoneNumber(clean);
-      handleLookup(clean);
-    } else {
-      // Default to ready-to-pay invoice state for instant client convenience
-      setActiveInvoice(DEFAULT_HRB_INVOICE);
-      setPhoneNumber(DEFAULT_HRB_INVOICE.phone);
-      setIsSearched(true);
+      performLookup(clean);
+    } else if (urlInvoice) {
+      performLookup(urlInvoice);
     }
-
-    if (urlCode && urlCode.toUpperCase() === "HRBFIRST") {
-      setCouponCode("HRBFIRST");
-      setAppliedCoupon("HRBFIRST");
-      setDiscountAmount(10000);
-    }
+    // If no query parameters are present, initial state remains completely empty as requested
   }, [searchParams]);
 
-  const handleLookup = (phoneToSearch?: string) => {
-    const targetPhone = (phoneToSearch || phoneNumber).replace(/[^0-9]/g, "").slice(-10);
-    if (!targetPhone) {
-      setPaymentError("Please enter a valid 10-digit mobile number.");
+  // Core lookup logic for multiple clients
+  const performLookup = (queryInput?: string) => {
+    const q = (queryInput !== undefined ? queryInput : phoneNumber).trim();
+    const cleanPhone = q.replace(/[^0-9]/g, "").slice(-10);
+
+    setLookupError(null);
+    setPaymentError(null);
+
+    if (!q && !cleanPhone) {
+      setLookupError("Please enter your 10-digit mobile number or invoice number.");
       return;
     }
 
-    setPaymentError(null);
     setIsSearched(true);
 
-    // If matches Harsh or any number entered, associate with the HRB project invoice
-    setActiveInvoice({
-      ...DEFAULT_HRB_INVOICE,
-      phone: targetPhone,
-    });
+    // 1. Match from pre-registered registry
+    let foundInvoice: ProjectInvoice | null = null;
+    if (cleanPhone && CLIENT_INVOICES_REGISTRY[cleanPhone]) {
+      foundInvoice = CLIENT_INVOICES_REGISTRY[cleanPhone];
+    } else {
+      // Check by invoice number
+      const matchByInv = Object.values(CLIENT_INVOICES_REGISTRY).find(
+        (inv) => inv.invoiceNo.toLowerCase() === q.toLowerCase()
+      );
+      if (matchByInv) {
+        foundInvoice = matchByInv;
+      }
+    }
+
+    // 2. If not found in static registry, generate a universal verified invoice for ANY client
+    if (!foundInvoice) {
+      const phoneDigits = cleanPhone || q;
+      foundInvoice = {
+        id: `client-${phoneDigits}`,
+        clientName: "Valued Client",
+        businessName: "Web & Digital Solutions Client",
+        phone: phoneDigits,
+        location: "India",
+        invoiceNo: `INV-FLC-${phoneDigits.slice(-4) || "2026"}`,
+        invoiceDate: new Date().toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }),
+        projectTitle: "Custom Web Application & Digital Platform Development",
+        projectDescription:
+          "Professional software development, web application deployment, mobile-responsive UI design, and cloud maintenance provided by Falcon 360.",
+        baseAmount: 15000,
+        deliverables: [
+          "Custom Web Application Architecture & UI Development",
+          "Responsive Mobile & Desktop Optimization",
+          "Secure Payment Gateway Integration",
+          "Production Cloud Deployment & Domain Routing",
+          "Technical Support & Maintenance",
+        ],
+        couponRules: [
+          {
+            code: "HRBFIRST",
+            discount: 10000,
+          },
+          {
+            code: "FALCON5",
+            discount: 5000,
+          },
+        ],
+      };
+    }
+
+    setActiveInvoice(foundInvoice);
+
+    // 3. Check if this invoice has already been settled previously!
+    const settled = getSavedSettlement(foundInvoice.invoiceNo, foundInvoice.phone);
+    if (settled) {
+      setPaidRecord(settled);
+    } else {
+      setPaidRecord(null);
+    }
+
+    // Reset coupon whenever looking up an invoice
+    setAppliedCoupon(null);
+    setDiscountAmount(0);
+    setCouponCode("");
+    setCouponError(null);
   };
 
   const handleApplyCoupon = (e?: React.FormEvent) => {
@@ -132,8 +249,12 @@ export default function ClientPaymentPage() {
       setAppliedCoupon("HRBFIRST");
       setDiscountAmount(10000);
       setCouponError(null);
+    } else if (clean === "FALCON5") {
+      setAppliedCoupon("FALCON5");
+      setDiscountAmount(5000);
+      setCouponError(null);
     } else {
-      setCouponError("Invalid coupon code. Try entering 'HRBFIRST'.");
+      setCouponError("Invalid coupon code. Please verify and try again.");
     }
   };
 
@@ -144,7 +265,7 @@ export default function ClientPaymentPage() {
     setCouponError(null);
   };
 
-  const basePrice = activeInvoice?.baseAmount || 19000;
+  const basePrice = activeInvoice?.baseAmount || 0;
   const finalPayable = Math.max(0, basePrice - discountAmount);
 
   const handleProceedPayment = async () => {
@@ -159,7 +280,27 @@ export default function ClientPaymentPage() {
         customerName: activeInvoice.clientName,
         customerPhone: activeInvoice.phone,
         onSuccess: (paymentId) => {
-          setPaymentSuccessId(paymentId);
+          const newRecord: PaidRecord = {
+            status: "PAID",
+            paymentId,
+            amount: finalPayable,
+            invoiceNo: activeInvoice.invoiceNo,
+            clientName: activeInvoice.clientName,
+            businessName: activeInvoice.businessName,
+            phone: activeInvoice.phone,
+            paidAt: new Date().toLocaleString("en-IN", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            }),
+            timestamp: Date.now(),
+          };
+
+          saveSettlement(newRecord);
+          setPaidRecord(newRecord);
           setIsProcessing(false);
         },
         onError: (errMsg) => {
@@ -168,14 +309,26 @@ export default function ClientPaymentPage() {
         },
       });
     } catch (err: any) {
-      setPaymentError(err.message || "Failed to start payment.");
+      setPaymentError(err.message || "Failed to initiate payment.");
       setIsProcessing(false);
     }
   };
 
+  const handleResetSearch = () => {
+    setActiveInvoice(null);
+    setPaidRecord(null);
+    setPhoneNumber("");
+    setIsSearched(false);
+    setLookupError(null);
+    setPaymentError(null);
+    setAppliedCoupon(null);
+    setDiscountAmount(0);
+    setCouponCode("");
+  };
+
   return (
     <div className="min-h-screen bg-[#07090E] text-slate-100 selection:bg-indigo-500 selection:text-white font-sans antialiased flex flex-col justify-between relative overflow-hidden">
-      {/* Ambient Lighting Gradients */}
+      {/* Background Ambient Lighting */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute -top-32 left-1/4 w-[600px] h-[600px] bg-indigo-600/10 rounded-full blur-[140px]" />
         <div className="absolute top-1/2 -right-20 w-[500px] h-[500px] bg-teal-600/10 rounded-full blur-[160px]" />
@@ -197,11 +350,11 @@ export default function ClientPaymentPage() {
                 <span className="bg-gradient-to-r from-teal-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent text-lg font-black font-mono">
                   360
                 </span>
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 border border-teal-500/30">
                   Client Portal
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 font-medium">Official Digital Invoicing & Payments</p>
+              <p className="text-[10px] text-slate-400 font-medium">Digital Invoicing & Payments Infrastructure</p>
             </div>
           </Link>
 
@@ -217,73 +370,93 @@ export default function ClientPaymentPage() {
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <main className="relative z-10 flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        {paymentSuccessId ? (
+        {paidRecord ? (
           /* ============================================================
-             PAYMENT SUCCESSFUL RECEIPT VIEW
+             VIEW 1: PERSISTENT SUCCESSFUL / SETTLED RECEIPT
+             (Client never re-prompted to pay)
              ============================================================ */
           <div className="rounded-3xl bg-[#0D1220] border border-emerald-500/40 p-6 sm:p-10 shadow-2xl space-y-8 animate-in zoom-in-95">
             <div className="text-center space-y-3">
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 mx-auto flex items-center justify-center shadow-lg shadow-emerald-500/20">
                 <CheckCircle2 className="w-10 h-10 text-emerald-400" />
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
-                Payment Verified & Received
-              </span>
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
+                <Check className="w-3.5 h-3.5" />
+                <span>PAYMENT STATUS: SUCCESSFUL / PAID IN FULL</span>
+              </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-                Thank You, {activeInvoice?.clientName}!
+                Payment Settled, {paidRecord.clientName}!
               </h1>
               <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto">
-                Your payment of <strong className="text-white">₹{finalPayable.toLocaleString("en-IN")}</strong> for{" "}
-                <strong className="text-indigo-300">{activeInvoice?.businessName}</strong> has been received
-                successfully via Razorpay.
+                Your payment of{" "}
+                <strong className="text-emerald-400">₹{paidRecord.amount.toLocaleString("en-IN")}</strong> for{" "}
+                <strong className="text-white">{paidRecord.businessName}</strong> has been received and verified.
               </p>
             </div>
 
-            {/* Receipt Summary Card */}
+            {/* Official Receipt Card */}
             <div className="rounded-2xl bg-white/[0.02] border border-white/10 p-6 space-y-4 font-mono text-xs">
-              <div className="flex justify-between pb-3 border-b border-white/10 text-slate-400">
-                <span>RECEIPT DETAILS</span>
-                <span className="text-emerald-400 font-bold uppercase">PAID IN FULL</span>
+              <div className="flex items-center justify-between pb-3 border-b border-white/10 text-slate-400">
+                <span>OFFICIAL TAX / TRANSACTION RECEIPT</span>
+                <span className="text-emerald-400 font-bold uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  PAID IN FULL
+                </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-slate-300">
                 <div>
-                  <span className="text-slate-500 block">Payment Transaction ID:</span>
-                  <span className="font-bold text-white text-sm">{paymentSuccessId}</span>
+                  <span className="text-slate-500 block">Transaction ID:</span>
+                  <span className="font-bold text-white text-sm select-all">{paidRecord.paymentId}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Invoice Number:</span>
-                  <span className="font-bold text-white text-sm">{activeInvoice?.invoiceNo}</span>
+                  <span className="font-bold text-white text-sm">{paidRecord.invoiceNo}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Client / Business:</span>
                   <span className="text-white font-semibold">
-                    {activeInvoice?.clientName} ({activeInvoice?.businessName})
+                    {paidRecord.clientName} ({paidRecord.businessName})
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Contact Phone:</span>
-                  <span className="text-white font-semibold">{activeInvoice?.phone}</span>
+                  <span className="text-white font-semibold">+91 {paidRecord.phone}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Amount Paid:</span>
-                  <span className="text-emerald-400 font-bold text-base font-mono">
-                    ₹{finalPayable.toLocaleString("en-IN")}
+                  <span className="text-slate-500 block">Settlement Date:</span>
+                  <span className="text-slate-200">{paidRecord.paidAt}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Total Amount Paid:</span>
+                  <span className="text-emerald-400 font-bold text-lg font-mono">
+                    ₹{paidRecord.amount.toLocaleString("en-IN")}
                   </span>
                 </div>
-                <div>
-                  <span className="text-slate-500 block">Service Delivered:</span>
-                  <span className="text-slate-200">Custom B2B Wholesale Website & Catalog</span>
-                </div>
               </div>
+
+              {activeInvoice && (
+                <div className="pt-3 border-t border-white/10 space-y-2">
+                  <span className="text-[11px] font-bold uppercase text-slate-400 block font-sans">
+                    Delivered Project Deliverables:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-sans">
+                    {activeInvoice.deliverables.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
               <button
                 onClick={() => window.print()}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/10 transition-colors"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/10 transition-colors cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print Official Receipt</span>
@@ -292,55 +465,56 @@ export default function ClientPaymentPage() {
               <button
                 onClick={() => {
                   const text = encodeURIComponent(
-                    `Namaste Vimlesh ji,\nI have completed the payment of ₹${finalPayable.toLocaleString(
+                    `Namaste Vimlesh ji,\nPayment of ₹${paidRecord.amount.toLocaleString(
                       "en-IN"
-                    )} for The House of HRB website development.\n\nPayment ID: ${paymentSuccessId}\nInvoice: ${activeInvoice?.invoiceNo}\nClient: ${activeInvoice?.clientName} (${activeInvoice?.phone})`
+                    )} is confirmed for ${paidRecord.businessName}.\n\nPayment ID: ${paidRecord.paymentId}\nInvoice: ${paidRecord.invoiceNo}\nDate: ${paidRecord.paidAt}`
                   );
                   window.open(`https://wa.me/919340362381?text=${text}`, "_blank");
                 }}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
               >
                 <Share2 className="w-4 h-4" />
                 <span>Share Confirmation on WhatsApp</span>
               </button>
 
-              <Link
-                href="/"
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors"
+              <button
+                onClick={handleResetSearch}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-semibold text-xs flex items-center justify-center gap-2 border border-white/10 transition-colors cursor-pointer"
               >
-                <span>Return to Falcon Home</span>
-              </Link>
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Look Up Another Invoice</span>
+              </button>
             </div>
           </div>
         ) : (
           /* ============================================================
-             STANDARD CLIENT INVOICE & PAYMENT VIEW
+             VIEW 2: CLIENT SEARCH & INVOICE PAYMENT VIEW
              ============================================================ */
           <div className="space-y-8">
             {/* Header Title */}
             <div className="text-center space-y-2">
               <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs font-semibold">
                 <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
-                <span>Verified Client Invoicing Portal</span>
+                <span>Official Falcon 360 Client Checkout</span>
               </span>
               <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-                Client Project Checkout
+                Client Project Invoicing & Payment
               </h1>
               <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
-                Pay for your website design, software setup, and digital services securely via Razorpay. No login required.
+                Pay for your custom website design, software setup, and digital services securely via Razorpay.
               </p>
             </div>
 
-            {/* Step 1: Mobile Number Lookup Bar */}
+            {/* Mobile / Invoice Lookup Input Card */}
             <div className="rounded-2xl bg-[#0D1220] border border-white/10 p-5 sm:p-6 shadow-xl space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                   <Phone className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Enter Client Registered Mobile Number</span>
+                  <span>Enter Registered Mobile Number or Invoice ID</span>
                 </label>
-                {isSearched && (
+                {isSearched && activeInvoice && (
                   <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
-                    <Check className="w-3 h-3" /> Account Located
+                    <Check className="w-3 h-3" /> Invoice Found
                   </span>
                 )}
               </div>
@@ -351,45 +525,39 @@ export default function ClientPaymentPage() {
                     +91
                   </span>
                   <input
-                    type="tel"
-                    maxLength={10}
-                    placeholder="e.g. 8375053689"
+                    type="text"
+                    maxLength={15}
+                    placeholder="Enter 10-digit mobile number"
                     value={phoneNumber}
                     onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9]/g, "");
-                      setPhoneNumber(val);
+                      setPhoneNumber(e.target.value);
+                      if (lookupError) setLookupError(null);
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") handleLookup();
+                      if (e.key === "Enter") performLookup();
                     }}
-                    className="w-full pl-14 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-teal-400 transition-colors"
+                    className="w-full pl-14 pr-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-teal-400 transition-colors placeholder:text-slate-600"
                   />
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleLookup()}
-                  className="px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-teal-600/20 transition-all cursor-pointer"
+                  onClick={() => performLookup()}
+                  className="px-6 py-3.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-teal-600/20 transition-all cursor-pointer"
                 >
                   <Search className="w-4 h-4" />
                   <span>Fetch Invoice</span>
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1">
-                <span>Quick client shortcuts:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPhoneNumber("8375053689");
-                    handleLookup("8375053689");
-                  }}
-                  className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-indigo-300 border border-white/10 transition-colors"
-                >
-                  Harsh (8375053689)
-                </button>
-              </div>
+              {lookupError && (
+                <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{lookupError}</span>
+                </div>
+              )}
             </div>
 
+            {/* Error notifications */}
             {paymentError && (
               <div className="p-4 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs flex items-center gap-2 animate-in slide-in-from-top-2">
                 <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
@@ -397,10 +565,10 @@ export default function ClientPaymentPage() {
               </div>
             )}
 
-            {/* Step 2: Invoice & Deliverables Card */}
+            {/* Active Invoice Card (Only displayed AFTER lookup) */}
             {activeInvoice && (
               <div className="rounded-3xl bg-[#0B0F19] border border-indigo-500/30 overflow-hidden shadow-2xl animate-in fade-in-50 duration-300">
-                {/* Card Header */}
+                {/* Header */}
                 <div className="px-6 py-5 bg-gradient-to-r from-indigo-950/80 via-[#0D1220] to-teal-950/60 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -416,12 +584,14 @@ export default function ClientPaymentPage() {
                   </div>
 
                   <div className="text-left sm:text-right font-mono text-xs text-slate-400">
-                    <div>Invoice: <strong className="text-white">{activeInvoice.invoiceNo}</strong></div>
+                    <div>
+                      Invoice: <strong className="text-white">{activeInvoice.invoiceNo}</strong>
+                    </div>
                     <div>Date: {activeInvoice.invoiceDate}</div>
                   </div>
                 </div>
 
-                {/* Card Body */}
+                {/* Body */}
                 <div className="p-6 sm:p-8 space-y-6">
                   {/* Project Overview */}
                   <div className="space-y-2">
@@ -429,10 +599,11 @@ export default function ClientPaymentPage() {
                       <FileText className="w-4 h-4 text-indigo-400" />
                       <span>{activeInvoice.projectTitle}</span>
                     </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed">
-                      Custom wholesale digital presence for Sadar Bazar's premier manufacturer and wholesale distributor
-                      of fashion hair accessories, pure rubber bands, and salon essentials.
-                    </p>
+                    {activeInvoice.projectDescription && (
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        {activeInvoice.projectDescription}
+                      </p>
+                    )}
                   </div>
 
                   {/* Deliverables Checklist */}
@@ -450,25 +621,21 @@ export default function ClientPaymentPage() {
                     </div>
                   </div>
 
-                  {/* Coupon Code Section */}
+                  {/* Coupon Code Section (Clean, no prefilled text, no background hints) */}
                   <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                         <Tag className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Apply Client Discount Coupon</span>
+                        <span>Discount Coupon</span>
                       </span>
-                      {appliedCoupon ? (
+                      {appliedCoupon && (
                         <button
                           type="button"
                           onClick={handleRemoveCoupon}
-                          className="text-[11px] text-rose-400 hover:underline font-semibold"
+                          className="text-[11px] text-rose-400 hover:underline font-semibold cursor-pointer"
                         >
                           Remove Coupon
                         </button>
-                      ) : (
-                        <span className="text-[11px] text-slate-400">
-                          Have coupon? Enter <strong className="text-teal-400 font-mono">HRBFIRST</strong>
-                        </span>
                       )}
                     </div>
 
@@ -477,19 +644,21 @@ export default function ClientPaymentPage() {
                         <div className="flex items-center gap-2">
                           <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                           <span>
-                            Coupon <strong className="font-mono text-white">HRBFIRST</strong> Applied! Flat ₹10,000 Special Client Discount
+                            Coupon <strong className="font-mono text-white">{appliedCoupon}</strong> Applied Successfully
                           </span>
                         </div>
-                        <span className="font-mono font-bold text-emerald-300">-₹10,000</span>
+                        <span className="font-mono font-bold text-emerald-300">
+                          -₹{discountAmount.toLocaleString("en-IN")}
+                        </span>
                       </div>
                     ) : (
                       <form onSubmit={handleApplyCoupon} className="flex gap-2">
                         <input
                           type="text"
-                          placeholder="Enter coupon code (e.g. HRBFIRST)"
+                          placeholder="Enter coupon code"
                           value={couponCode}
                           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                          className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-mono text-xs uppercase focus:outline-none focus:border-indigo-400 transition-colors placeholder:text-slate-500"
+                          className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-mono text-xs uppercase focus:outline-none focus:border-indigo-400 transition-colors placeholder:text-slate-600"
                         />
                         <button
                           type="submit"
@@ -514,7 +683,7 @@ export default function ClientPaymentPage() {
 
                     {appliedCoupon && (
                       <div className="flex justify-between text-emerald-400 font-semibold">
-                        <span>Client Special Discount (HRBFIRST):</span>
+                        <span>Client Special Discount ({appliedCoupon}):</span>
                         <span>-₹{discountAmount.toLocaleString("en-IN")}</span>
                       </div>
                     )}
@@ -550,7 +719,7 @@ export default function ClientPaymentPage() {
                       <CreditCard className="w-5 h-5" />
                       <span>
                         {isProcessing
-                          ? "Opening Razorpay Gateway..."
+                          ? "Connecting to Razorpay..."
                           : `Proceed to Pay ₹${finalPayable.toLocaleString("en-IN")} via Razorpay`}
                       </span>
                     </button>
@@ -579,5 +748,23 @@ export default function ClientPaymentPage() {
         <p>© 2026 Falcon 360 Inc. • Official Invoicing & Payments Infrastructure</p>
       </footer>
     </div>
+  );
+}
+
+// Next.js App Router Suspense Wrapper
+export default function ClientPaymentPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#07090E] flex items-center justify-center text-slate-400">
+          <div className="flex flex-col items-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500"></div>
+            <p className="text-xs font-mono">Loading Payment Portal...</p>
+          </div>
+        </div>
+      }
+    >
+      <ClientPaymentContent />
+    </Suspense>
   );
 }
