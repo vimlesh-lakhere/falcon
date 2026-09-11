@@ -158,13 +158,15 @@ export default function TrialExpiredPage() {
       {/* Top Navbar */}
       <nav className="relative z-10 border-b border-white/10 bg-[#07090E]/80 backdrop-blur-md px-6 py-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 p-0.5">
-            <div className="w-full h-full bg-[#0B0F19] rounded-[10px] flex items-center justify-center font-black text-indigo-400">
-              F
-            </div>
+          <div className="w-9 h-9 shrink-0 flex items-center justify-center">
+            <img
+              src="/falcon-icon.png"
+              alt="Falcon 360 Logo"
+              className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(20,184,166,0.4)]"
+            />
           </div>
           <span className="text-lg font-black tracking-tight text-white font-mono">
-            FALCON <span className="text-indigo-400">360</span>
+            FALCON <span className="text-teal-400">360</span>
           </span>
         </Link>
 

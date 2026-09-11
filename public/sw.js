@@ -1,9 +1,13 @@
 // Project Falcon POS Service Worker
-const CACHE_NAME = "falcon-pos-v2";
+const CACHE_NAME = "falcon-pos-v3";
 
 const STATIC_PRECACHE = [
   "/pos",
   "/manifest.webmanifest",
+  "/falcon-icon.png",
+  "/falcon-logo.png",
+  "/favicon.ico",
+  "/favicon.png",
   "/favicon.svg",
   "/icons/icon.svg",
   "/icons/icon-192x192.png",

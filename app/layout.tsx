@@ -13,7 +13,12 @@ export const metadata: Metadata = {
     title: "Falcon POS",
   },
   icons: {
-    icon: "/icons/icon-192x192.png",
+    icon: [
+      { url: "/falcon-icon.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.ico" },
+    ],
+    shortcut: "/falcon-icon.png",
     apple: "/icons/apple-touch-icon.png",
   },
 };

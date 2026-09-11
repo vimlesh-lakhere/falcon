@@ -23,14 +23,14 @@ export function AuthLayout({
 
         {/* Brand Header */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg border border-white/20 shrink-0">
-            <img src="/icons/icon-192x192.png" alt="Falcon Logo" className="w-full h-full object-cover" />
+          <div className="w-11 h-11 shrink-0 flex items-center justify-center">
+            <img src="/falcon-icon.png" alt="Falcon 360 Logo" className="w-full h-full object-contain drop-shadow-[0_0_12px_rgba(20,184,166,0.5)]" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight flex items-center gap-2">
-              Falcon ERP
+            <h1 className="text-xl font-extrabold tracking-tight flex items-center gap-2 font-mono">
+              <span>FALCON</span> <span className="text-teal-400">360</span>
               <span className="bg-brand-500/30 text-indigo-200 text-xs px-2 py-0.5 rounded-full border border-indigo-400/30">
-                AGS Store
+                Cloud ERP
               </span>
             </h1>
             <p className="text-xs text-indigo-200">Enterprise Retail & Wholesale Platform</p>
@@ -78,12 +78,12 @@ export function AuthLayout({
         <div className="w-full max-w-md space-y-6">
           {/* Mobile Brand Header */}
           <div className="lg:hidden flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-lg overflow-hidden shadow-xs shrink-0">
-              <img src="/icons/icon-192x192.png" alt="Falcon Logo" className="w-full h-full object-cover" />
+            <div className="w-9 h-9 shrink-0 flex items-center justify-center">
+              <img src="/falcon-icon.png" alt="Falcon 360 Logo" className="w-full h-full object-contain" />
             </div>
             <div>
-              <span className="font-bold text-gray-900 leading-tight block">Falcon ERP</span>
-              <span className="text-[11px] text-gray-500">AGS Store Management</span>
+              <span className="font-black text-gray-900 leading-tight block font-mono">FALCON 360</span>
+              <span className="text-[11px] text-gray-500">Cloud Enterprise & Retail OS</span>
             </div>
           </div>
 

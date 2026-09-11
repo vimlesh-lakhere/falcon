@@ -1203,6 +1203,7 @@ export default function PosBillingPage() {
             </Link>
           )}
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <img src="/falcon-icon.png" alt="Falcon" className="w-6 h-6 object-contain shrink-0 drop-shadow-xs" />
             <span className="font-bold text-sm sm:text-base tracking-wide truncate">POS Terminal</span>
             <Badge variant="neutral" className="hidden sm:inline-flex bg-white/20 text-white border-white/30 text-[10px]">
               #1

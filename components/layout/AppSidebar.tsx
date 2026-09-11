@@ -78,15 +78,15 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
       <div className="p-4 border-b border-surface-border space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg overflow-hidden shadow-xs shrink-0 flex items-center justify-center">
-              <img src="/icons/icon-192x192.png" alt="Falcon Logo" className="w-full h-full object-cover" />
+            <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+              <img src="/falcon-icon.png" alt="Falcon 360 Logo" className="w-full h-full object-contain" />
             </div>
             <div className="flex flex-col">
-              <span className="font-extrabold text-sm text-gray-900 leading-tight">
-                Falcon ERP
+              <span className="font-black text-sm text-gray-900 leading-tight flex items-center gap-1 font-mono">
+                <span>FALCON</span> <span className="text-teal-600">360</span>
               </span>
               <span className="text-[10px] text-gray-400 font-medium tracking-tight">
-                Enterprise Store Suite
+                Enterprise Cloud ERP
               </span>
             </div>
           </div>

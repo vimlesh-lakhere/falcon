@@ -158,8 +158,13 @@ export const StoreFooter: React.FC<StoreFooterProps> = ({
 
       {/* Bottom Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500 text-[11px]">
-        <div>
-          &copy; {new Date().getFullYear()} {shopName}. Powered by Falcon AI Retail Platform.
+        <div className="flex items-center gap-2">
+          <span>&copy; {new Date().getFullYear()} {shopName}.</span>
+          <span className="inline-flex items-center gap-1.5 text-slate-400">
+            Powered by{" "}
+            <img src="/falcon-icon.png" alt="Falcon 360" className="w-3.5 h-3.5 object-contain inline-block" />
+            <strong className="text-slate-300 font-mono font-bold">FALCON 360</strong>
+          </span>
         </div>
         <div className="flex items-center gap-4">
           <span>Town & Village Delivery Guaranteed</span>

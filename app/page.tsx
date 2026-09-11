@@ -159,15 +159,17 @@ export default function FalconHomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           {/* Brand Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 p-0.5 shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition-transform">
-              <div className="w-full h-full bg-[#0B0F19] rounded-[10px] flex items-center justify-center">
-                <Zap className="w-6 h-6 text-indigo-400 group-hover:text-white transition-colors" />
-              </div>
+            <div className="relative w-11 h-11 shrink-0 group-hover:scale-105 transition-transform">
+              <img
+                src="/falcon-icon.png"
+                alt="Falcon 360 Logo"
+                className="w-full h-full object-contain drop-shadow-[0_0_14px_rgba(20,184,166,0.35)]"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-black tracking-tight text-white font-mono">FALCON</span>
-                <span className="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent text-xl font-black font-mono">360</span>
+                <span className="bg-gradient-to-r from-teal-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent text-xl font-black font-mono">360</span>
                 <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   Cloud
                 </span>
@@ -1100,9 +1102,16 @@ export default function FalconHomePage() {
       <footer className="relative z-10 border-t border-white/10 bg-[#05060A] py-14 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-3 md:col-span-1">
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-black tracking-tight text-white font-mono">FALCON</span>
-              <span className="text-lg font-black text-indigo-400 font-mono">360</span>
+            <div className="flex items-center gap-3">
+              <img
+                src="/falcon-icon.png"
+                alt="Falcon 360"
+                className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(20,184,166,0.3)]"
+              />
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg font-black tracking-tight text-white font-mono">FALCON</span>
+                <span className="text-lg font-black bg-gradient-to-r from-teal-400 to-indigo-400 bg-clip-text text-transparent font-mono">360</span>
+              </div>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
               Empowering Indian retail, wholesale, and enterprises with modern Cloud ERP, fast POS terminals, and custom digital web solutions.
