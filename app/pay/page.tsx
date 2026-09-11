@@ -230,16 +230,7 @@ function ClientPaymentContent() {
           "Production Cloud Deployment & Domain Routing",
           "Technical Support & Maintenance",
         ],
-        couponRules: [
-          {
-            code: "HRBFIRST",
-            discount: 10000,
-          },
-          {
-            code: "FALCON5",
-            discount: 5000,
-          },
-        ],
+        couponRules: [],
       };
     }
 
@@ -270,7 +261,8 @@ function ClientPaymentContent() {
       return;
     }
 
-    // Check if active invoice has custom coupon rules
+    // Strict client-specific validation:
+    // Only allow coupons explicitly assigned to this specific client's active invoice
     const matchedRule = activeInvoice?.couponRules?.find(
       (r) => r.code.toUpperCase() === clean
     );
@@ -279,16 +271,21 @@ function ClientPaymentContent() {
       setAppliedCoupon(matchedRule.code);
       setDiscountAmount(matchedRule.discount);
       setCouponError(null);
-    } else if (clean === "HRBFIRST") {
-      setAppliedCoupon("HRBFIRST");
-      setDiscountAmount(10000);
-      setCouponError(null);
-    } else if (clean === "FALCON5") {
-      setAppliedCoupon("FALCON5");
-      setDiscountAmount(5000);
-      setCouponError(null);
     } else {
-      setCouponError("Invalid coupon code. Please verify and try again.");
+      // Check if the entered code belongs to another party / client
+      const isOtherClientCoupon = Object.values(CLIENT_INVOICES_REGISTRY).some(
+        (client) =>
+          client.phone !== activeInvoice?.phone &&
+          client.couponRules?.some((r) => r.code.toUpperCase() === clean)
+      );
+
+      if (isOtherClientCoupon) {
+        setCouponError(
+          `Coupon code '${clean}' is exclusive to another client and cannot be applied to this mobile number.`
+        );
+      } else {
+        setCouponError("Invalid coupon code. Please verify and try again.");
+      }
     }
   };
 
