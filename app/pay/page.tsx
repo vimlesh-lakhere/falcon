@@ -82,6 +82,31 @@ const CLIENT_INVOICES_REGISTRY: Record<string, ProjectInvoice> = {
       },
     ],
   },
+  "9340362381": {
+    id: "demo-gateway-01",
+    clientName: "Demo",
+    businessName: "Demo (Live Gateway Test)",
+    phone: "9340362381",
+    location: "India",
+    invoiceNo: "INV-FLC-DEMO-10",
+    invoiceDate: "11 Sep 2026",
+    projectTitle: "Falcon 360 Live Razorpay Gateway & Receipt Demo",
+    projectDescription:
+      "Demo project invoice for testing live checkout, UPI payment flow, and instant automated digital receipt generation.",
+    baseAmount: 10,
+    deliverables: [
+      "Live Razorpay Payment Gateway Testing (₹10 Live Verification)",
+      "Instant UPI (GPay / PhonePe / Paytm / QR) Transaction Test",
+      "Automated Digital Tax Receipt & Paid-in-Full Settlement",
+      "WhatsApp Settlement Confirmation Alert",
+    ],
+    couponRules: [
+      {
+        code: "DEMO5",
+        discount: 5,
+      },
+    ],
+  },
 };
 
 const STORAGE_KEY_PAID = "falcon_settled_invoices";
@@ -245,7 +270,16 @@ function ClientPaymentContent() {
       return;
     }
 
-    if (clean === "HRBFIRST") {
+    // Check if active invoice has custom coupon rules
+    const matchedRule = activeInvoice?.couponRules?.find(
+      (r) => r.code.toUpperCase() === clean
+    );
+
+    if (matchedRule) {
+      setAppliedCoupon(matchedRule.code);
+      setDiscountAmount(matchedRule.discount);
+      setCouponError(null);
+    } else if (clean === "HRBFIRST") {
       setAppliedCoupon("HRBFIRST");
       setDiscountAmount(10000);
       setCouponError(null);
