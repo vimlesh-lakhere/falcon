@@ -612,68 +612,68 @@ export default function FalconHomePage() {
                   className="px-6 py-3 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-lg shadow-pink-600/30 flex items-center gap-2"
                 >
                   <Store className="w-4 h-4" />
-                  <span>View Live Client Store Demo</span>
+                  <span>View Live Storefront Demo</span>
                 </Link>
               </div>
             </div>
 
             <div className="space-y-4">
-              {/* Showcase 1: The House of HRB (Delhi Wholesale) */}
+              {/* Showcase 1: B2B Wholesale & Distribution Portal */}
               <div className="rounded-2xl bg-[#07090E] border border-amber-500/20 p-5 space-y-3 shadow-xl">
                 <div className="text-[11px] font-mono text-slate-400 border-b border-white/10 pb-2.5 flex justify-between">
-                  <span className="text-amber-300 font-bold">CLIENT SHOWCASE: THE HOUSE OF HRB</span>
-                  <span className="text-emerald-400">DELIVERED</span>
+                  <span className="text-amber-300 font-bold">SOLUTION: B2B WHOLESALE & DISTRIBUTION</span>
+                  <span className="text-emerald-400">ENTERPRISE DEPLOYED</span>
                 </div>
                 <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-2.5">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs">
-                      HRB
+                      B2B
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-white">HRB® (Harsh Rubber Band)</h4>
-                      <p className="text-[10px] text-slate-400">Rui Mandi, Sadar Bazar, Delhi (Est. 1998)</p>
+                      <h4 className="text-xs font-bold text-white">B2B Wholesale & RFQ Ordering Portal</h4>
+                      <p className="text-[10px] text-slate-400">High-Volume Wholesale Catalog & Transport Logistics</p>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-300 leading-snug">
-                    40+ hair accessory product lines, dual base/carton pricing, B2B RFQ Cart, master carton packing calculator & online invoicing.
+                    Multi-tier wholesale pricing, carton packing calculator, interactive RFQ quotation drawer, automated proforma invoices & direct WhatsApp sync.
                   </p>
                   <div className="pt-1 flex items-center justify-between">
                     <Link
-                      href="/pay"
-                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-400 hover:underline"
+                      href="/store"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-400 hover:underline"
                     >
-                      <span>Client Invoicing & Payment Portal</span>
+                      <span>Explore Wholesale Demo Catalog</span>
                       <ExternalLink className="w-3 h-3" />
                     </Link>
                   </div>
                 </div>
               </div>
 
-              {/* Showcase 2: AGS Storefront */}
-              <div className="rounded-2xl bg-[#07090E] border border-white/10 p-5 space-y-3 shadow-xl">
+              {/* Showcase 2: Omnichannel Retail & D2C Storefront */}
+              <div className="rounded-2xl bg-[#07090E] border border-pink-500/20 p-5 space-y-3 shadow-xl">
                 <div className="text-[11px] font-mono text-slate-400 border-b border-white/10 pb-2.5 flex justify-between">
-                  <span>SHOWCASE: AGS STOREFRONT</span>
+                  <span className="text-pink-300 font-bold">SOLUTION: OMNICHANNEL D2C STOREFRONT</span>
                   <span className="text-pink-400">LIVE PRODUCTION</span>
                 </div>
                 <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-2.5">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold text-xs">
-                      AGS
+                      D2C
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-white">AGS Cosmetics & Retail Store</h4>
-                      <p className="text-[10px] text-slate-400">Custom E-Commerce Portal Powered by Falcon</p>
+                      <h4 className="text-xs font-bold text-white">Omnichannel Retail & E-Commerce Store</h4>
+                      <p className="text-[10px] text-slate-400">Unified Digital Storefront Powered by Falcon Cloud</p>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-300 leading-snug">
-                    Featuring instant product search, category browsing, wishlist, live customer cart, and direct WhatsApp order fulfillment.
+                    Instant SKU search, category browsing, wishlist, live customer cart, real-time stock sync with Falcon POS, and direct WhatsApp order fulfillment.
                   </p>
                   <div className="pt-1">
                     <Link
                       href="/store"
                       className="inline-flex items-center gap-1.5 text-[11px] font-bold text-pink-400 hover:underline"
                     >
-                      <span>Browse AGS Storefront</span>
+                      <span>Browse Live Storefront Demo</span>
                       <ExternalLink className="w-3.5 h-3.5" />
                     </Link>
                   </div>
@@ -1142,7 +1142,7 @@ export default function FalconHomePage() {
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Live Access</h4>
             <ul className="space-y-1.5 text-xs text-slate-400">
               <li><Link href="/login" className="hover:text-white transition-colors">ERP Portal Login</Link></li>
-              <li><Link href="/store" className="hover:text-white transition-colors">AGS Online Store</Link></li>
+              <li><Link href="/store" className="hover:text-white transition-colors">Falcon Storefront</Link></li>
               <li><Link href="/pos" className="hover:text-white transition-colors">POS Terminal</Link></li>
               <li><Link href="/dashboard" className="hover:text-white transition-colors">Admin Dashboard</Link></li>
             </ul>

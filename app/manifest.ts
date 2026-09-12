@@ -2,7 +2,7 @@ import { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "AGS Store - POS Billing Terminal",
+    name: "Falcon 360 - POS Billing Terminal & Cloud ERP",
     short_name: "Falcon POS",
     description: "Fast Retail & Wholesale POS Billing App with Offline Support, Barcode Scanner & WhatsApp Invoicing",
     start_url: "/pos",

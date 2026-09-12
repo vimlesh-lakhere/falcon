@@ -336,7 +336,7 @@ export function IsometricEcosystem3D() {
                   <div>
                     <h4 className="text-sm font-bold text-white">Custom Web App & B2B Wholesale Portal</h4>
                     <p className="text-xs text-slate-300">
-                      Live example: The House of HRB wholesale catalog with carton calculation & direct WhatsApp orders
+                      Live example: Enterprise B2B wholesale catalog with master carton calculation & direct WhatsApp ordering
                     </p>
                   </div>
                   <Link

@@ -4,8 +4,8 @@ import { PwaRegister } from "@/components/pwa/PwaRegister";
 import { GlobalInputEnhancer } from "@/components/ui/GlobalInputEnhancer";
 
 export const metadata: Metadata = {
-  title: "Falcon ERP - AGS Store Management System",
-  description: "Next-generation Retail and Wholesale ERP with Fast POS Billing for AGS Store",
+  title: "Falcon 360 - Cloud ERP & High-Speed POS System",
+  description: "Next-generation Retail and Wholesale ERP with High-Speed POS Billing and Custom E-Commerce Storefronts",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

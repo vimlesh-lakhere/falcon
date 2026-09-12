@@ -7,7 +7,7 @@ export function Scanner3DPreview() {
   const [scannedItemsCount, setScannedItemsCount] = useState(3);
   const [recentScanned, setRecentScanned] = useState({
     name: "Korean Velvet Hair Bow Clips",
-    sku: "HRB-ACC-882",
+    sku: "FLC-ACC-882",
     price: 340,
     time: "Just now",
   });
@@ -16,10 +16,10 @@ export function Scanner3DPreview() {
   // Simulated live periodic scan effect
   useEffect(() => {
     const products = [
-      { name: "Korean Velvet Hair Bow Clips", sku: "HRB-ACC-882", price: 340 },
-      { name: "Sadar Bazar Rubber Bands (1kg)", sku: "HRB-RB-019", price: 280 },
-      { name: "Matte Pastel Hair Claws (Pack of 6)", sku: "HRB-CLAW-102", price: 210 },
-      { name: "Satin Pearl Scrunchie Set", sku: "HRB-SCR-404", price: 160 },
+      { name: "Korean Velvet Hair Bow Clips", sku: "FLC-ACC-882", price: 340 },
+      { name: "High-Elasticity Bulk Rubber Bands (1kg)", sku: "FLC-RB-019", price: 280 },
+      { name: "Matte Pastel Hair Claws (Pack of 6)", sku: "FLC-CLAW-102", price: 210 },
+      { name: "Satin Pearl Scrunchie Set", sku: "FLC-SCR-404", price: 160 },
     ];
 
     let idx = 0;
@@ -56,7 +56,7 @@ export function Scanner3DPreview() {
               <div className="flex items-center justify-between border-b border-white/10 pb-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-teal-300">
                   <ShoppingBag className="w-3.5 h-3.5" />
-                  <span>HRB WHOLESALE</span>
+                  <span>FALCON RETAIL OS</span>
                 </div>
                 <span className="text-[10px] font-mono uppercase bg-teal-500/20 text-teal-300 px-1.5 py-0.5 rounded">
                   ORIGINAL
@@ -66,7 +66,7 @@ export function Scanner3DPreview() {
               {/* Central Box Logo */}
               <div className="my-auto text-center space-y-1">
                 <div className="w-10 h-10 mx-auto rounded-xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-300 font-bold font-mono">
-                  HRB
+                  FLC
                 </div>
                 <div className="text-xs font-bold text-white tracking-wide">
                   {recentScanned.name}
@@ -161,10 +161,10 @@ export function Scanner3DPreview() {
                 type="button"
                 onClick={() => {
                   const products = [
-                    { name: "Korean Velvet Hair Bow Clips", sku: "HRB-ACC-882", price: 340 },
-                    { name: "Sadar Bazar Rubber Bands (1kg)", sku: "HRB-RB-019", price: 280 },
-                    { name: "Matte Pastel Hair Claws (Pack of 6)", sku: "HRB-CLAW-102", price: 210 },
-                    { name: "Satin Pearl Scrunchie Set", sku: "HRB-SCR-404", price: 160 },
+                    { name: "Korean Velvet Hair Bow Clips", sku: "FLC-ACC-882", price: 340 },
+                    { name: "High-Elasticity Bulk Rubber Bands (1kg)", sku: "FLC-RB-019", price: 280 },
+                    { name: "Matte Pastel Hair Claws (Pack of 6)", sku: "FLC-CLAW-102", price: 210 },
+                    { name: "Satin Pearl Scrunchie Set", sku: "FLC-SCR-404", price: 160 },
                   ];
                   const randomProd = products[Math.floor(Math.random() * products.length)];
                   setRecentScanned({ ...randomProd, time: "Just now" });
