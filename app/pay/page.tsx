@@ -71,7 +71,6 @@ const CLIENT_INVOICES_REGISTRY: Record<string, ProjectInvoice> = {
       "40+ Hair Accessories Product Lines with Dual Unit/Carton Pricing",
       "Interactive B2B RFQ Cart Drawer & A4 Proforma Invoice Modal",
       "Master Carton Packing (₹500/ctn) & Transport Bilty/LR Booking Calculator",
-      "Integrated Razorpay Online Payment Gateway & Direct WhatsApp Ordering",
       "Responsive Mobile-First Architecture & Cloud CDN Deployment",
       "1 Year Priority Cloud Hosting & Technical Maintenance",
     ],
