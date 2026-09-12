@@ -34,6 +34,10 @@ import {
 } from "lucide-react";
 import { SUBSCRIPTION_PLANS, LIFETIME_PLAN, PricingPlan } from "@/lib/plans";
 import { initiateRazorpayCheckout } from "@/lib/razorpay-client";
+import { Hero3DCanvas } from "@/components/3d/Hero3DCanvas";
+import { TiltCard3D } from "@/components/3d/TiltCard3D";
+import { IsometricEcosystem3D } from "@/components/3d/IsometricEcosystem3D";
+import { Scanner3DPreview } from "@/components/3d/Scanner3DPreview";
 
 export default function FalconHomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -252,124 +256,74 @@ export default function FalconHomePage() {
         )}
       </nav>
 
-      {/* HERO SECTION */}
+      {/* HERO SECTION WITH 3D WEBGL CORE */}
       <section className="relative z-10 pt-16 pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="text-center max-w-3xl mx-auto space-y-6">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs font-semibold tracking-wide backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
-            <span>Complete 360° Technology Suite for Growing Businesses</span>
+        {/* Three.js 3D WebGL Canvas in Hero Background */}
+        <Hero3DCanvas className="opacity-75 z-0" />
+
+        <div className="relative z-20 text-center max-w-4xl mx-auto space-y-6">
+          <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-slate-900/90 border border-teal-500/30 text-teal-300 text-xs font-semibold tracking-wide backdrop-blur-2xl shadow-[0_0_20px_rgba(20,184,166,0.15)]">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+            </span>
+            <span>Enterprise Cloud ERP • Smart POS • Custom Web</span>
+            <span className="text-slate-500">|</span>
+            <span className="text-indigo-300 font-mono text-[11px]">3D Interactive Platform</span>
           </div>
 
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[1.1]">
-            Next-Gen <span className="bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">ERP & POS</span> With Bespoke Web Solutions.
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[1.08]">
+            The Complete <span className="bg-gradient-to-r from-teal-300 via-indigo-300 to-purple-300 bg-clip-text text-transparent">Retail & Commerce OS</span> Built for Scale.
           </h1>
 
-          <p className="text-base sm:text-lg text-slate-300 leading-relaxed font-normal">
-            Falcon 360 brings together powerful <strong>Cloud ERP</strong>, ultra-fast <strong>Retail POS Billing</strong>, and <strong>Custom Client Websites</strong>. We help retail stores, distributors, and brands manage everything from barcode scanning to online customer orders.
+          <p className="text-base sm:text-lg text-slate-300 leading-relaxed font-normal max-w-2xl mx-auto">
+            One unified 3D platform powering retail billing counters, multi-branch warehouses, and bespoke wholesale web portals with sub-second sync and automated GST compliance.
           </p>
 
           {/* CTA Buttons */}
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="#contact"
-              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-sm shadow-xl shadow-indigo-500/25 flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+          <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/register"
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-teal-500 via-indigo-600 to-purple-600 hover:from-teal-400 hover:to-purple-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2.5 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
-              <span>Get Custom Solution / Quote</span>
+              <Sparkles className="w-4 h-4" />
+              <span>Start 14-Day Free Trial</span>
               <ArrowRight className="w-4 h-4" />
-            </a>
+            </Link>
 
             <a
               href="#demos"
-              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 border border-white/15 font-semibold text-sm backdrop-blur-md flex items-center justify-center gap-2 transition-all"
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-200 border border-white/15 font-semibold text-sm backdrop-blur-xl flex items-center justify-center gap-2.5 transition-all cursor-pointer"
             >
-              <Laptop className="w-4 h-4 text-indigo-400" />
-              <span>Explore Live Interactive Demos</span>
+              <Laptop className="w-4 h-4 text-teal-400" />
+              <span>Explore Interactive Demos</span>
             </a>
           </div>
 
-          {/* Trust stats */}
-          <div className="pt-8 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto border-t border-white/10 text-left">
-            <div>
-              <div className="text-2xl font-black text-white font-mono">0.2s</div>
-              <div className="text-xs text-slate-400">Barcode Lookup Speed</div>
-            </div>
-            <div>
-              <div className="text-2xl font-black text-indigo-400 font-mono">100%</div>
-              <div className="text-xs text-slate-400">GST & Multi-Branch Ready</div>
-            </div>
-            <div>
-              <div className="text-2xl font-black text-purple-400 font-mono">99.9%</div>
-              <div className="text-xs text-slate-400">High Availability Cloud</div>
-            </div>
-            <div>
-              <div className="text-2xl font-black text-white font-mono">24/7</div>
-              <div className="text-xs text-slate-400">Dedicated Support</div>
-            </div>
+          {/* Trust stats in 3D Spotlight Tilt Cards */}
+          <div className="pt-8 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto border-t border-white/10 text-left">
+            <TiltCard3D maxTilt={10} scale={1.03} className="p-4 rounded-2xl bg-slate-900/60 border border-white/10 backdrop-blur-md">
+              <div className="text-2xl font-black text-white font-mono translate-z-20">0.2s</div>
+              <div className="text-xs text-slate-400 translate-z-10 mt-1">Barcode Lookup Speed</div>
+            </TiltCard3D>
+            <TiltCard3D maxTilt={10} scale={1.03} className="p-4 rounded-2xl bg-slate-900/60 border border-indigo-500/25 backdrop-blur-md">
+              <div className="text-2xl font-black text-indigo-400 font-mono translate-z-20">100%</div>
+              <div className="text-xs text-slate-400 translate-z-10 mt-1">GST & Multi-Branch Ready</div>
+            </TiltCard3D>
+            <TiltCard3D maxTilt={10} scale={1.03} className="p-4 rounded-2xl bg-slate-900/60 border border-purple-500/25 backdrop-blur-md">
+              <div className="text-2xl font-black text-purple-400 font-mono translate-z-20">99.9%</div>
+              <div className="text-xs text-slate-400 translate-z-10 mt-1">High Availability Cloud</div>
+            </TiltCard3D>
+            <TiltCard3D maxTilt={10} scale={1.03} className="p-4 rounded-2xl bg-slate-900/60 border border-teal-500/25 backdrop-blur-md">
+              <div className="text-2xl font-black text-teal-400 font-mono translate-z-20">24/7</div>
+              <div className="text-xs text-slate-400 translate-z-10 mt-1">Dedicated Support</div>
+            </TiltCard3D>
           </div>
         </div>
 
-        {/* Hero Interactive Preview Card Mockup */}
-        <div className="mt-14 relative mx-auto max-w-5xl rounded-2xl border border-white/15 bg-gradient-to-b from-white/10 to-white/5 p-2 sm:p-4 backdrop-blur-xl shadow-2xl shadow-indigo-950/50">
-          <div className="rounded-xl bg-[#0B0F19] border border-white/10 overflow-hidden shadow-inner">
-            {/* Window bar */}
-            <div className="flex items-center justify-between px-4 py-3 bg-[#080B13] border-b border-white/10 text-xs text-slate-400 font-mono">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500/80 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
-                <span className="ml-2 text-slate-500">falcon360.in/ecosystem</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                <span className="text-emerald-400 text-[11px] font-sans">Live System Connected</span>
-              </div>
-            </div>
-
-            {/* Mockup Content */}
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Pillar 1 Preview */}
-              <div className="rounded-xl p-5 bg-white/[0.03] border border-indigo-500/20 space-y-3">
-                <div className="w-10 h-10 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                  <BarChart3 className="w-5 h-5" />
-                </div>
-                <h3 className="font-bold text-white text-base">Falcon Cloud ERP</h3>
-                <p className="text-xs text-slate-400">Real-time stock control, supplier Kharidi parchi, multi-branch, and profit/loss analytics.</p>
-                <div className="pt-2">
-                  <Link href="/login" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-                    Open ERP Portal <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-
-              {/* Pillar 2 Preview */}
-              <div className="rounded-xl p-5 bg-white/[0.03] border border-purple-500/20 space-y-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
-                  <ShoppingCart className="w-5 h-5" />
-                </div>
-                <h3 className="font-bold text-white text-base">Smart POS Billing</h3>
-                <p className="text-xs text-slate-400">Keyboard shortcuts, thermal printing, barcode scan, and split-second checkout for cashiers.</p>
-                <div className="pt-2">
-                  <Link href="/pos" className="text-xs font-semibold text-purple-400 hover:text-purple-300 flex items-center gap-1">
-                    Launch POS Demo <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-
-              {/* Pillar 3 Preview */}
-              <div className="rounded-xl p-5 bg-white/[0.03] border border-pink-500/20 space-y-3">
-                <div className="w-10 h-10 rounded-lg bg-pink-500/20 text-pink-400 flex items-center justify-center">
-                  <Globe className="w-5 h-5" />
-                </div>
-                <h3 className="font-bold text-white text-base">Custom Web Development</h3>
-                <p className="text-xs text-slate-400">Tailor-made e-commerce storefronts and company websites with instant ERP inventory sync.</p>
-                <div className="pt-2">
-                  <Link href="/store" className="text-xs font-semibold text-pink-400 hover:text-pink-300 flex items-center gap-1">
-                    View Storefront Demo <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* 3D Isometric Interactive Ecosystem Stage */}
+        <div className="relative z-20">
+          <IsometricEcosystem3D />
         </div>
       </section>
 
@@ -527,82 +481,87 @@ export default function FalconHomePage() {
           </div>
         )}
 
-        {/* Tab 2: High-Speed POS */}
+        {/* Tab 2: High-Speed POS With 3D Scanner Simulation */}
         {activeTab === "pos" && (
-          <div id="pos" className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center bg-gradient-to-br from-purple-950/40 via-[#0B0F19] to-transparent p-6 sm:p-10 rounded-3xl border border-purple-500/20 animate-in fade-in">
-            <div className="space-y-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-purple-500/10 text-purple-300 text-xs font-bold">
-                <Receipt className="w-4 h-4" /> Point of Sale (POS) Hardware & Software
-              </div>
-              <h3 className="text-2xl sm:text-4xl font-bold text-white">
-                Ultra-Fast Billing Terminal. Built for Zero Cashier Queues.
-              </h3>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                Whether you use desktop PC, barcode scanners, touch screen POS machines, or thermal receipt printers — Falcon POS guarantees sub-second checkout speeds so you never make a customer wait.
-              </p>
+          <div id="pos" className="space-y-6 animate-in fade-in">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center bg-gradient-to-br from-purple-950/40 via-[#0B0F19] to-transparent p-6 sm:p-10 rounded-3xl border border-purple-500/20">
+              <div className="space-y-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-purple-500/10 text-purple-300 text-xs font-bold">
+                  <Receipt className="w-4 h-4" /> Point of Sale (POS) Hardware & Software
+                </div>
+                <h3 className="text-2xl sm:text-4xl font-bold text-white">
+                  Ultra-Fast Billing Terminal. Built for Zero Cashier Queues.
+                </h3>
+                <p className="text-sm text-slate-300 leading-relaxed">
+                  Whether you use desktop PC, barcode scanners, touch screen POS machines, or thermal receipt printers — Falcon POS guarantees sub-second checkout speeds so you never make a customer wait.
+                </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span className="text-xs text-slate-300">Instant Barcode & QR Code Scanner</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span className="text-xs text-slate-300">Instant Barcode & QR Code Scanner</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span className="text-xs text-slate-300">58mm & 80mm ESC/POS Thermal Printing</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span className="text-xs text-slate-300">Keyboard-Only Fast Billing Shortcuts</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span className="text-xs text-slate-300">Hold & Recall Multiple Carts</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span className="text-xs text-slate-300">Split Tender (Cash, UPI, Card, Udhar)</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span className="text-xs text-slate-300">Customer Loyalty Points & Credit Ledger</span>
+                  </div>
                 </div>
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span className="text-xs text-slate-300">58mm & 80mm ESC/POS Thermal Printing</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span className="text-xs text-slate-300">Keyboard-Only Fast Billing Shortcuts</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span className="text-xs text-slate-300">Hold & Recall Multiple Carts</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span className="text-xs text-slate-300">Split Tender (Cash, UPI, Card, Udhar)</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span className="text-xs text-slate-300">Customer Loyalty Points & Credit Ledger</span>
+
+                <div className="pt-2 flex gap-4">
+                  <Link
+                    href="/pos"
+                    className="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center gap-2"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    <span>Launch Live POS Demo</span>
+                  </Link>
                 </div>
               </div>
 
-              <div className="pt-4 flex gap-4">
-                <Link
-                  href="/pos"
-                  className="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center gap-2"
-                >
-                  <ShoppingCart className="w-4 h-4" />
-                  <span>Launch Live POS Demo</span>
-                </Link>
+              <div className="rounded-2xl bg-[#07090E] border border-white/10 p-6 space-y-4 shadow-xl font-mono text-xs">
+                <div className="flex items-center justify-between text-slate-400 border-b border-white/10 pb-3">
+                  <span>TERMINAL #01 (READY)</span>
+                  <span className="text-purple-400">SHORTCUT: [N] NEW BILL</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="p-3 rounded-lg bg-white/[0.03] flex justify-between items-center text-slate-300">
+                    <span>ITEM 1: Lakme Matte Lipstick</span>
+                    <span className="font-bold text-white">₹350.00</span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-white/[0.03] flex justify-between items-center text-slate-300">
+                    <span>ITEM 2: Nivea Soft Cream 200ml</span>
+                    <span className="font-bold text-white">₹290.00</span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-white/[0.03] flex justify-between items-center text-slate-300">
+                    <span>ITEM 3: Maybelline FitMe Powder</span>
+                    <span className="font-bold text-white">₹520.00</span>
+                  </div>
+                  <div className="pt-3 border-t border-white/10 flex justify-between items-center text-sm font-bold text-white">
+                    <span>TOTAL BILL (INCL GST):</span>
+                    <span className="text-purple-400 text-base">₹1,160.00</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="rounded-2xl bg-[#07090E] border border-white/10 p-6 space-y-4 shadow-xl">
-              <div className="flex items-center justify-between text-xs font-mono text-slate-400 border-b border-white/10 pb-3">
-                <span>TERMINAL #01 (READY)</span>
-                <span className="text-purple-400">SHORTCUT: [N] NEW BILL</span>
-              </div>
-              <div className="space-y-2 font-mono text-xs">
-                <div className="p-3 rounded-lg bg-white/[0.03] flex justify-between items-center text-slate-300">
-                  <span>ITEM 1: Lakme Matte Lipstick</span>
-                  <span className="font-bold text-white">₹350.00</span>
-                </div>
-                <div className="p-3 rounded-lg bg-white/[0.03] flex justify-between items-center text-slate-300">
-                  <span>ITEM 2: Nivea Soft Cream 200ml</span>
-                  <span className="font-bold text-white">₹290.00</span>
-                </div>
-                <div className="p-3 rounded-lg bg-white/[0.03] flex justify-between items-center text-slate-300">
-                  <span>ITEM 3: Maybelline FitMe Powder</span>
-                  <span className="font-bold text-white">₹520.00</span>
-                </div>
-                <div className="pt-3 border-t border-white/10 flex justify-between items-center text-sm font-bold text-white">
-                  <span>TOTAL BILL (INCL GST):</span>
-                  <span className="text-purple-400 text-base">₹1,160.00</span>
-                </div>
-              </div>
-            </div>
+            {/* 3D Hardware Scanner Simulator */}
+            <Scanner3DPreview />
           </div>
         )}
 
@@ -737,73 +696,85 @@ export default function FalconHomePage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Demo 1: Online Storefront */}
-          <div className="group rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.02] border border-white/10 hover:border-pink-500/50 p-6 space-y-4 transition-all hover:scale-[1.02]">
-            <div className="w-12 h-12 rounded-xl bg-pink-500/10 border border-pink-500/30 text-pink-400 flex items-center justify-center group-hover:bg-pink-500 group-hover:text-white transition-all">
-              <Store className="w-6 h-6" />
+          <TiltCard3D maxTilt={12} scale={1.03} className="h-full">
+            <div className="group rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.02] border border-white/10 hover:border-pink-500/50 p-6 space-y-4 transition-all h-full flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-xl bg-pink-500/10 border border-pink-500/30 text-pink-400 flex items-center justify-center group-hover:bg-pink-500 group-hover:text-white transition-all translate-z-20">
+                  <Store className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-pink-400">Customer Facing</span>
+                  <h3 className="text-xl font-bold text-white">Live Storefront Demo</h3>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Explore how your customers browse products, view offers, manage carts, and place instant orders online.
+                </p>
+              </div>
+              <div className="pt-2">
+                <Link
+                  href="/store"
+                  className="w-full py-3 rounded-xl bg-white/5 hover:bg-pink-600 border border-white/10 hover:border-transparent text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span>Launch Storefront</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
             </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-pink-400">Customer Facing</span>
-              <h3 className="text-xl font-bold text-white">Live Storefront Demo</h3>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Explore how your customers browse products, view offers, manage carts, and place instant orders online.
-            </p>
-            <div className="pt-2">
-              <Link
-                href="/store"
-                className="w-full py-3 rounded-xl bg-white/5 hover:bg-pink-600 border border-white/10 hover:border-transparent text-white text-xs font-bold flex items-center justify-center gap-2 transition-all"
-              >
-                <span>Launch Storefront</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
+          </TiltCard3D>
 
           {/* Demo 2: Smart POS */}
-          <div className="group rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.02] border border-white/10 hover:border-purple-500/50 p-6 space-y-4 transition-all hover:scale-[1.02]">
-            <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center group-hover:bg-purple-500 group-hover:text-white transition-all">
-              <ShoppingCart className="w-6 h-6" />
+          <TiltCard3D maxTilt={12} scale={1.03} className="h-full">
+            <div className="group rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.02] border border-white/10 hover:border-purple-500/50 p-6 space-y-4 transition-all h-full flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center group-hover:bg-purple-500 group-hover:text-white transition-all translate-z-20">
+                  <ShoppingCart className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Cashier Terminal</span>
+                  <h3 className="text-xl font-bold text-white">High-Speed POS Billing</h3>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Experience cashier checkout with barcode simulation, keyboard shortcuts, instant discounts, and thermal printing.
+                </p>
+              </div>
+              <div className="pt-2">
+                <Link
+                  href="/pos"
+                  className="w-full py-3 rounded-xl bg-white/5 hover:bg-purple-600 border border-white/10 hover:border-transparent text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span>Launch POS Terminal</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
             </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Cashier Terminal</span>
-              <h3 className="text-xl font-bold text-white">High-Speed POS Billing</h3>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Experience cashier checkout with barcode simulation, keyboard shortcuts, instant discounts, and thermal printing.
-            </p>
-            <div className="pt-2">
-              <Link
-                href="/pos"
-                className="w-full py-3 rounded-xl bg-white/5 hover:bg-purple-600 border border-white/10 hover:border-transparent text-white text-xs font-bold flex items-center justify-center gap-2 transition-all"
-              >
-                <span>Launch POS Terminal</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
+          </TiltCard3D>
 
           {/* Demo 3: ERP Control Room */}
-          <div className="group rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.02] border border-white/10 hover:border-indigo-500/50 p-6 space-y-4 transition-all hover:scale-[1.02]">
-            <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 flex items-center justify-center group-hover:bg-indigo-500 group-hover:text-white transition-all">
-              <BarChart3 className="w-6 h-6" />
+          <TiltCard3D maxTilt={12} scale={1.03} className="h-full">
+            <div className="group rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.02] border border-white/10 hover:border-indigo-500/50 p-6 space-y-4 transition-all h-full flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 flex items-center justify-center group-hover:bg-indigo-500 group-hover:text-white transition-all translate-z-20">
+                  <BarChart3 className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Admin Control</span>
+                  <h3 className="text-xl font-bold text-white">Falcon ERP Dashboard</h3>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Login to access full store analytics, purchases, inventory status, customer demands, and supplier registers.
+                </p>
+              </div>
+              <div className="pt-2">
+                <Link
+                  href="/login"
+                  className="w-full py-3 rounded-xl bg-white/5 hover:bg-indigo-600 border border-white/10 hover:border-transparent text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span>Login to ERP Workspace</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
             </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Admin Control</span>
-              <h3 className="text-xl font-bold text-white">Falcon ERP Dashboard</h3>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Login to access full store analytics, purchases, inventory status, customer demands, and supplier registers.
-            </p>
-            <div className="pt-2">
-              <Link
-                href="/login"
-                className="w-full py-3 rounded-xl bg-white/5 hover:bg-indigo-600 border border-white/10 hover:border-transparent text-white text-xs font-bold flex items-center justify-center gap-2 transition-all"
-              >
-                <span>Login to ERP Workspace</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
+          </TiltCard3D>
         </div>
       </section>
 
@@ -824,134 +795,137 @@ export default function FalconHomePage() {
           </p>
         </div>
 
-        {/* 4 Pricing Cards Grid */}
+        {/* 4 Pricing Cards Grid in 3D */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
           {SUBSCRIPTION_PLANS.map((plan) => {
             const isFeatured = plan.isBestValue;
             return (
-              <div
-                key={plan.id}
-                className={`rounded-3xl p-6 sm:p-7 flex flex-col justify-between transition-all relative ${
-                  isFeatured
-                    ? "bg-gradient-to-b from-indigo-950/90 via-[#0F1424] to-[#0B0F19] border-2 border-indigo-500 shadow-2xl shadow-indigo-950/60 lg:-translate-y-2"
-                    : "bg-[#0B0F19]/80 border border-white/10 hover:border-white/20 hover:bg-[#0E1322]"
-                }`}
-              >
-                {plan.badge && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span
-                      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md ${
-                        plan.isBestValue
-                          ? "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 text-slate-950 font-black"
-                          : "bg-indigo-600 text-white"
+              <TiltCard3D key={plan.id} maxTilt={8} scale={1.02} className="h-full">
+                <div
+                  className={`rounded-3xl p-6 sm:p-7 flex flex-col justify-between transition-all relative h-full ${
+                    isFeatured
+                      ? "bg-gradient-to-b from-indigo-950/90 via-[#0F1424] to-[#0B0F19] border-2 border-indigo-500 shadow-2xl shadow-indigo-950/60 lg:-translate-y-2"
+                      : "bg-[#0B0F19]/80 border border-white/10 hover:border-white/20 hover:bg-[#0E1322]"
+                  }`}
+                >
+                  {plan.badge && (
+                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 translate-z-30">
+                      <span
+                        className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md ${
+                          plan.isBestValue
+                            ? "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 text-slate-950 font-black"
+                            : "bg-indigo-600 text-white"
+                        }`}
+                      >
+                        {plan.badge}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-white translate-z-20">{plan.name}</h3>
+                      <p className="text-xs text-slate-400 mt-1 min-h-[32px] translate-z-10">{plan.description}</p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl sm:text-4xl font-black text-white font-mono translate-z-20">
+                          ₹{plan.price}
+                        </span>
+                        <span className="text-xs text-slate-400 line-through">₹{plan.originalPrice}</span>
+                      </div>
+
+                      <div className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>
+                          Effective ₹{plan.perMonthPrice}/mo ({plan.durationLabel})
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Feature Checklist */}
+                    <div className="space-y-2.5 pt-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        What&apos;s Included:
+                      </span>
+                      <ul className="space-y-2 text-xs text-slate-300">
+                        {plan.features.map((feature, idx) => (
+                          <li key={idx} className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                            <span className="leading-snug">{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Card CTA Buttons */}
+                  <div className="pt-6 mt-6 border-t border-white/10 space-y-2.5">
+                    <button
+                      onClick={() => handleOpenPaymentModal(plan)}
+                      className={`w-full py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer ${
+                        isFeatured
+                          ? "bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-indigo-500/25 hover:scale-[1.02]"
+                          : "bg-white/10 hover:bg-indigo-600 text-white"
                       }`}
                     >
-                      {plan.badge}
-                    </span>
-                  </div>
-                )}
+                      <CreditCard className="w-4 h-4" />
+                      <span>Pay with Razorpay (Instant)</span>
+                    </button>
 
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-white">{plan.name}</h3>
-                    <p className="text-xs text-slate-400 mt-1 min-h-[32px]">{plan.description}</p>
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl sm:text-4xl font-black text-white font-mono">
-                        ₹{plan.price}
-                      </span>
-                      <span className="text-xs text-slate-400 line-through">₹{plan.originalPrice}</span>
-                    </div>
-
-                    <div className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5" />
-                      <span>
-                        Effective ₹{plan.perMonthPrice}/mo ({plan.durationLabel})
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Feature Checklist */}
-                  <div className="space-y-2.5 pt-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      What's Included:
-                    </span>
-                    <ul className="space-y-2 text-xs text-slate-300">
-                      {plan.features.map((feature, idx) => (
-                        <li key={idx} className="flex items-start gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                          <span className="leading-snug">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <Link
+                      href="/register"
+                      className="w-full py-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-slate-300 hover:text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <span>Start 14-Day Free Trial</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
                   </div>
                 </div>
-
-                {/* Card CTA Buttons */}
-                <div className="pt-6 mt-6 border-t border-white/10 space-y-2.5">
-                  <button
-                    onClick={() => handleOpenPaymentModal(plan)}
-                    className={`w-full py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md ${
-                      isFeatured
-                        ? "bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-indigo-500/25 hover:scale-[1.02]"
-                        : "bg-white/10 hover:bg-indigo-600 text-white"
-                    }`}
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    <span>Pay with Razorpay (Instant)</span>
-                  </button>
-
-                  <Link
-                    href="/register"
-                    className="w-full py-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-slate-300 hover:text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <span>Start 14-Day Free Trial</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
+              </TiltCard3D>
             );
           })}
         </div>
 
-        {/* Lifetime License Callout Box */}
-        <div className="mt-12 rounded-3xl bg-gradient-to-r from-[#0E1324] via-[#12182E] to-[#0E1324] border border-indigo-500/30 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
-          <div className="space-y-2 text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 text-amber-300 text-xs font-bold">
-              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              <span>Looking for Zero Recurring Fees?</span>
+        {/* Lifetime License Callout Box with 3D Tilt */}
+        <TiltCard3D maxTilt={6} scale={1.01} className="mt-12">
+          <div className="rounded-3xl bg-gradient-to-r from-[#0E1324] via-[#12182E] to-[#0E1324] border border-indigo-500/30 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+            <div className="space-y-2 text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 text-amber-300 text-xs font-bold">
+                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                <span>Looking for Zero Recurring Fees?</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-bold text-white">
+                Falcon 360 Lifetime Enterprise License — ₹{LIFETIME_PLAN.price}{" "}
+                <span className="text-xs font-normal text-slate-400 line-through">₹{LIFETIME_PLAN.originalPrice}</span>
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
+                Pay once and own the cloud software forever. Lifetime updates, unlimited products, unlimited billing counters, multi-branch, and 24/7 dedicated support included.
+              </p>
             </div>
-            <h3 className="text-xl sm:text-2xl font-bold text-white">
-              Falcon 360 Lifetime Enterprise License — ₹{LIFETIME_PLAN.price}{" "}
-              <span className="text-xs font-normal text-slate-400 line-through">₹{LIFETIME_PLAN.originalPrice}</span>
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
-              Pay once and own the cloud software forever. Lifetime updates, unlimited products, unlimited billing counters, multi-branch, and 24/7 dedicated support included.
-            </p>
-          </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 shrink-0 w-full md:w-auto">
-            <button
-              onClick={() => handleOpenPaymentModal(LIFETIME_PLAN as any)}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>Get Lifetime License</span>
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3 shrink-0 w-full md:w-auto">
+              <button
+                onClick={() => handleOpenPaymentModal(LIFETIME_PLAN as any)}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>Get Lifetime License</span>
+              </button>
 
-            <a
-              href="https://wa.me/919340362381?text=Namaste%20Vimlesh%20ji,%20I%20am%20interested%20in%20the%20Falcon%20360%20Lifetime%20License%20for%20Rs%2014999.%20Please%20guide%20me!"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2"
-            >
-              <MessageCircle className="w-4 h-4" />
-              <span>WhatsApp Us</span>
-            </a>
+              <a
+                href="https://wa.me/919340362381?text=Namaste%20Vimlesh%20ji,%20I%20am%20interested%20in%20the%20Falcon%20360%20Lifetime%20License%20for%20Rs%2014999.%20Please%20guide%20me!"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>WhatsApp Us</span>
+              </a>
+            </div>
           </div>
-        </div>
+        </TiltCard3D>
       </section>
 
       {/* WHY CHOOSE FALCON 360 */}
