@@ -991,13 +991,15 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title=""
+      showHeader={false}
       maxWidth="4xl"
+      contentClassName="p-0 max-h-[88vh] flex flex-col overflow-hidden"
     >
       {/* Studio Header Bar */}
-      <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 px-6 py-4 text-white -m-6 mb-6">
+      <div className="shrink-0 bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 px-6 py-4 text-white">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30 shrink-0">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -1015,73 +1017,76 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
             </div>
           </div>
 
-          {/* Creation Method Pills (Stage 1 only) */}
-          {stage === 1 && (
-            <div className="flex items-center bg-white/10 p-1 rounded-xl backdrop-blur-xs border border-white/15">
-              <button
-                type="button"
-                onClick={() => setCreationMethod("vision")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  creationMethod === "vision"
-                    ? "bg-white text-purple-950 shadow-md"
-                    : "text-white/80 hover:text-white"
-                }`}
-              >
-                <Camera className="w-3.5 h-3.5" />
-                Vision AI Scan
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreationMethod("prompt")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  creationMethod === "prompt"
-                    ? "bg-white text-purple-950 shadow-md"
-                    : "text-white/80 hover:text-white"
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                Prompt AI Studio
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreationMethod("barcode")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  creationMethod === "barcode"
-                    ? "bg-white text-purple-950 shadow-md"
-                    : "text-white/80 hover:text-white"
-                }`}
-              >
-                <Barcode className="w-3.5 h-3.5" />
-                Barcode + AI
-              </button>
-              {onOpenManualModal && (
+          <div className="flex items-center gap-3 self-end sm:self-center">
+            {/* Creation Method Pills (Stage 1 only) */}
+            {stage === 1 && (
+              <div className="flex items-center bg-white/10 p-1 rounded-xl backdrop-blur-xs border border-white/15">
                 <button
                   type="button"
-                  onClick={() => {
-                    onClose();
-                    onOpenManualModal();
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white/80 hover:text-white transition-all"
+                  onClick={() => setCreationMethod("vision")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    creationMethod === "vision"
+                      ? "bg-white text-purple-950 shadow-md"
+                      : "text-white/80 hover:text-white"
+                  }`}
                 >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  Manual Entry
+                  <Camera className="w-3.5 h-3.5" />
+                  Vision AI Scan
                 </button>
-              )}
-            </div>
-          )}
+                <button
+                  type="button"
+                  onClick={() => setCreationMethod("prompt")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    creationMethod === "prompt"
+                      ? "bg-white text-purple-950 shadow-md"
+                      : "text-white/80 hover:text-white"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                  Prompt AI Studio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationMethod("barcode")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    creationMethod === "barcode"
+                      ? "bg-white text-purple-950 shadow-md"
+                      : "text-white/80 hover:text-white"
+                  }`}
+                >
+                  <Barcode className="w-3.5 h-3.5" />
+                  Barcode + AI
+                </button>
+                {onOpenManualModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenManualModal();
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white/80 hover:text-white transition-all"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    Manual Entry
+                  </button>
+                )}
+              </div>
+            )}
 
-          {/* Close X */}
-          <button
-            onClick={onClose}
-            className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+            {/* Single Close X */}
+            <button
+              onClick={onClose}
+              className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              title="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main Studio Body */}
-      <div className="p-6 max-h-[85vh] overflow-y-auto bg-gray-50/60">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 bg-gray-50/60">
         {/* ========================================================================= */}
         {/* STAGE 1: UPLOAD & CAPTURE                                                */}
         {/* ========================================================================= */}
@@ -1249,15 +1254,9 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     </div>
                   </div>
 
-                  <Button
-                    onClick={handleGenerateFromDirectPrompt}
-                    disabled={isPromptGenerating || !promptFormData.name.trim()}
-                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-purple-500/25 flex items-center gap-2"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    {isPromptGenerating ? "Generating 8K Showroom Assets..." : "Generate Product with AI"}
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
+                  <span className="text-[11px] text-gray-500 italic">
+                    Configure prompt & options, then generate below
+                  </span>
                 </div>
               </div>
             ) : creationMethod === "barcode" ? (
@@ -1468,7 +1467,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Front Image Card */}
                     <div
-                      className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-all bg-white flex flex-col justify-between ${
+                      className={`relative border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center transition-all bg-white flex flex-col justify-between ${
                         frontPreviewUrl
                           ? "border-purple-500 bg-purple-50/10"
                           : "border-gray-300 hover:border-purple-400 hover:bg-purple-50/20"
@@ -1488,7 +1487,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                         </div>
 
                         {frontPreviewUrl ? (
-                          <div className="relative aspect-square max-h-56 mx-auto rounded-xl overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
+                          <div className="relative aspect-square max-h-52 mx-auto rounded-xl overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
                             <img
                               src={frontPreviewUrl}
                               alt="Front"
@@ -1506,11 +1505,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                             </button>
                           </div>
                         ) : (
-                          <div className="py-8 space-y-3">
-                            <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mx-auto">
-                              <ImageIcon className="w-6 h-6" />
+                          <div className="py-5 sm:py-6 space-y-2">
+                            <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mx-auto">
+                              <ImageIcon className="w-5 h-5" />
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-0.5">
                               <p className="text-xs font-bold text-gray-800">
                                 Drag & Drop or Click to Upload
                               </p>
@@ -1552,7 +1551,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
 
                     {/* Back Image Card */}
                     <div
-                      className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-all bg-white flex flex-col justify-between ${
+                      className={`relative border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center transition-all bg-white flex flex-col justify-between ${
                         backPreviewUrl
                           ? "border-purple-500 bg-purple-50/10"
                           : "border-gray-300 hover:border-purple-400 hover:bg-purple-50/20"
@@ -1572,7 +1571,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                         </div>
 
                         {backPreviewUrl ? (
-                          <div className="relative aspect-square max-h-56 mx-auto rounded-xl overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
+                          <div className="relative aspect-square max-h-52 mx-auto rounded-xl overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
                             <img
                               src={backPreviewUrl}
                               alt="Back"
@@ -1590,11 +1589,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                             </button>
                           </div>
                         ) : (
-                          <div className="py-8 space-y-3">
-                            <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto">
-                              <Barcode className="w-6 h-6" />
+                          <div className="py-5 sm:py-6 space-y-2">
+                            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto">
+                              <Barcode className="w-5 h-5" />
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-0.5">
                               <p className="text-xs font-bold text-gray-800">
                                 Back / Side Specifications
                               </p>
@@ -1635,22 +1634,6 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                     </div>
                   </div>
                 )}
-
-                {/* Submit Action */}
-                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                  <span className="text-xs text-gray-500">
-                    Takes ~15-20 seconds for full studio rendering & OCR
-                  </span>
-                  <Button
-                    onClick={handleStartAnalysis}
-                    disabled={!frontImageFile && !frontPreviewUrl}
-                    className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-purple-500/25 flex items-center gap-2"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    Launch Falcon AI Studio
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
               </>
             )}
           </div>
@@ -2570,36 +2553,104 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                   )}
                 </div>
 
-                {/* Final Actions */}
-                <div className="flex items-center justify-between pt-3 border-t border-gray-200">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setStage(1)}
-                    className="text-xs"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5 mr-1" />
-                    Back / Re-upload
-                  </Button>
-
-                  <Button
-                    onClick={handleSaveProduct}
-                    disabled={isSaving}
-                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-8 py-2.5 rounded-xl shadow-lg shadow-emerald-600/25 flex items-center gap-2"
-                  >
-                    {isSaving ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4" />
-                    )}
-                    Publish to Store & Website
-                  </Button>
+                {/* Final publish note */}
+                <div className="pt-2 text-right">
+                  <span className="text-[11px] text-gray-500">
+                    All set? Publish below to update your inventory & online store
+                  </span>
                 </div>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* STICKY BOTTOM FOOTER BAR                                                  */}
+      {/* ========================================================================= */}
+      {stage === 1 && creationMethod === "vision" && !isCameraActive && (
+        <div className="shrink-0 bg-white border-t border-gray-200 px-6 py-3.5 flex items-center justify-between shadow-lg shadow-black/5 z-10">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            <span>
+              {frontPreviewUrl
+                ? "Ready to scan • Studio rendering takes ~15-20s"
+                : "Upload front packaging photo to launch studio"}
+            </span>
+          </div>
+          <Button
+            onClick={handleStartAnalysis}
+            disabled={!frontImageFile && !frontPreviewUrl}
+            className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-purple-500/25 flex items-center gap-2 transition-all disabled:opacity-50 disabled:shadow-none cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4" />
+            Launch Falcon AI Studio
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
+
+      {stage === 1 && creationMethod === "prompt" && (
+        <div className="shrink-0 bg-white border-t border-gray-200 px-6 py-3.5 flex items-center justify-between shadow-lg shadow-black/5 z-10">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            <span>
+              {promptFormData.name.trim()
+                ? "Ready to generate showroom asset"
+                : "Enter product name above to generate"}
+            </span>
+          </div>
+          <Button
+            onClick={handleGenerateFromDirectPrompt}
+            disabled={isPromptGenerating || !promptFormData.name.trim()}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-purple-500/25 flex items-center gap-2 transition-all disabled:opacity-50 disabled:shadow-none cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4" />
+            {isPromptGenerating ? "Generating 8K Showroom Assets..." : "Generate Product with AI"}
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
+
+      {stage === 3 && aiResult && (
+        <div className="shrink-0 bg-white border-t border-gray-200 px-6 py-3.5 flex items-center justify-between shadow-lg shadow-black/5 z-10">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setStage(1);
+              setAiResult(null);
+            }}
+            className="text-xs font-semibold text-gray-700 hover:bg-gray-100"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+            Back / Re-upload
+          </Button>
+
+          <div className="flex items-center gap-4">
+            {formData.selling_price > 0 && (
+              <div className="hidden sm:flex items-center gap-2 text-xs">
+                <span className="text-gray-500">Est. Profit:</span>
+                <span className="font-bold text-emerald-600">
+                  {formatCurrency(profitMarginAmount)} ({marginPercentage}%)
+                </span>
+              </div>
+            )}
+            <Button
+              onClick={handleSaveProduct}
+              disabled={isSaving}
+              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-8 py-2.5 rounded-xl shadow-lg shadow-emerald-600/25 flex items-center gap-2 cursor-pointer"
+            >
+              {isSaving ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )}
+              Publish to Store & Website
+            </Button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 };

@@ -7,19 +7,27 @@ import { cn } from "@/lib/utils";
 export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
-  title: string;
+  title?: string;
   description?: string;
   children: React.ReactNode;
-  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "4xl";
+  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "4xl" | "5xl";
+  showHeader?: boolean;
+  contentClassName?: string;
+  containerClassName?: string;
+  footer?: React.ReactNode;
 }
 
 export function Modal({
   isOpen,
   onClose,
-  title,
+  title = "",
   description,
   children,
   maxWidth = "lg",
+  showHeader = true,
+  contentClassName,
+  containerClassName,
+  footer,
 }: ModalProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -44,10 +52,13 @@ export function Modal({
     xl: "max-w-xl",
     "2xl": "max-w-2xl",
     "4xl": "max-w-4xl",
+    "5xl": "max-w-5xl",
   };
 
+  const hasHeader = showHeader && (Boolean(title) || Boolean(description));
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm transition-opacity"
@@ -57,24 +68,33 @@ export function Modal({
       {/* Modal Dialog */}
       <div
         className={cn(
-          "relative z-10 w-full bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden transform transition-all my-8 animate-in fade-in zoom-in-95 duration-150",
-          maxWidths[maxWidth]
+          "relative z-10 w-full bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden transform transition-all my-4 sm:my-8 animate-in fade-in zoom-in-95 duration-150 flex flex-col",
+          maxWidths[maxWidth],
+          containerClassName
         )}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/50">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-            {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+        {hasHeader && (
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/50 shrink-0">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+              {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        )}
 
-        <div className="p-6 max-h-[80vh] overflow-y-auto">{children}</div>
+        <div className={cn("p-6 max-h-[80vh] overflow-y-auto", contentClassName)}>{children}</div>
+
+        {footer && (
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50/50 shrink-0">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
