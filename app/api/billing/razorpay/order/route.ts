@@ -15,39 +15,31 @@ export async function POST(request: Request) {
       customerPhone,
     } = body;
 
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keyId || !keySecret) {
+      console.error("Razorpay credentials missing from environment variables (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET).");
+      return NextResponse.json(
+        { error: "Payment gateway configuration error." },
+        { status: 500 }
+      );
+    }
+
     let finalAmount = 0;
     let plan = null;
 
-    if (customAmount && Number(customAmount) > 0) {
-      finalAmount = Number(customAmount);
-    } else {
+    if (planId) {
       plan = [...SUBSCRIPTION_PLANS, LIFETIME_PLAN].find((p) => p.id === planId);
       if (!plan) {
-        return NextResponse.json({ error: "Invalid subscription plan or amount selected." }, { status: 400 });
+        return NextResponse.json({ error: "Invalid subscription plan selected." }, { status: 400 });
       }
+      // Server-side plan definition is authoritative; client-supplied customAmount is ignored for subscription plans
       finalAmount = plan.price;
-    }
-
-    const DEFAULT_KEY_ID = "rzp_live_TakMuhWA7kMBGw";
-    const DEFAULT_KEY_SECRET = "ssdPgkth99A3bjuPccXVZG1z";
-
-    const keyId =
-      process.env.RAZORPAY_KEY_ID ||
-      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
-      DEFAULT_KEY_ID;
-    const keySecret =
-      process.env.RAZORPAY_KEY_SECRET ||
-      DEFAULT_KEY_SECRET;
-
-    if (!keyId || !keySecret) {
-      return NextResponse.json(
-        {
-          error: "Razorpay API keys are not configured yet.",
-          requiresConfig: true,
-          plan,
-        },
-        { status: 503 }
-      );
+    } else if (customAmount && Number(customAmount) > 0) {
+      finalAmount = Math.max(1, Number(customAmount));
+    } else {
+      return NextResponse.json({ error: "A valid plan or amount is required." }, { status: 400 });
     }
 
     const instance = new Razorpay({

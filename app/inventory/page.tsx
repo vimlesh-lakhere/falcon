@@ -34,10 +34,14 @@ export default function InventoryPage() {
   // Adjustment Modal
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [adjustMode, setAdjustMode] = useState<"exact" | "delta">("exact");
+  const [targetStock, setTargetStock] = useState<number | "">("");
   const [movementType, setMovementType] = useState<"adjustment" | "damage" | "return_in" | "return_out">("adjustment");
   const [qtyDelta, setQtyDelta] = useState(0);
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  const selectedProduct = allProducts.find((p) => p.id === selectedProductId);
 
   const loadData = async () => {
     if (!activeShopId) return;
@@ -70,20 +74,32 @@ export default function InventoryPage() {
 
   const handleAdjustSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProductId || qtyDelta === 0) return;
+    if (!selectedProductId) return;
 
     try {
       setIsSaving(true);
-      await inventoryRepository.adjustStock({
-        shop_id: activeShopId,
-        product_id: selectedProductId,
-        quantity_delta: qtyDelta,
-        movement_type: movementType,
-        notes: notes || `Manual stock ${movementType}`,
-      });
+      if (adjustMode === "exact") {
+        const finalCount = targetStock === "" ? 0 : Number(targetStock);
+        await inventoryRepository.setExactStock({
+          shop_id: activeShopId,
+          product_id: selectedProductId,
+          new_stock: finalCount,
+          notes: notes || `Physical Stock Audit: count set to ${finalCount}`,
+        });
+      } else {
+        if (qtyDelta === 0) return;
+        await inventoryRepository.adjustStock({
+          shop_id: activeShopId,
+          product_id: selectedProductId,
+          quantity_delta: qtyDelta,
+          movement_type: movementType,
+          notes: notes || `Manual stock ${movementType}`,
+        });
+      }
 
       setIsAdjustModalOpen(false);
       setSelectedProductId("");
+      setTargetStock("");
       setQtyDelta(0);
       setNotes("");
       loadData();
@@ -235,11 +251,37 @@ export default function InventoryPage() {
         <Modal
           isOpen={isAdjustModalOpen}
           onClose={() => setIsAdjustModalOpen(false)}
-          title="Manual Stock Adjustment"
+          title="Manual Stock Adjustment & Audit"
           description="Directly adjust or reconcile physical inventory quantity with audit tracking"
           maxWidth="md"
         >
           <form onSubmit={handleAdjustSubmit} className="space-y-4">
+            {/* Mode Switcher */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-gray-100 rounded-lg text-xs font-semibold text-gray-600">
+              <button
+                type="button"
+                onClick={() => setAdjustMode("exact")}
+                className={`py-1.5 rounded-md transition-all ${
+                  adjustMode === "exact"
+                    ? "bg-white text-brand-600 shadow-sm font-bold"
+                    : "hover:text-gray-900"
+                }`}
+              >
+                Set Exact Shelf Count
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdjustMode("delta")}
+                className={`py-1.5 rounded-md transition-all ${
+                  adjustMode === "delta"
+                    ? "bg-white text-brand-600 shadow-sm font-bold"
+                    : "hover:text-gray-900"
+                }`}
+              >
+                Quick Delta (+ / -)
+              </button>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
                 Select Product *
@@ -247,42 +289,87 @@ export default function InventoryPage() {
               <select
                 required
                 value={selectedProductId}
-                onChange={(e) => setSelectedProductId(e.target.value)}
+                onChange={(e) => {
+                  const pid = e.target.value;
+                  setSelectedProductId(pid);
+                  const p = allProducts.find((item) => item.id === pid);
+                  if (p && adjustMode === "exact") {
+                    setTargetStock(Number(p.current_stock) || 0);
+                  }
+                }}
                 className="w-full text-xs h-9 bg-white border border-gray-300 rounded-md px-3 font-medium text-gray-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"
               >
                 <option value="">Choose product...</option>
                 {allProducts.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} (Current: {p.current_stock})
+                    {p.name} (Current Stock: {p.current_stock})
                   </option>
                 ))}
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Adjustment Reason / Type *
-              </label>
-              <select
-                value={movementType}
-                onChange={(e) => setMovementType(e.target.value as any)}
-                className="w-full text-xs h-9 bg-white border border-gray-300 rounded-md px-3 font-medium text-gray-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"
-              >
-                <option value="adjustment">Stock Count Audit / Correction</option>
-                <option value="damage">Damaged or Expired Goods</option>
-                <option value="return_in">Return Inwards (Customer)</option>
-                <option value="return_out">Return Outwards (Supplier)</option>
-              </select>
-            </div>
+            {selectedProduct && (
+              <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-lg flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-gray-500 font-medium">System Stock:</span>{" "}
+                  <span className="font-bold text-gray-900 font-mono">{selectedProduct.current_stock} units</span>
+                </div>
+                {adjustMode === "exact" && targetStock !== "" && (
+                  <div>
+                    <span className="text-gray-500 font-medium">Reconciliation Delta:</span>{" "}
+                    <span
+                      className={`font-bold font-mono ${
+                        Number(targetStock) - Number(selectedProduct.current_stock) >= 0
+                          ? "text-emerald-700"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {Number(targetStock) - Number(selectedProduct.current_stock) >= 0 ? "+" : ""}
+                      {Number(targetStock) - Number(selectedProduct.current_stock)} units
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
-            <Input
-              type="number"
-              label="Quantity Delta (+ for stock in, - for stock out) *"
-              required
-              value={qtyDelta === 0 ? "" : qtyDelta}
-              onChange={(e) => setQtyDelta(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-              placeholder="e.g. 10 or -5"
-            />
+            {adjustMode === "exact" ? (
+              <Input
+                type="number"
+                label="Physical Inventory Count on Shelf (Target Stock) *"
+                required
+                min={0}
+                value={targetStock === "" ? "" : targetStock}
+                onChange={(e) => setTargetStock(e.target.value === "" ? "" : parseFloat(e.target.value) || 0)}
+                placeholder="e.g. 50"
+              />
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Adjustment Reason / Type *
+                  </label>
+                  <select
+                    value={movementType}
+                    onChange={(e) => setMovementType(e.target.value as any)}
+                    className="w-full text-xs h-9 bg-white border border-gray-300 rounded-md px-3 font-medium text-gray-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"
+                  >
+                    <option value="adjustment">Stock Count Audit / Correction</option>
+                    <option value="damage">Damaged or Expired Goods</option>
+                    <option value="return_in">Return Inwards (Customer)</option>
+                    <option value="return_out">Return Outwards (Supplier)</option>
+                  </select>
+                </div>
+
+                <Input
+                  type="number"
+                  label="Quantity Delta (+ for stock in, - for stock out) *"
+                  required
+                  value={qtyDelta === 0 ? "" : qtyDelta}
+                  onChange={(e) => setQtyDelta(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
+                  placeholder="e.g. 10 or -5"
+                />
+              </>
+            )}
 
             <Input
               label="Audit Note / Reason"

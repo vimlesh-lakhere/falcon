@@ -22,27 +22,14 @@ export const inventoryRepository = {
     movement_type: "adjustment" | "damage" | "return_in" | "return_out" | "purchase_receipt" | "sale";
     notes: string;
   }) {
-    // 1. Fetch current product stock
-    const { data: prod, error: prodErr } = await supabase
-      .from("products")
-      .select("current_stock")
-      .eq("id", payload.product_id)
-      .single();
+    if (payload.quantity_delta === 0) {
+      throw new Error("Quantity delta cannot be zero.");
+    }
 
-    if (prodErr) throw prodErr;
-
-    const currentStock = Number(prod?.current_stock) || 0;
-    const newStock = Math.max(0, currentStock + Number(payload.quantity_delta));
-
-    // 2. Update product's current_stock in database
-    const { error: updateErr } = await supabase
-      .from("products")
-      .update({ current_stock: newStock })
-      .eq("id", payload.product_id);
-
-    if (updateErr) throw updateErr;
-
-    // 3. Insert audit log into stock_movements
+    // Insert into stock_movements ledger.
+    // The database trigger 'trg_stock_movement_recompute' automatically updates
+    // products.current_stock = current_stock + quantity_delta upon insertion.
+    // DO NOT manually update products.current_stock beforehand to avoid double delta!
     const { data, error } = await supabase
       .from("stock_movements")
       .insert([
@@ -58,7 +45,23 @@ export const inventoryRepository = {
       .select("*, product:products(*)")
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.warn("Stock movement insert failed, falling back to direct update:", error);
+      // Fallback only if stock_movements table or trigger failed
+      const { data: prod } = await supabase
+        .from("products")
+        .select("current_stock")
+        .eq("id", payload.product_id)
+        .single();
+      const currentStock = Number(prod?.current_stock) || 0;
+      const newStock = Math.max(0, currentStock + Number(payload.quantity_delta));
+      await supabase
+        .from("products")
+        .update({ current_stock: newStock })
+        .eq("id", payload.product_id);
+      throw error;
+    }
+
     return data as StockMovement;
   },
 
@@ -81,25 +84,26 @@ export const inventoryRepository = {
     const targetStock = Math.max(0, Number(payload.new_stock));
     const delta = targetStock - currentStock;
 
-    // 2. Update product table
-    const { error: updateErr } = await supabase
-      .from("products")
-      .update({ current_stock: targetStock })
-      .eq("id", payload.product_id);
+    if (delta === 0) return targetStock;
 
-    if (updateErr) throw updateErr;
+    // 2. Insert into stock_movements ledger.
+    // The database trigger will recompute: current_stock = current_stock + delta = targetStock
+    const { error: moveErr } = await supabase.from("stock_movements").insert([
+      {
+        shop_id: payload.shop_id,
+        product_id: payload.product_id,
+        movement_type: "adjustment",
+        quantity_delta: delta,
+        notes: payload.notes || `Stock audit reset: ${currentStock} -> ${targetStock}`,
+      },
+    ]);
 
-    // 3. Log stock movement if delta != 0
-    if (delta !== 0) {
-      await supabase.from("stock_movements").insert([
-        {
-          shop_id: payload.shop_id,
-          product_id: payload.product_id,
-          movement_type: "adjustment",
-          quantity_delta: delta,
-          notes: payload.notes || `Stock audit reset: ${currentStock} -> ${targetStock}`,
-        },
-      ]);
+    if (moveErr) {
+      console.warn("Could not insert stock movement for exact reset, applying direct fallback:", moveErr);
+      await supabase
+        .from("products")
+        .update({ current_stock: targetStock })
+        .eq("id", payload.product_id);
     }
 
     return targetStock;

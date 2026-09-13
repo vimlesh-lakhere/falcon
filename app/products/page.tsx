@@ -500,11 +500,27 @@ export default function ProductsPage() {
               <span>Export CSV</span>
             </Button>
 
-            {/* Primary Add Product Action */}
-            <AddProductSplitButton
-              onOpenAiCreation={() => setIsFalconAiModalOpen(true)}
-              onOpenManualCreation={openAddModal}
-            />
+            {/* Primary Add Product Action: Direct, Fast, Streamlined */}
+            <Button
+              size="sm"
+              onClick={openAddModal}
+              className="gap-1.5 font-bold text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md shadow-purple-600/20 rounded-xl"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Product</span>
+            </Button>
+
+            {/* Optional Falcon AI Studio */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsFalconAiModalOpen(true)}
+              className="gap-1.5 font-bold text-xs border-purple-200 text-purple-700 bg-purple-50/60 hover:bg-purple-100 rounded-xl"
+              title="Launch Falcon AI Studio"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>AI Studio</span>
+            </Button>
           </div>
         </div>
 

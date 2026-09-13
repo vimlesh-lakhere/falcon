@@ -69,35 +69,55 @@ export const productsRepository = {
   async updateStock(id: string, newStock: number, reason: string = "Stock adjustment", shopId?: string) {
     const currentProd = await this.getById(id);
     const prevStock = Number(currentProd.current_stock) || 0;
-    const delta = newStock - prevStock;
+    const targetStock = Math.max(0, newStock);
+    const delta = targetStock - prevStock;
 
-    const { data, error } = await supabase
-      .from("products")
-      .update({ current_stock: Math.max(0, newStock) })
-      .eq("id", id)
-      .select("*, category:categories(*), supplier:suppliers(*)")
-      .single();
+    if (delta === 0) {
+      return currentProd;
+    }
 
-    if (error) throw error;
+    const sId = shopId || currentProd.shop_id;
 
-    // Log movement in stock_movements ledger if delta != 0
-    if (delta !== 0 && (shopId || currentProd.shop_id)) {
+    // Supabase trigger 'trg_stock_movement_recompute' automatically adds NEW.quantity_delta
+    // to products.current_stock on insert into stock_movements.
+    // Therefore, we MUST NOT manually update products.current_stock beforehand!
+    let movementSucceeded = false;
+    if (sId) {
       try {
-        await supabase.from("stock_movements").insert([
+        const { error: moveErr } = await supabase.from("stock_movements").insert([
           {
-            shop_id: shopId || currentProd.shop_id,
+            shop_id: sId,
             product_id: id,
-            movement_type: delta > 0 ? "adjustment" : "adjustment",
+            movement_type: "adjustment",
             quantity_delta: delta,
-            notes: `${reason} (${prevStock} -> ${newStock})`,
+            notes: `${reason} (${prevStock} -> ${targetStock})`,
           },
         ]);
+        if (!moveErr) {
+          movementSucceeded = true;
+        } else {
+          console.warn("Stock movement insert failed, falling back to direct update:", moveErr);
+        }
       } catch (logErr) {
         console.warn("Could not log stock movement:", logErr);
       }
     }
 
-    return data as Product;
+    // Direct update fallback only if stock_movements insert failed or shopId was missing
+    if (!movementSucceeded) {
+      const { data, error } = await supabase
+        .from("products")
+        .update({ current_stock: targetStock })
+        .eq("id", id)
+        .select("*, category:categories(*), supplier:suppliers(*)")
+        .single();
+      if (error) throw error;
+      return data as Product;
+    }
+
+    // Re-fetch product to get the trigger-updated current_stock
+    const updated = await this.getById(id);
+    return updated;
   },
 
   async delete(id: string) {

@@ -751,16 +751,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
       let saved: Product;
       if (editingProduct) {
-        payload.current_stock = currentStock;
-        saved = await productsRepository.update(editingProduct.id, payload);
-
-        // If stock changed during edit, log stock movement
         const prevStock = Number(editingProduct.current_stock) || 0;
         const delta = currentStock - prevStock;
+
+        // Do not update current_stock directly here if there is a delta,
+        // so the database trigger on stock_movements can update it cleanly without double-counting!
+        const { current_stock: _ignored, ...productDetails } = payload;
+        saved = await productsRepository.update(editingProduct.id, productDetails);
+
         if (delta !== 0) {
           try {
             const { supabase } = await import("@/lib/supabase/client");
-            await supabase.from("stock_movements").insert([
+            const { error: moveErr } = await supabase.from("stock_movements").insert([
               {
                 shop_id: shopId,
                 product_id: editingProduct.id,
@@ -769,10 +771,17 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 notes: `Stock updated in Product Edit (${prevStock} -> ${currentStock})`,
               },
             ]);
+            if (moveErr) {
+              console.warn("Could not insert stock movement, applying direct fallback:", moveErr);
+              await supabase.from("products").update({ current_stock: currentStock }).eq("id", editingProduct.id);
+            }
           } catch (e) {
             console.warn("Could not log stock movement on edit:", e);
+            const { supabase } = await import("@/lib/supabase/client");
+            await supabase.from("products").update({ current_stock: currentStock }).eq("id", editingProduct.id);
           }
         }
+        saved.current_stock = currentStock;
       } else {
         payload.current_stock = currentStock;
         saved = await productsRepository.create(payload);
