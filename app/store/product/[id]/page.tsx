@@ -71,8 +71,10 @@ export default function ProductDetailPage() {
 
         if (prod) {
           const vars = extractProductVariants(prod);
-          if (vars.length > 0) {
+          if (vars.length > 1) {
             setSelectedVariant(vars[0]);
+          } else {
+            setSelectedVariant(null);
           }
         }
 
@@ -235,7 +237,7 @@ export default function ProductDetailPage() {
           {/* ================================================================= */}
           {/* ⚡ PACK SIZE / VOLUME / WEIGHT VARIANT SELECTOR                   */}
           {/* ================================================================= */}
-          {variants.length > 0 && (
+          {variants.length > 1 && (
             <div className="space-y-2 bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 shadow-2xs">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black text-gray-900 flex items-center gap-1.5">

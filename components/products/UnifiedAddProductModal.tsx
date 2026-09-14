@@ -96,6 +96,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [onlinePrice, setOnlinePrice] = useState<string>("");
   const [description, setDescription] = useState("");
   const [variants, setVariants] = useState<CleanVariant[]>([]);
+  const [hasVariants, setHasVariants] = useState<boolean>(false);
   
   // Dual Image State: Front (Primary Packshot) & Back (Label / MRP / Ingredients)
   const [imageUrl, setImageUrl] = useState("");
@@ -166,22 +167,41 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     if (p.image_url) setImageUrl(p.image_url);
     if ((p as any).back_image_url) setBackImageUrl((p as any).back_image_url);
 
-    // Extract variants if present, or initialize with base variant
+    // Turn ON variants and load existing product sizes + new size row
+    setHasVariants(true);
     const existingVars = extractProductVariants(p);
-    if (existingVars && existingVars.length > 0) {
-      setVariants(existingVars);
+    if (existingVars && existingVars.length > 1) {
+      setVariants([
+        ...existingVars,
+        {
+          id: `var-new-${Date.now()}`,
+          size: "",
+          mrp: 0,
+          price: 0,
+          purchasePrice: 0,
+          stock: 10,
+        },
+      ]);
     } else {
-      const baseUnitName = units.find((u) => u.id === p.unit_id)?.name || "Standard";
+      const baseUnitName = units.find((u) => u.id === p.unit_id)?.name || "Standard Pack";
       setVariants([
         {
           id: `var-base-${Date.now()}`,
           size: baseUnitName,
-          mrp: Number(p.selling_price) || 0,
+          mrp: Number((p as any).mrp) || Number(p.selling_price) || 0,
           price: Number(p.selling_price) || 0,
           purchasePrice: Number(p.purchase_price) || 0,
           stock: Number(p.current_stock) || 0,
           barcode: p.barcode || undefined,
           sku: p.sku || undefined,
+        },
+        {
+          id: `var-new-${Date.now() + 1}`,
+          size: "",
+          mrp: 0,
+          price: 0,
+          purchasePrice: 0,
+          stock: 10,
         },
       ]);
     }
@@ -382,7 +402,13 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
         // Load variants
         const loadedVars = extractProductVariants(editingProduct);
-        setVariants(loadedVars);
+        if (loadedVars && loadedVars.length > 1) {
+          setHasVariants(true);
+          setVariants(loadedVars);
+        } else {
+          setHasVariants(false);
+          setVariants([]);
+        }
 
         // Split multiple images (Front|||Back)
         const [fImg, bImg] = (editingProduct.image_url || "").split("|||");
@@ -408,6 +434,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setIsOnline(true);
         setOnlinePrice("");
         setDescription("");
+        setHasVariants(false);
         setVariants([]);
         setImageUrl("");
         setBackImageUrl("");
@@ -776,7 +803,10 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           : imageUrl.trim()
         : backImageUrl.trim() || null;
 
-      const finalDescription = attachVariantsToDescription(description, variants);
+      const finalDescription =
+        hasVariants && variants.length > 1
+          ? attachVariantsToDescription(description, variants)
+          : stripVariantsFromDescription(description);
 
       let finalNameHindi = nameHindi.trim();
       if (!finalNameHindi && name.trim()) {
@@ -862,6 +892,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setMinSellingPrice(0);
         setCurrentStock(10);
         setDescription("");
+        setHasVariants(false);
         setVariants([]);
         setImageUrl("");
         setBackImageUrl("");
@@ -1548,18 +1579,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-2xl border-2 border-purple-300 overflow-hidden divide-y divide-gray-100 animate-in fade-in slide-in-from-top-2 duration-150">
                       <div className="bg-gradient-to-r from-purple-700 to-indigo-700 text-white px-3 py-2 flex items-center justify-between">
                         <div className="flex items-center gap-1.5 text-xs font-bold">
-                          <span>💡 Similar Products in Inventory:</span>
+                          <span>💡 यह प्रोडक्ट इन्वेंट्री में पहले से मौजूद है:</span>
                           <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                            {matchingExistingProducts.length} Found
+                            {matchingExistingProducts.length} Match
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => setIsNameSuggestionsOpen(false)}
-                          className="text-white/80 hover:text-white text-xs px-1.5 py-0.5"
+                          className="text-white/80 hover:text-white text-xs px-1.5 py-0.5 cursor-pointer"
                           title="Close suggestions"
                         >
-                          ✕ Dismiss
+                          ✕ Dismiss (अलग बनाएं)
                         </button>
                       </div>
 
@@ -1609,8 +1640,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                                 <span className="text-xs font-black text-purple-700">
                                   ₹{p.selling_price}
                                 </span>
-                                <span className="text-[10px] text-indigo-600 font-bold group-hover:underline flex items-center gap-0.5">
-                                  ⚡ Auto-fill & Add Variant →
+                                <span className="text-[10px] text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md font-bold group-hover:bg-emerald-200 flex items-center gap-0.5 border border-emerald-300">
+                                  ➕ नया साइज़ / Variant जोड़ें →
                                 </span>
                               </div>
                             </button>
@@ -1962,170 +1993,247 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
               {/* =================================================================== */}
               <div
                 id="pack-sizes-section"
-                className="bg-white rounded-2xl border-2 border-purple-400/80 p-4 shadow-sm space-y-3 ring-4 ring-purple-500/5"
+                className={`rounded-2xl border-2 transition-all p-4 space-y-3 ${
+                  hasVariants
+                    ? "bg-white border-purple-400/80 shadow-sm ring-4 ring-purple-500/5"
+                    : "bg-gray-50/70 border-gray-200"
+                }`}
               >
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-purple-100 pb-2.5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                    <div
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm shadow-xs transition-colors ${
+                        hasVariants ? "bg-purple-600 text-white" : "bg-gray-200 text-gray-600"
+                      }`}
+                    >
                       📦
                     </div>
                     <div>
                       <h4 className="text-xs sm:text-sm font-black text-gray-900 flex items-center gap-2">
-                        Multi-Pack Sizes & Variant Pricing
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                          {variants.length > 0 ? `${variants.length} Sizes Active` : "Optional"}
+                        Pack Sizes & Variants (अलग-अलग साइज़ / वज़न)
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            hasVariants
+                              ? "bg-purple-100 text-purple-800 border-purple-200"
+                              : "bg-gray-200 text-gray-600 border-gray-300"
+                          }`}
+                        >
+                          {hasVariants ? `${variants.length} Sizes Active` : "OFF / बंद"}
                         </span>
                       </h4>
                       <p className="text-[11px] text-gray-600 font-medium">
-                        Configure different volumes (10ml, 50ml, 100ml, 500ml) or weights (50g, 100g, 1kg) for 1-page customer view
+                        {hasVariants
+                          ? "Enter specific pack sizes (100g, 200g, etc.) and prices you actually stock"
+                          : "This product is saved as a single item. Turn ON only if it has multiple pack sizes"}
                       </p>
                     </div>
                   </div>
 
-                  {/* 1-Click Generation Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => handleAddPresetVariants("liquid")}
-                      className="px-3 py-1.5 text-[11px] font-black bg-purple-100 hover:bg-purple-200 text-purple-950 border border-purple-300 rounded-xl transition-all shadow-2xs active:scale-95"
-                    >
-                      💧 + Liquid Sizes (10ml - 1L)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddPresetVariants("weight")}
-                      className="px-3 py-1.5 text-[11px] font-black bg-pink-100 hover:bg-pink-200 text-pink-950 border border-pink-300 rounded-xl transition-all shadow-2xs active:scale-95"
-                    >
-                      ⚖️ + Weight Sizes (10g - 1kg)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAddCustomVariant}
-                      className="px-3 py-1.5 text-[11px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-300 rounded-xl transition-all shadow-2xs active:scale-95"
-                    >
-                      + Custom Size
-                    </button>
+                  {/* Explicit Opt-In Toggle Switch */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasVariants}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setHasVariants(val);
+                          if (val && variants.length === 0) {
+                            setVariants([
+                              {
+                                id: `var-base-${Date.now()}`,
+                                size: units.find((u) => u.id === unitId)?.name || "Standard Pack",
+                                mrp: mrp > 0 ? mrp : sellingPrice || 0,
+                                price: sellingPrice || 0,
+                                purchasePrice: purchasePrice || 0,
+                                stock: currentStock || 10,
+                                barcode: barcode || undefined,
+                                sku: sku || undefined,
+                              },
+                            ]);
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                    </label>
+                    <span className="text-xs font-bold text-gray-800">
+                      {hasVariants ? "वैरिएंट चालू (ON)" : "सिंगल आइटम (OFF)"}
+                    </span>
                   </div>
                 </div>
 
-                {/* Variant List Table or Empty Quick-Start */}
-                {variants.length > 0 ? (
-                  <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-2xs">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-purple-50/80 text-purple-950 font-bold text-[11px] border-b border-purple-100">
-                        <tr>
-                          <th className="py-2.5 px-3">Size / Pack</th>
-                          <th className="py-2.5 px-3">MRP (₹)</th>
-                          <th className="py-2.5 px-3 text-purple-900 font-black">Store Price (₹)</th>
-                          <th className="py-2.5 px-3">Cost (₹)</th>
-                          <th className="py-2.5 px-3">Opening Stock</th>
-                          <th className="py-2.5 px-2 text-center">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 bg-white">
-                        {variants.map((v, idx) => (
-                          <tr key={v.id || idx} className="hover:bg-purple-50/30 transition-colors">
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                value={v.size}
-                                onChange={(e) => handleUpdateVariant(idx, "size", e.target.value)}
-                                className="w-24 px-2.5 py-1.5 text-xs font-black text-gray-900 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
-                                placeholder="e.g. 100ml"
-                              />
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="number"
-                                placeholder="0.00"
-                                value={v.mrp === 0 ? "" : v.mrp}
-                                onFocus={(e) => e.currentTarget.select()}
-                                onChange={(e) =>
-                                  handleUpdateVariant(idx, "mrp", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
-                                }
-                                className="w-20 px-2 py-1.5 text-xs font-semibold text-gray-700 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
-                              />
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="number"
-                                placeholder="0.00"
-                                value={v.price === 0 ? "" : v.price}
-                                onFocus={(e) => e.currentTarget.select()}
-                                onChange={(e) =>
-                                  handleUpdateVariant(idx, "price", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
-                                }
-                                className="w-20 px-2 py-1.5 text-xs font-black text-purple-900 border border-purple-400 rounded-lg focus:border-purple-600 focus:outline-none bg-purple-50/50"
-                              />
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="number"
-                                placeholder="0.00"
-                                value={!v.purchasePrice ? "" : v.purchasePrice}
-                                onFocus={(e) => e.currentTarget.select()}
-                                onChange={(e) =>
-                                  handleUpdateVariant(
-                                    idx,
-                                    "purchasePrice",
-                                    e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
-                                  )
-                                }
-                                className="w-20 px-2 py-1.5 text-xs font-semibold text-gray-600 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
-                              />
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="number"
-                                placeholder="0"
-                                value={v.stock === 0 ? "" : (v.stock ?? 10)}
-                                onFocus={(e) => e.currentTarget.select()}
-                                onChange={(e) =>
-                                  handleUpdateVariant(
-                                    idx,
-                                    "stock",
-                                    e.target.value === "" ? 0 : parseInt(e.target.value) || 0
-                                  )
-                                }
-                                className="w-16 px-2 py-1.5 text-xs font-semibold text-gray-700 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
-                              />
-                            </td>
-                            <td className="py-2 px-2 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveVariant(idx)}
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Remove size"
-                              >
-                                ✕
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                {hasVariants ? (
+                  <div className="space-y-3 pt-1 animate-in fade-in duration-150">
+                    {/* 1-Click Generation Presets & Custom Size Add */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap bg-purple-50/50 p-2 rounded-xl border border-purple-100">
+                      <span className="text-[11px] font-bold text-purple-900">
+                        ⚡ Quick Fill Presets:
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleAddPresetVariants("liquid")}
+                          className="px-2.5 py-1 text-[11px] font-bold bg-white hover:bg-purple-600 hover:text-white text-purple-900 border border-purple-300 rounded-lg transition-all shadow-2xs cursor-pointer"
+                        >
+                          💧 Liquid (10ml - 1L)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddPresetVariants("weight")}
+                          className="px-2.5 py-1 text-[11px] font-bold bg-white hover:bg-pink-600 hover:text-white text-pink-900 border border-pink-300 rounded-lg transition-all shadow-2xs cursor-pointer"
+                        >
+                          ⚖️ Weight (10g - 1kg)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddCustomVariant}
+                          className="px-3 py-1 text-[11px] font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                        >
+                          + Custom Size / साइज़ जोड़ें
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Variant List Table */}
+                    {variants.length > 0 ? (
+                      <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-2xs">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-purple-50/80 text-purple-950 font-bold text-[11px] border-b border-purple-100">
+                            <tr>
+                              <th className="py-2.5 px-3">Size / Pack</th>
+                              <th className="py-2.5 px-3">MRP (₹)</th>
+                              <th className="py-2.5 px-3 text-purple-900 font-black">Store Price (₹)</th>
+                              <th className="py-2.5 px-3">Cost (₹)</th>
+                              <th className="py-2.5 px-3">Opening Stock</th>
+                              <th className="py-2.5 px-2 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 bg-white">
+                            {variants.map((v, idx) => (
+                              <tr key={v.id || idx} className="hover:bg-purple-50/30 transition-colors">
+                                <td className="py-2 px-3">
+                                  <input
+                                    type="text"
+                                    value={v.size}
+                                    onChange={(e) => handleUpdateVariant(idx, "size", e.target.value)}
+                                    className="w-24 px-2.5 py-1.5 text-xs font-black text-gray-900 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                                    placeholder="e.g. 100g"
+                                  />
+                                </td>
+                                <td className="py-2 px-3">
+                                  <input
+                                    type="number"
+                                    placeholder="0.00"
+                                    value={v.mrp === 0 ? "" : v.mrp}
+                                    onFocus={(e) => e.currentTarget.select()}
+                                    onChange={(e) =>
+                                      handleUpdateVariant(idx, "mrp", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
+                                    }
+                                    className="w-20 px-2 py-1.5 text-xs font-semibold text-gray-700 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                                  />
+                                </td>
+                                <td className="py-2 px-3">
+                                  <input
+                                    type="number"
+                                    placeholder="0.00"
+                                    value={v.price === 0 ? "" : v.price}
+                                    onFocus={(e) => e.currentTarget.select()}
+                                    onChange={(e) =>
+                                      handleUpdateVariant(idx, "price", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)
+                                    }
+                                    className="w-20 px-2 py-1.5 text-xs font-black text-purple-900 border border-purple-400 rounded-lg focus:border-purple-600 focus:outline-none bg-purple-50/50"
+                                  />
+                                </td>
+                                <td className="py-2 px-3">
+                                  <input
+                                    type="number"
+                                    placeholder="0.00"
+                                    value={!v.purchasePrice ? "" : v.purchasePrice}
+                                    onFocus={(e) => e.currentTarget.select()}
+                                    onChange={(e) =>
+                                      handleUpdateVariant(
+                                        idx,
+                                        "purchasePrice",
+                                        e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
+                                      )
+                                    }
+                                    className="w-20 px-2 py-1.5 text-xs font-semibold text-gray-600 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                                  />
+                                </td>
+                                <td className="py-2 px-3">
+                                  <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={v.stock === 0 ? "" : (v.stock ?? 10)}
+                                    onFocus={(e) => e.currentTarget.select()}
+                                    onChange={(e) =>
+                                      handleUpdateVariant(
+                                        idx,
+                                        "stock",
+                                        e.target.value === "" ? 0 : parseInt(e.target.value) || 0
+                                      )
+                                    }
+                                    className="w-16 px-2 py-1.5 text-xs font-semibold text-gray-700 border border-gray-300 rounded-lg focus:border-purple-600 focus:outline-none"
+                                  />
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveVariant(idx)}
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Remove size"
+                                  >
+                                    ✕
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="py-4 px-4 rounded-xl border border-dashed border-purple-300 bg-purple-50/40 text-center space-y-2">
+                        <p className="text-xs text-gray-700 font-bold">
+                          No pack sizes added yet. Click &quot;+ Custom Size&quot; to add weights/volumes you sell.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleAddCustomVariant}
+                          className="px-4 py-1.5 text-xs font-bold bg-purple-600 text-white rounded-xl shadow-xs"
+                        >
+                          + Add First Size
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="py-4 px-4 rounded-xl border border-dashed border-purple-300 bg-purple-50/40 text-center space-y-2">
-                    <p className="text-xs text-gray-700 font-bold">
-                      Sell this item in multiple sizes (e.g. 50ml, 100ml, 200ml, 500ml or 50g, 100g, 250g, 500g, 1kg)?
-                    </p>
-                    <div className="flex items-center justify-center gap-2 flex-wrap pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleAddPresetVariants("liquid")}
-                        className="px-3 py-1.5 text-xs font-black bg-white hover:bg-purple-600 hover:text-white text-purple-900 border border-purple-300 rounded-xl transition-all shadow-2xs"
-                      >
-                        💧 Auto-Add Liquid Sizes (10ml, 50ml, 100ml, 200ml, 500ml, 1L)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAddPresetVariants("weight")}
-                        className="px-3 py-1.5 text-xs font-black bg-white hover:bg-pink-600 hover:text-white text-pink-900 border border-pink-300 rounded-xl transition-all shadow-2xs"
-                      >
-                        ⚖️ Auto-Add Weight Sizes (10g, 50g, 100g, 250g, 500g, 1kg)
-                      </button>
-                    </div>
+                  <div className="py-3 px-3.5 rounded-xl bg-gray-100/70 border border-gray-200/80 flex items-center justify-between text-xs text-gray-600">
+                    <span className="flex items-center gap-1.5">
+                      <span>ℹ️</span>
+                      <span>यह प्रोडक्ट एक <strong>सिंगल आइटम</strong> के रूप में सेव होगा। अगर अलग-अलग वज़न/साइज़ हैं तो ऊपर वाला स्विच ऑन करें।</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHasVariants(true);
+                        setVariants([
+                          {
+                            id: `var-base-${Date.now()}`,
+                            size: units.find((u) => u.id === unitId)?.name || "Standard Pack",
+                            mrp: mrp > 0 ? mrp : sellingPrice || 0,
+                            price: sellingPrice || 0,
+                            purchasePrice: purchasePrice || 0,
+                            stock: currentStock || 10,
+                            barcode: barcode || undefined,
+                            sku: sku || undefined,
+                          },
+                        ]);
+                      }}
+                      className="text-xs font-bold text-purple-700 hover:text-purple-900 hover:underline shrink-0"
+                    >
+                      + अलग-अलग साइज़ चालू करें
+                    </button>
                   </div>
                 )}
               </div>

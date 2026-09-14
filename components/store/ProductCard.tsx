@@ -21,7 +21,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const variants = React.useMemo(() => extractProductVariants(product), [product]);
   const [selectedVariant, setSelectedVariant] = React.useState<CleanVariant | null>(
-    variants.length > 0 ? variants[0] : null
+    variants.length > 1 ? variants[0] : null
   );
 
   const isFavorite = isInWishlist(product.id);

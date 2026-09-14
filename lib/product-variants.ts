@@ -84,136 +84,34 @@ export function extractProductVariants(product: Product): CleanVariant[] {
     try {
       const parsed = JSON.parse(match[1]);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((v, i) => ({
-          id: v.id || `var-${i}`,
-          size: v.size || `Pack ${i + 1}`,
-          price: Number(v.price) || Number(product.selling_price) || 0,
-          mrp: Number(v.mrp) || Number(v.price) || Number(product.selling_price) || 0,
-          purchasePrice: Number(v.purchasePrice) || Math.round(Number(v.price) * 0.72),
-          wholesalePrice: Number(v.wholesalePrice) || Math.round(Number(v.price) * 0.86),
-          stock: Number(v.stock) ?? 10,
-          sku: v.sku || product.sku,
-          barcode: v.barcode || product.barcode,
-        }));
+        // If there's only 1 variant and its size is "Standard Pack", treat as standard single product
+        const valid = parsed.filter(
+          (v) => v && v.size && v.size !== "Standard Pack"
+        );
+        const listToUse = valid.length > 0 ? valid : (parsed.length > 1 ? parsed : []);
+
+        if (listToUse.length > 0) {
+          return listToUse.map((v, i) => ({
+            id: v.id || `var-${i}`,
+            size: v.size || `Pack ${i + 1}`,
+            price: Number(v.price) || Number(product.selling_price) || 0,
+            mrp: Number(v.mrp) || Number(v.price) || Number(product.selling_price) || 0,
+            purchasePrice: Number(v.purchasePrice) || Math.round(Number(v.price) * 0.72),
+            wholesalePrice: Number(v.wholesalePrice) || Math.round(Number(v.price) * 0.86),
+            stock: Number(v.stock) ?? 10,
+            sku: v.sku || product.sku,
+            barcode: v.barcode || product.barcode,
+          }));
+        }
       }
     } catch (e) {
       console.warn("Failed to parse variants JSON:", e);
     }
   }
 
-  // 2. Check if product name indicates liquid or weight, and auto-generate defaults
-  const nameLower = (product.name || "").toLowerCase();
-  const isLiquid =
-    nameLower.includes("oil") ||
-    nameLower.includes("syrup") ||
-    nameLower.includes("shampoo") ||
-    nameLower.includes("wash") ||
-    nameLower.includes("ml") ||
-    nameLower.includes("litre") ||
-    nameLower.includes("drop");
-
-  const isWeight =
-    nameLower.includes("powder") ||
-    nameLower.includes("cream") ||
-    nameLower.includes("paste") ||
-    nameLower.includes("soap") ||
-    nameLower.includes("gram") ||
-    nameLower.includes("gm") ||
-    nameLower.includes("kg") ||
-    nameLower.includes("noodles") ||
-    nameLower.includes("atta");
-
-  const currentPrice = Number(product.selling_price) || 46;
-
-  // If title has a specific size like 100ml or 50g, create sibling pack sizes
-  if (isLiquid) {
-    return [
-      {
-        id: "var-50ml",
-        size: "50ml",
-        price: Math.round(currentPrice * 0.55),
-        mrp: Math.round(currentPrice * 0.6),
-        stock: 20,
-      },
-      {
-        id: "var-100ml",
-        size: "100ml",
-        price: currentPrice,
-        mrp: Math.round(currentPrice * 1.08),
-        stock: product.current_stock || 15,
-      },
-      {
-        id: "var-200ml",
-        size: "200ml",
-        price: Math.round(currentPrice * 1.95),
-        mrp: Math.round(currentPrice * 2.1),
-        stock: 12,
-      },
-      {
-        id: "var-500ml",
-        size: "500ml",
-        price: Math.round(currentPrice * 4.6),
-        mrp: Math.round(currentPrice * 4.9),
-        stock: 8,
-      },
-      {
-        id: "var-1l",
-        size: "1L",
-        price: Math.round(currentPrice * 8.8),
-        mrp: Math.round(currentPrice * 9.5),
-        stock: 5,
-      },
-    ];
-  } else if (isWeight) {
-    return [
-      {
-        id: "var-50g",
-        size: "50g",
-        price: Math.round(currentPrice * 0.6),
-        mrp: Math.round(currentPrice * 0.65),
-        stock: 20,
-      },
-      {
-        id: "var-100g",
-        size: "100g",
-        price: currentPrice,
-        mrp: Math.round(currentPrice * 1.1),
-        stock: product.current_stock || 15,
-      },
-      {
-        id: "var-250g",
-        size: "250g",
-        price: Math.round(currentPrice * 2.35),
-        mrp: Math.round(currentPrice * 2.55),
-        stock: 12,
-      },
-      {
-        id: "var-500g",
-        size: "500g",
-        price: Math.round(currentPrice * 4.5),
-        mrp: Math.round(currentPrice * 4.9),
-        stock: 8,
-      },
-      {
-        id: "var-1kg",
-        size: "1kg",
-        price: Math.round(currentPrice * 8.5),
-        mrp: Math.round(currentPrice * 9.2),
-        stock: 6,
-      },
-    ];
-  }
-
-  // Single default variant if no pattern matches
-  return [
-    {
-      id: "var-std",
-      size: "Standard Pack",
-      price: currentPrice,
-      mrp: currentPrice,
-      stock: product.current_stock || 10,
-    },
-  ];
+  // Never auto-generate synthetic fake variants from titles/keywords.
+  // Single products must cleanly remain single products without fake options.
+  return [];
 }
 
 /**
@@ -224,7 +122,7 @@ export function attachVariantsToDescription(
   variants: CleanVariant[]
 ): string {
   const stripped = stripVariantsFromDescription(cleanDescription);
-  if (!variants || variants.length === 0) return stripped;
+  if (!variants || variants.length <= 1) return stripped;
   return `${stripped.trim()}\n\n<!--variants:${JSON.stringify(variants)}-->`;
 }
 
