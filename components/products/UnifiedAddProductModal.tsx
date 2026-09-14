@@ -30,7 +30,7 @@ import { productsRepository } from "@/repositories/products.repo";
 import { suppliersRepository } from "@/repositories/suppliers.repo";
 import { aiImageEnhancer } from "@/lib/ai/image-enhancer";
 import { findInIndianRetailCatalog, searchIndianRetailCatalog } from "@/lib/catalog/indian-retail-catalog";
-import { transliterateToHindi } from "@/lib/transliterate";
+import { transliterateToHindi, transliterateSync } from "@/lib/transliterate";
 import { capitalizeFirstLetter } from "@/lib/utils";
 
 import {
@@ -109,6 +109,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
   const [isPhotoActionSheetOpen, setIsPhotoActionSheetOpen] = useState(false);
   const [autoScanWithAi, setAutoScanWithAi] = useState(false);
+  const [autoStudioPolish, setAutoStudioPolish] = useState(true);
   const [isPolishing, setIsPolishing] = useState(false);
   const [studioTheme, setStudioTheme] = useState<
     "pure_white" | "luxury_marble" | "modern_wood" | "dark_obsidian" | "botanical_fresh"
@@ -412,6 +413,30 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     }
   }, [isOpen, editingProduct, categories, suppliers, units]);
 
+  // Auto-transliterate English name to Hindi with 300ms debounce
+  useEffect(() => {
+    if (!name || !name.trim()) return;
+
+    // Avoid overwriting existing custom Hindi name on initial edit load
+    if (editingProduct && editingProduct.name_hindi && name === editingProduct.name) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsTransliterating(true);
+      try {
+        const hi = await transliterateToHindi(name.trim());
+        if (hi) setNameHindi(hi);
+      } catch (err) {
+        console.warn("Auto transliterate notice:", err);
+      } finally {
+        setIsTransliterating(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [name, editingProduct]);
+
   if (!isOpen) return null;
 
   // Live profit calculation
@@ -547,11 +572,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   };
 
   // Instant Studio Polish & Clean Handler (Dust cleaning + Gloss + White BG)
-  const handleStudioPolishPhoto = async () => {
+  const handleStudioPolishPhoto = async (
+    customSource?: string,
+    customTarget?: "front" | "back",
+    customTheme?: "pure_white" | "luxury_marble" | "modern_wood" | "dark_obsidian" | "botanical_fresh"
+  ) => {
+    const target = customTarget || activeImageTab;
+    const themeToUse = customTheme || studioTheme;
     const rawSource =
-      activeImageTab === "front"
+      customSource ||
+      (target === "front"
         ? rawFrontPhoto || imageUrl
-        : rawBackPhoto || backImageUrl;
+        : rawBackPhoto || backImageUrl);
 
     if (!rawSource) {
       alert("Please upload or capture a photo first.");
@@ -560,7 +592,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
     try {
       setIsPolishing(true);
-      setAiSuccessMsg("✨ Processing AI Studio Polish & Background Cutout...");
+      setAiSuccessMsg("✨ Removing background & applying 3D studio polish...");
 
       let imageToPolish = rawSource;
 
@@ -570,6 +602,10 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           typeof window !== "undefined"
             ? localStorage.getItem("falcon_hf_token") || localStorage.getItem("falcon_clipdrop_key") || undefined
             : undefined;
+        const savedRbg =
+          typeof window !== "undefined"
+            ? localStorage.getItem("falcon_remove_bg_api_key") || undefined
+            : undefined;
 
         const bgRes = await fetch("/api/ai/remove-background", {
           method: "POST",
@@ -577,6 +613,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           body: JSON.stringify({
             image: rawSource,
             hfToken: savedHfToken,
+            removeBgApiKey: savedRbg,
           }),
         });
 
@@ -591,19 +628,19 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       // 2. Final Studio Polish (Framing, Centering, Gloss & Staged Background)
       const polished = await aiImageEnhancer.studioPolish(imageToPolish, {
         targetSize: 1080,
-        theme: studioTheme,
+        theme: themeToUse,
         addGloss: true,
         addGroundShadow: true,
         addReflection: true,
         sharpnessBoost: true,
       });
 
-      if (activeImageTab === "front") {
+      if (target === "front") {
         setImageUrl(polished);
       } else {
         setBackImageUrl(polished);
       }
-      setAiSuccessMsg("✨ Studio Cleaned & Polished: Background isolated, softbox shining added & staged on 3D backdrop!");
+      setAiSuccessMsg("✨ Studio Cleaned & Polished: Background isolated, dust smoothed & staged on 3D backdrop!");
     } catch (e) {
       console.error("Studio polish error:", e);
       setAiSuccessMsg("⚠️ Studio polish notice: Applied safe photo enhancement.");
@@ -615,7 +652,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   // Process Image Data URL (From Live Camera Snapshot or File Upload)
   const handleProcessImageDataUrl = async (rawDataUrl: string, target: "front" | "back" = "front") => {
     try {
-      // Store un-padded raw source so studio polish can be re-run cleanly anytime
+      // Store un-padded raw source so studio polish can be reverted or re-run cleanly anytime
       if (target === "front") {
         setRawFrontPhoto(rawDataUrl);
       } else {
@@ -631,19 +668,24 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setBackImageUrl(fastCompressedUrl);
       }
 
-      // 2. IF EDITING EXISTING PRODUCT: Do NOT run OCR, do NOT overwrite details
+      // 2. Automated Studio Polish (enabled by default)
+      if (autoStudioPolish) {
+        await handleStudioPolishPhoto(fastCompressedUrl, target);
+      }
+
+      // 3. IF EDITING EXISTING PRODUCT: Do NOT run OCR, do NOT overwrite details
       if (editingProduct) {
-        setAiSuccessMsg("✓ Photo updated! Click 'Update Product' below to save.");
+        setAiSuccessMsg("✓ Photo updated & studio staged! Click 'Update Product' below to save.");
         return;
       }
 
-      // 3. IF NEW PRODUCT & AUTO-SCAN ENABLED: Run fast AI analysis
+      // 4. IF NEW PRODUCT & AUTO-SCAN ENABLED: Run fast AI analysis
       if (autoScanWithAi) {
         const frontToScan = target === "front" ? fastCompressedUrl : imageUrl || fastCompressedUrl;
         const backToScan = target === "back" ? fastCompressedUrl : backImageUrl;
         await handleTriggerAiOcr(frontToScan, backToScan);
       } else {
-        setAiSuccessMsg("✓ Photo attached! Click 'Scan with AI' if you want automatic details extraction.");
+        setAiSuccessMsg("✨ Studio Polished! Tap 'Show Original' to revert or 'Scan with AI' for auto-fill.");
       }
     } catch (e) {
       console.error(e);
@@ -728,10 +770,17 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
       const finalDescription = attachVariantsToDescription(description, variants);
 
+      let finalNameHindi = nameHindi.trim();
+      if (!finalNameHindi && name.trim()) {
+        try {
+          finalNameHindi = transliterateSync(name.trim()) || await transliterateToHindi(name.trim());
+        } catch {}
+      }
+
       const payload: Partial<Product> = {
         shop_id: shopId,
         name: capitalizeFirstLetter(name.trim()),
-        name_hindi: nameHindi.trim() || null,
+        name_hindi: finalNameHindi || null,
         sku: sku.trim() || null,
         barcode: barcode.trim() || null,
         brand: brand.trim() ? capitalizeFirstLetter(brand.trim()) : null,
@@ -1023,6 +1072,34 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       />
                       {/* 1-Tap Overlay Actions */}
                       <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+                        {rawFrontPhoto && rawFrontPhoto !== imageUrl && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setImageUrl(rawFrontPhoto);
+                              setAiSuccessMsg("↺ Reverted to original raw photo.");
+                            }}
+                            className="px-2 py-1 rounded-xl bg-black/75 hover:bg-black text-amber-300 text-[11px] font-bold shadow-md flex items-center gap-1 backdrop-blur-xs active:scale-95 transition-all"
+                            title="Revert to original camera photo"
+                          >
+                            <span>↺ Original</span>
+                          </button>
+                        )}
+                        {rawFrontPhoto && rawFrontPhoto === imageUrl && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStudioPolishPhoto(rawFrontPhoto, "front");
+                            }}
+                            className="px-2 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-md flex items-center gap-1 backdrop-blur-xs active:scale-95 transition-all"
+                            title="Clean background & stage in 3D studio"
+                          >
+                            <Sparkles className="w-3 h-3 text-yellow-300" />
+                            <span>✨ Polish</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1039,6 +1116,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                           onClick={(e) => {
                             e.stopPropagation();
                             setImageUrl("");
+                            setRawFrontPhoto("");
                           }}
                           className="p-1.5 rounded-xl bg-black/75 hover:bg-rose-600 text-white shadow-md backdrop-blur-xs active:scale-95 transition-all"
                           title="Remove photo"
@@ -1089,6 +1167,34 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       className="w-full h-full object-contain p-2 transition-transform group-hover:scale-105"
                     />
                     <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+                      {rawBackPhoto && rawBackPhoto !== backImageUrl && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBackImageUrl(rawBackPhoto);
+                            setAiSuccessMsg("↺ Reverted to original raw photo.");
+                          }}
+                          className="px-2 py-1 rounded-xl bg-black/75 hover:bg-black text-amber-300 text-[11px] font-bold shadow-md flex items-center gap-1 backdrop-blur-xs active:scale-95 transition-all"
+                          title="Revert to original camera photo"
+                        >
+                          <span>↺ Original</span>
+                        </button>
+                      )}
+                      {rawBackPhoto && rawBackPhoto === backImageUrl && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStudioPolishPhoto(rawBackPhoto, "back");
+                          }}
+                          className="px-2 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-md flex items-center gap-1 backdrop-blur-xs active:scale-95 transition-all"
+                          title="Clean background & stage in 3D studio"
+                        >
+                          <Sparkles className="w-3 h-3 text-yellow-300" />
+                          <span>✨ Polish</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1105,6 +1211,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           setBackImageUrl("");
+                          setRawBackPhoto("");
                         }}
                         className="p-1.5 rounded-xl bg-black/75 hover:bg-rose-600 text-white shadow-md backdrop-blur-xs active:scale-95 transition-all"
                         title="Remove photo"
@@ -1175,10 +1282,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 />
 
                 {/* Loading Overlay */}
-                {isAnalyzing && (
+                {(isAnalyzing || isPolishing) && (
                   <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white space-y-2 z-20">
                     <RefreshCw className="w-7 h-7 animate-spin text-purple-300" />
-                    <span className="text-xs font-bold text-purple-100">Extracting Name & MRP...</span>
+                    <span className="text-xs font-bold text-purple-100">
+                      {isPolishing
+                        ? "✨ Removing Background & Polishing Lighting..."
+                        : "Extracting Name & MRP..."}
+                    </span>
                   </div>
                 )}
               </div>
@@ -1211,6 +1322,20 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 </div>
               )}
 
+              {/* Auto-Clean Background & Studio Polish Toggle */}
+              <label className="flex items-center justify-between p-2 rounded-xl bg-purple-50/70 border border-purple-200/80 text-[11px] text-purple-900 cursor-pointer select-none">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span>Auto-Clean Background & Studio Polish</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoStudioPolish}
+                  onChange={(e) => setAutoStudioPolish(e.target.checked)}
+                  className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5 cursor-pointer"
+                />
+              </label>
+
               {/* Studio Polish & AI Controls */}
               {(imageUrl || backImageUrl) && (
                 <div className="space-y-2 pt-1">
@@ -1229,7 +1354,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                         <button
                           key={t.id}
                           type="button"
-                          onClick={() => setStudioTheme(t.id as any)}
+                          onClick={() => {
+                            const newTheme = t.id as any;
+                            setStudioTheme(newTheme);
+                            const currentPhoto = activeImageTab === "front" ? (rawFrontPhoto || imageUrl) : (rawBackPhoto || backImageUrl);
+                            if (currentPhoto) {
+                              handleStudioPolishPhoto(undefined, undefined, newTheme);
+                            }
+                          }}
                           className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border transition-all ${
                             studioTheme === t.id
                               ? "bg-purple-600 text-white border-purple-600 shadow-xs"
@@ -1247,7 +1379,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   <Button
                     type="button"
                     size="sm"
-                    onClick={handleStudioPolishPhoto}
+                    onClick={() => handleStudioPolishPhoto()}
                     isLoading={isPolishing}
                     className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md active:scale-95 transition-all py-2"
                     title="Isolate background, add softbox specular shine, 3D physics shadow and center on chosen stage"
@@ -1382,13 +1514,20 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       setName(val);
                       setIsNameSuggestionsOpen(true);
                       if (val.trim()) {
-                        setIsTransliterating(true);
-                        transliterateToHindi(val)
-                          .then((hi) => {
-                            if (hi) setNameHindi(hi);
-                          })
-                          .catch(() => {})
-                          .finally(() => setIsTransliterating(false));
+                        const syncHi = transliterateSync(val.trim());
+                        if (syncHi) {
+                          setNameHindi(syncHi);
+                        }
+                      } else {
+                        setNameHindi("");
+                      }
+                    }}
+                    onBlur={async () => {
+                      if (name.trim()) {
+                        try {
+                          const hi = await transliterateToHindi(name.trim());
+                          if (hi) setNameHindi(hi);
+                        } catch {}
                       }
                     }}
                     placeholder="e.g. Parachute 100% Pure Coconut Oil 100ml"

@@ -7,16 +7,51 @@
  * "Fair & Lovely Cream" -> "फेयर एंड लवली क्रीम"
  * "Dove Shampoo 180ml" -> "डव शैम्पू 180ml"
  * "Patanjali Dant Kanti" -> "पतंजलि दंत कांति"
+ * "Parachute Coconut Oil 100ml" -> "पैराशूट कोकोनट ऑयल 100ml"
  */
 
 // In-memory cache for transliterated words to avoid duplicate network requests
-const TRANSLITERATION_CACHE = new Map<string, string>();
+export const TRANSLITERATION_CACHE = new Map<string, string>();
 
-// Common retail & FMCG terminology phonetic overrides for 100% accuracy
-const PHONETIC_PRESETS: Record<string, string> = {
+// Common retail & FMCG terminology phonetic overrides for 100% accuracy & 0ms instant typing
+export const PHONETIC_PRESETS: Record<string, string> = {
+  // Punctuation & Connectors
   "&": "एंड",
   "+": "प्लस",
   "and": "एंड",
+  "or": "या",
+  "with": "विद",
+  "for": "फॉर",
+  "in": "इन",
+  "of": "ऑफ",
+  "the": "",
+
+  // Descriptors, Sizes & Offers
+  "free": "फ्री",
+  "deal": "डील",
+  "offer": "ऑफर",
+  "pack": "पैक",
+  "combo": "कॉम्बो",
+  "saver": "सेवर",
+  "refill": "रीफिल",
+  "pouch": "पाउच",
+  "bottle": "बोतल",
+  "jar": "जार",
+  "can": "कैन",
+  "box": "बॉक्स",
+  "mini": "मिनी",
+  "super": "सुपर",
+  "extra": "एक्स्ट्रा",
+  "long": "लॉन्ग",
+  "xl": "XL",
+  "xxl": "XXL",
+  "large": "लार्ज",
+  "medium": "मीडियम",
+  "small": "स्मॉल",
+  "big": "बड़ा",
+  "standard": "स्टैंडर्ड",
+
+  // Personal Care, Cosmetics & Grooming
   "fair": "फेयर",
   "lovely": "लवली",
   "glow": "ग्लो",
@@ -31,6 +66,8 @@ const PHONETIC_PRESETS: Record<string, string> = {
   "powder": "पाउडर",
   "paste": "पेस्ट",
   "toothpaste": "टूथपेस्ट",
+  "brush": "ब्रश",
+  "toothbrush": "टूथब्रश",
   "dant": "दंत",
   "kanti": "कांति",
   "patanjali": "पतंजलि",
@@ -38,6 +75,10 @@ const PHONETIC_PRESETS: Record<string, string> = {
   "pepsodent": "पेप्सोडेंट",
   "close": "क्लोज",
   "closeup": "क्लोजअप",
+  "sensodyne": "सेंसोडाइन",
+  "vicco": "विक्को",
+  "meswak": "मेस्वाक",
+  "babool": "बबूल",
   "dove": "डव",
   "lux": "लक्स",
   "lifebuoy": "लाइफबॉय",
@@ -46,6 +87,8 @@ const PHONETIC_PRESETS: Record<string, string> = {
   "santoor": "संतूर",
   "pears": "पियर्स",
   "medimix": "मेडिमिक्स",
+  "vivel": "विवेल",
+  "fiama": "फियामा",
   "himalaya": "हिमालय",
   "ponds": "पॉन्ड्स",
   "nivea": "निविया",
@@ -67,6 +110,25 @@ const PHONETIC_PRESETS: Record<string, string> = {
   "tulsi": "तुलसी",
   "kesar": "केसर",
   "chandan": "चंदन",
+  "boro": "बोरो",
+  "boroline": "बोरोलीन",
+  "boroplus": "बोरोप्लस",
+  "boroneem": "बोरोनीम",
+  "prickly": "प्रिकली",
+  "heat": "हीट",
+  "face": "फेस",
+  "wash": "वॉश",
+  "facewash": "फेसवाश",
+  "body": "बॉडी",
+  "scrub": "स्क्रब",
+  "gel": "जेल",
+  "talc": "टैल्क",
+  "talcum": "टैल्कम",
+  "sunscreen": "सनस्क्रीन",
+  "deodorant": "डिओडोरेंट",
+  "deo": "डिओ",
+  "spray": "स्प्रे",
+  "perfume": "परफ्यूम",
   "bajaj": "बजाज",
   "dabur": "डाबर",
   "amla": "आंवला",
@@ -74,12 +136,6 @@ const PHONETIC_PRESETS: Record<string, string> = {
   "gulabari": "गुलाबरी",
   "rose": "रोज",
   "water": "वाटर",
-  "face": "फेस",
-  "wash": "वॉश",
-  "facewash": "फेसवाश",
-  "scrub": "स्क्रब",
-  "pack": "पैक",
-  "gel": "जेल",
   "serum": "सीरम",
   "conditioner": "कंडीशनर",
   "lipstick": "लिपस्टिक",
@@ -92,13 +148,74 @@ const PHONETIC_PRESETS: Record<string, string> = {
   "compact": "कॉम्पैक्ट",
   "nail": "नेल",
   "polish": "पॉलिश",
-  "perfume": "परफ्यूम",
-  "deo": "डियो",
-  "deodorant": "डियोड्रेंट",
-  "spray": "स्प्रे",
-  "body": "बॉडी",
+  "remover": "रिमूवर",
+  "mehndi": "मेहंदी",
+  "henna": "हिना",
+  "color": "कलर",
+  "natural": "नेचुरल",
+  "black": "ब्लैक",
+  "brown": "ब्राउन",
+  "gold": "गोल्ड",
+  "diamond": "डायमंड",
+  "silver": "सिल्वर",
+  "skin": "स्किन",
+  "clear": "क्लियर",
+  "joy": "जॉय",
+  "charmis": "चारमिस",
+  "lotus": "लोटस",
+  "biotique": "बायोटिक",
+  "vlcc": "वीएलसीसी",
+  "lakme": "लक्मे",
+  "maybelline": "मेबेलिन",
+  "colorbar": "कलरबार",
+  "elle18": "एले 18",
+  "fogg": "फॉग्ग",
+  "axe": "एक्स",
+  "engage": "एंगेज",
+  "wild": "वाइल्ड",
+  "stone": "स्टोन",
+  "denim": "डेनिम",
+  "park": "पार्क",
+  "avenue": "एवेन्यू",
+  "yardley": "यार्डले",
+  "set": "सेट",
+  "wet": "वेट",
+  "comb": "कंघा",
+  "kangha": "कंघा",
+  "towel": "तौलिया",
+  "purse": "पर्स",
+  "band": "बैंड",
+  "suedhaga": "सुई धागा",
+  "sue": "सुई",
+  "sui": "सुई",
+  "dhaga": "धागा",
+  "tabeej": "ताबीज",
+  "taar": "तार",
+
+  // Feminine Hygiene & Baby Care
+  "pad": "पैड",
+  "pads": "पैड्स",
+  "sanitary": "सैनिटरी",
+  "napkin": "नैपकिन",
+  "napkins": "नैपकिन्स",
+  "whisper": "व्हिस्पर",
+  "stayfree": "स्टेफ्री",
+  "sofy": "सोफी",
+  "carefree": "केयरफ्री",
+  "cotton": "कॉटन",
+  "bandage": "पट्टी",
+  "diaper": "डायपर",
+  "pampers": "पैम्पर्स",
+  "mamy": "मैमी",
+  "poko": "पोको",
+  "pants": "पैंट्स",
+  "wipes": "वाइप्स",
+  "huggies": "हगीज",
+
+  // Grocery, Food & Staples
   "tea": "चाय",
   "chai": "चाय",
+  "patti": "पत्ती",
   "coffee": "कॉफ़ी",
   "sugar": "चीनी",
   "salt": "नमक",
@@ -109,18 +226,31 @@ const PHONETIC_PRESETS: Record<string, string> = {
   "besan": "बेसन",
   "maida": "मैदा",
   "suji": "सूजी",
+  "sooji": "सूजी",
+  "rava": "रवा",
   "masala": "मसाला",
   "haldi": "हल्दी",
   "mirch": "मिर्च",
   "dhaniya": "धनिया",
+  "jeera": "जीरा",
   "garam": "गरम",
+  "hing": "हींग",
+  "rai": "राई",
+  "methi": "मेथी",
+  "saunf": "सौंफ",
+  "ajwain": "अजवाइन",
+  "elaichi": "इलायची",
+  "laung": "लौंग",
   "biscuit": "बिस्कुट",
   "cookies": "कुकीज",
   "rusk": "टोस्ट",
   "toast": "टोस्ट",
+  "bread": "ब्रेड",
   "namkeen": "नमकीन",
   "chips": "चिप्स",
   "bhujia": "भुजिया",
+  "sev": "सेव",
+  "mixture": "मिक्सचर",
   "maggi": "मैगी",
   "noodles": "नूडल्स",
   "pasta": "पास्ता",
@@ -131,44 +261,49 @@ const PHONETIC_PRESETS: Record<string, string> = {
   "ghee": "घी",
   "butter": "मक्खन",
   "paneer": "पनीर",
+  "cheese": "चीज",
   "milk": "दूध",
+  "doodh": "दूध",
   "dahi": "दही",
+  "curd": "दही",
+  "lassi": "लस्सी",
+
+  // Detergents & Home Cleaning
   "detergent": "डिटर्जेंट",
   "surf": "सर्फ",
   "excel": "एक्सेल",
   "tide": "टाइड",
   "aerial": "एरियल",
+  "ariel": "एरियल",
   "wheel": "व्हील",
   "ghari": "घड़ी",
   "rin": "रिन",
+  "nirma": "निरमा",
   "vim": "विम",
   "bar": "बार",
+  "cake": "केक",
   "liquid": "लिक्विड",
   "cleaner": "क्लीनर",
   "phenyl": "फिनाइल",
   "harpic": "हार्पिक",
   "lizol": "लाइसोल",
+  "colin": "कोलिन",
+  "domex": "डोमेक्स",
   "odonil": "ओडोनिल",
   "goodknight": "गुडनाइट",
   "allout": "ऑलआउट",
+  "hit": "हिट",
+  "mortein": "मोर्टिन",
   "agarbatti": "अगरबत्ती",
   "dhoop": "धूप",
+  "batti": "बत्ती",
   "matchbox": "माचिस",
   "candle": "मोमबत्ती",
-  "diaper": "डायपर",
-  "pampers": "पैम्पर्स",
-  "mamy": "मैमी",
-  "poko": "पोको",
-  "pants": "पैंट्स",
-  "wipes": "वाइप्स",
-  "whisper": "व्हिस्पर",
-  "stayfree": "स्टेफ्री",
-  "pad": "पैड",
-  "pads": "पैड्स",
-  "cotton": "कॉटन",
-  "bandage": "पट्टी",
+  "camphor": "कपूर",
+  "kapoor": "कपूर",
+
+  // Over The Counter & Health
   "savlon": "सैवलोन",
-  "boroplus": "बोरोप्लस",
   "moov": "मूव",
   "iodex": "आयोडिक्स",
   "volini": "वोलिनी",
@@ -251,6 +386,50 @@ const PHONETIC_PRESETS: Record<string, string> = {
 };
 
 /**
+ * Synchronously transliterates tokens using local presets and memory cache.
+ * Gives 0ms instant feedback while typing without network round-trips!
+ */
+export function transliterateSync(text: string): string {
+  if (!text || !text.trim()) return "";
+  const clean = text.trim();
+  const lower = clean.toLowerCase();
+
+  // If already full match in cache
+  if (TRANSLITERATION_CACHE.has(lower)) {
+    return TRANSLITERATION_CACHE.get(lower)!;
+  }
+
+  // Split tokens while preserving units and special separators
+  const tokens = clean.split(/(\s+|[-/&+,()])/).filter(Boolean);
+  const results = tokens.map((token) => {
+    // If whitespace or punctuation
+    if (/^[\s/\\+()\-.,]+$/.test(token)) {
+      return token;
+    }
+    if (token === "&") {
+      return " एंड ";
+    }
+    // Numbers, units (100ml, 50g, 1kg, 2L, 500gm, ₹50, 100%), or symbols pass through directly
+    if (/^[₹$€]?[\d.,/%-]+(ml|g|gm|kg|l|ltr|oz|pc|pcs|pk|pack|s|m|l|xl|xxl)?$/i.test(token)) {
+      return token;
+    }
+
+    const tLower = token.toLowerCase();
+    if (PHONETIC_PRESETS[tLower]) {
+      return PHONETIC_PRESETS[tLower];
+    }
+    if (TRANSLITERATION_CACHE.has(tLower)) {
+      return TRANSLITERATION_CACHE.get(tLower)!;
+    }
+
+    // Return original word if not in presets or cache
+    return token;
+  });
+
+  return results.join("").replace(/\s+/g, " ").trim();
+}
+
+/**
  * Transliterates a single English word to Hindi using phonetic API or preset cache
  */
 async function transliterateSingleWord(word: string): Promise<string> {
@@ -258,7 +437,7 @@ async function transliterateSingleWord(word: string): Promise<string> {
   if (!clean) return "";
 
   // Numbers, units (100ml, 50g, 1kg, 2L, 500gm), or symbols pass through directly
-  if (/^[\d.,/%-]+(ml|g|gm|kg|l|ltr|oz|pc|pcs|pk|pack|s|m|l|xl|xxl)?$/i.test(clean)) {
+  if (/^[₹$€]?[\d.,/%-]+(ml|g|gm|kg|l|ltr|oz|pc|pcs|pk|pack|s|m|l|xl|xxl)?$/i.test(clean)) {
     return clean;
   }
 
@@ -303,14 +482,40 @@ async function transliterateSingleWord(word: string): Promise<string> {
  */
 export async function transliterateToHindi(text: string): Promise<string> {
   if (!text || !text.trim()) return "";
+  const clean = text.trim();
+  const lower = clean.toLowerCase();
 
-  // Split tokens while preserving units and special separators
-  const tokens = text.split(/(\s+|[-/&+,()])/).filter(Boolean);
+  // 1. Check in-memory cache
+  if (TRANSLITERATION_CACHE.has(lower)) {
+    return TRANSLITERATION_CACHE.get(lower)!;
+  }
 
+  // 2. Query internal Next.js API route (no CORS, server-side Google Input Tools & presets)
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/transliterate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: clean }),
+      });
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (json.success && json.hindi) {
+          TRANSLITERATION_CACHE.set(lower, json.hindi);
+          return json.hindi;
+        }
+      }
+    } catch (apiErr) {
+      console.warn("Transliterate API notice, falling back to local presets:", apiErr);
+    }
+  }
+
+  // 3. Fallback: Split tokens while preserving units and special separators
+  const tokens = clean.split(/(\s+|[-/&+,()])/).filter(Boolean);
   const results = await Promise.all(
     tokens.map(async (token) => {
       // If whitespace or punctuation separator
-      if (/^[\s/\\+()]+$/.test(token)) {
+      if (/^[\s/\\+()\-.,]+$/.test(token)) {
         return token;
       }
       if (token === "&") {
@@ -320,5 +525,9 @@ export async function transliterateToHindi(text: string): Promise<string> {
     })
   );
 
-  return results.join("").replace(/\s+/g, " ").trim();
+  const fallbackResult = results.join("").replace(/\s+/g, " ").trim();
+  if (fallbackResult) {
+    TRANSLITERATION_CACHE.set(lower, fallbackResult);
+  }
+  return fallbackResult;
 }

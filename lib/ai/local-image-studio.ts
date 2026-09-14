@@ -441,7 +441,37 @@ export const localImageStudio = {
       isAlreadyCutout = true;
     }
 
-    // If not already cutout, run AI neural + edge matting cutout
+    // If not already cutout, first try the high-precision server-side Neural AI model (/api/ai/remove-background)
+    if (!isAlreadyCutout && typeof window !== "undefined") {
+      try {
+        const savedHf = localStorage.getItem("falcon_hf_token") || undefined;
+        const savedRbg = localStorage.getItem("falcon_remove_bg_api_key") || undefined;
+
+        const bgRes = await fetch("/api/ai/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image: src,
+            hfToken: savedHf,
+            removeBgApiKey: savedRbg,
+          }),
+        });
+        const bgJson = await bgRes.json().catch(() => ({}));
+        if (bgRes.ok && bgJson.success && bgJson.transparentImageUrl) {
+          const cutImg = await this.loadImage(bgJson.transparentImageUrl);
+          const c = document.createElement("canvas");
+          c.width = cutImg.naturalWidth || cutImg.width;
+          c.height = cutImg.naturalHeight || cutImg.height;
+          c.getContext("2d")?.drawImage(cutImg, 0, 0);
+          workingCanvas = c;
+          isAlreadyCutout = true;
+        }
+      } catch (apiErr) {
+        console.warn("Server neural cutout notice, proceeding to local segmenter:", apiErr);
+      }
+    }
+
+    // Secondary fallback: On-device MediaPipe or smart edge matting
     if (!isAlreadyCutout) {
       try {
         const aiCutout = await mediaPipeSegmenter.removeBackground(rawImg);

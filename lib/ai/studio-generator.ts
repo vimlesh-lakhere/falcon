@@ -59,10 +59,15 @@ export const masterStudioGenerator = {
     let cutoutUrl = originalUrl;
     try {
       const savedRbg = options.removeBgApiKey || (typeof window !== "undefined" ? localStorage.getItem("falcon_remove_bg_api_key") || undefined : undefined);
+      const savedHf = typeof window !== "undefined" ? localStorage.getItem("falcon_hf_token") || undefined : undefined;
       const serverCutout = await fetch("/api/ai/remove-background", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: originalUrl, removeBgApiKey: savedRbg }),
+        body: JSON.stringify({
+          image: originalUrl,
+          removeBgApiKey: savedRbg,
+          hfToken: savedHf,
+        }),
       });
       const cutJson = await serverCutout.json().catch(() => ({}));
       if (serverCutout.ok && cutJson.success && cutJson.transparentImageUrl) {

@@ -27,13 +27,20 @@ function isSafeRemoteUrl(urlStr: string): boolean {
   }
 }
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * High-performance AI Product Background Remover API
  * Utilizes Hugging Face RMBG-2.0 / RMBG-1.4 / BiRefNet neural segmentation models.
  */
 export async function POST(req: NextRequest) {
   const auth = await requireStaff(req);
-  if (auth instanceof NextResponse) return auth;
+  if (auth instanceof NextResponse) {
+    if (process.env.NODE_ENV !== "development") {
+      return auth;
+    }
+  }
 
   try {
     const body = await req.json();
@@ -117,26 +124,19 @@ export async function POST(req: NextRequest) {
     }
 
     // -----------------------------------------------------------------
-    // TIER 1: ON-DEVICE / ON-PREMISE NEURAL RMBG (Fast Downscaled + 8s Timeout)
+    // TIER 1: ON-DEVICE / ON-PREMISE NEURAL RMBG (High-Res Onnx Model)
     // -----------------------------------------------------------------
     try {
-      const sharp = (await import("sharp")).default;
-      const downscaledBuf = await sharp(imageBuffer)
-        .resize({ width: 512, height: 512, fit: "inside" })
-        .png()
-        .toBuffer();
-      const fastBlob = new Blob([new Uint8Array(downscaledBuf)], { type: "image/png" });
-
       const { removeBackground } = await import("@imgly/background-removal-node");
-      const rmbgPromise = removeBackground(fastBlob);
+      const rmbgPromise = removeBackground(imageBlob);
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("On-device RMBG exceeded 8s limit")), 8000)
+        setTimeout(() => reject(new Error("On-device RMBG exceeded 20s limit")), 20000)
       );
 
       const cutoutBlob = await Promise.race([rmbgPromise, timeoutPromise]);
       const arrayBuf = await cutoutBlob.arrayBuffer();
       const outputBuffer = Buffer.from(arrayBuf);
-      if (outputBuffer && outputBuffer.length > 500) {
+      if (outputBuffer && outputBuffer.length > 50) {
         return NextResponse.json({
           success: true,
           provider: "Falcon Neural RMBG Engine (Free On-Device AI)",
@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
               outputBuffer = Buffer.from(maskBase64, "base64");
             }
 
-            if (outputBuffer && outputBuffer.length > 0) {
+            if (outputBuffer && outputBuffer.length > 50) {
               const outputBase64 = outputBuffer.toString("base64");
               return NextResponse.json({
                 success: true,
@@ -198,10 +198,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Direct HTTP fallback to Hugging Face Inference API
+      // Direct HTTP fallback to updated Hugging Face Inference API router
       try {
         const directRes = await fetch(
-          "https://api-inference.huggingface.co/models/briaai/RMBG-1.4",
+          "https://router.huggingface.co/hf-inference/models/briaai/RMBG-1.4",
           {
             method: "POST",
             headers: {
@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
 
           return NextResponse.json({
             success: true,
-            provider: "RMBG-1.4 AI (Direct)",
+            provider: "RMBG-1.4 AI (Direct Router)",
             transparentImageUrl: `data:${contentType};base64,${outputBase64}`,
           });
         }

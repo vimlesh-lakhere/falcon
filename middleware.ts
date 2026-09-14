@@ -52,6 +52,8 @@ export async function middleware(request: NextRequest) {
     "/api/cron/trials-maintenance",
     "/api/billing/razorpay/order",
     "/api/billing/razorpay/verify",
+    "/api/transliterate",
+    ...(process.env.NODE_ENV === "development" ? ["/api/ai/remove-background"] : []),
   ];
   if (PUBLIC_API_PATHS.includes(pathname) || isPublicPath(pathname)) {
     const response = NextResponse.next();

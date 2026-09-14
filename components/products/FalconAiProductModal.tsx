@@ -59,7 +59,7 @@ import {
 import { Product, Category, Supplier, Unit } from "@/types/database";
 import { formatCurrency, capitalizeFirstLetter } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { transliterateToHindi } from "@/lib/transliterate";
+import { transliterateToHindi, transliterateSync } from "@/lib/transliterate";
 import { localImageStudio, StudioTheme } from "@/lib/ai/local-image-studio";
 
 interface FalconAiProductModalProps {
@@ -165,6 +165,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
   // Editable Form Fields populated by AI
   const [formData, setFormData] = useState({
     name: "",
+    name_hindi: "",
     brand: "",
     category_id: "",
     sub_category: "",
@@ -410,9 +411,18 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       );
       setDuplicateCheck(dup);
 
+      // Transliterate to Hindi for dual billing
+      let visionHindi = "";
+      if (result.productName) {
+        try {
+          visionHindi = await transliterateToHindi(result.productName);
+        } catch {}
+      }
+
       // Populate Form Data
       setFormData({
         name: result.productName ? capitalizeFirstLetter(result.productName) : "",
+        name_hindi: visionHindi,
         brand: result.brandName ? capitalizeFirstLetter(result.brandName) : "",
         category_id: result.suggestedCategoryId || "",
         sub_category: result.subCategory || "",
@@ -471,10 +481,18 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         const brandName = lookup.brand ? capitalizeFirstLetter(lookup.brand) : "Brand";
         const mrp = lookup.mrp || 50;
 
+        let barcodeHindi = transliterateSync(prodName);
+        try {
+          transliterateToHindi(prodName).then((hi) => {
+            if (hi) setFormData((prev) => ({ ...prev, name_hindi: hi }));
+          }).catch(() => {});
+        } catch {}
+
         // Populate Form
         setFormData((prev) => ({
           ...prev,
           name: prodName,
+          name_hindi: barcodeHindi || prev.name_hindi,
           brand: brandName,
           barcode: inputBarcode,
           mrp,
@@ -542,10 +560,20 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         const scannedBrand = d.brand ? capitalizeFirstLetter(d.brand) : "";
         const scannedMrp = Number(d.mrp) || 0;
 
+        let scannedHindi = scannedName ? transliterateSync(scannedName) : "";
+        if (scannedName) {
+          transliterateToHindi(scannedName)
+            .then((hi) => {
+              if (hi) setFormData((prev) => ({ ...prev, name_hindi: hi }));
+            })
+            .catch(() => {});
+        }
+
         setFormData((prev) => {
           const updated = {
             ...prev,
             name: scannedName || prev.name,
+            name_hindi: scannedHindi || prev.name_hindi,
             brand: scannedBrand || prev.brand,
             mrp: scannedMrp > 0 ? scannedMrp : prev.mrp,
             selling_price: scannedMrp > 0 ? scannedMrp : prev.selling_price,
@@ -670,8 +698,16 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       const mrp = Number(promptFormData.mrp) || 999;
       const sku = `${(promptFormData.brand.slice(0, 3) || "PRD").toUpperCase()}-${(catName.slice(0, 3) || "GEN").toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
 
+      let promptHindi = "";
+      if (promptFormData.name) {
+        try {
+          promptHindi = await transliterateToHindi(promptFormData.name);
+        } catch {}
+      }
+
       setFormData({
         name: promptFormData.name,
+        name_hindi: promptHindi,
         brand: promptFormData.brand,
         category_id: promptFormData.category_id || categories[0]?.id || "",
         sub_category: "",
@@ -901,7 +937,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
       const productPayload = {
         shop_id: shopId,
         name: capitalizeFirstLetter(formData.name.trim()),
-        name_hindi: hindiTitle || null,
+        name_hindi: formData.name_hindi?.trim() || hindiTitle || null,
         brand: formData.brand ? capitalizeFirstLetter(formData.brand.trim()) : null,
         category_id: formData.category_id || null,
         sku: formData.sku || `SKU-${Date.now()}`,
@@ -2288,8 +2324,61 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                         type="text"
                         placeholder="e.g. Sofy AntiBacteria Sanitary Pads (Extra Long)"
                         value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: capitalizeFirstLetter(e.target.value) })}
+                        onChange={(e) => {
+                          const val = capitalizeFirstLetter(e.target.value);
+                          const instantHi = transliterateSync(val);
+                          setFormData((prev) => ({
+                            ...prev,
+                            name: val,
+                            name_hindi: instantHi && instantHi !== val ? instantHi : prev.name_hindi,
+                          }));
+                          if (val.trim()) {
+                            transliterateToHindi(val)
+                              .then((hi) => {
+                                if (hi) setFormData((prev) => ({ ...prev, name_hindi: hi }));
+                              })
+                              .catch(() => {});
+                          }
+                        }}
+                        onBlur={() => {
+                          if (formData.name.trim() && !formData.name_hindi?.trim()) {
+                            transliterateToHindi(formData.name.trim())
+                              .then((hi) => {
+                                if (hi) setFormData((prev) => ({ ...prev, name_hindi: hi }));
+                              })
+                              .catch(() => {});
+                          }
+                        }}
                         className="w-full text-xs font-bold bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-purple-600"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-semibold text-gray-700">
+                          🇮🇳 Hindi Name / हिंदी नाम (Auto Transliterated for Bills & Receipts)
+                        </label>
+                        {formData.name.trim() && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const hi = await transliterateToHindi(formData.name);
+                                if (hi) setFormData((prev) => ({ ...prev, name_hindi: hi }));
+                              } catch {}
+                            }}
+                            className="text-[10px] text-purple-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <RefreshCw className="w-2.5 h-2.5" /> 🔄 Re-Generate Hindi
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="उदा. पैराशूट 100% प्योर कोकोनट ऑयल 100ml"
+                        value={formData.name_hindi || ""}
+                        onChange={(e) => setFormData({ ...formData, name_hindi: e.target.value })}
+                        className="w-full text-xs font-medium bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-purple-600"
                       />
                     </div>
 

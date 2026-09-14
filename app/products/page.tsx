@@ -306,6 +306,7 @@ export default function ProductsPage() {
     const matchesSearch =
       !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.name_hindi && p.name_hindi.toLowerCase().includes(search.toLowerCase())) ||
       p.sku?.toLowerCase().includes(search.toLowerCase()) ||
       p.barcode?.toLowerCase().includes(search.toLowerCase());
 
@@ -652,6 +653,11 @@ export default function ProductsPage() {
                           >
                             {p.name}
                           </h4>
+                          {p.name_hindi && (
+                            <div className="text-xs text-purple-700 font-semibold truncate leading-tight mt-0.5">
+                              {p.name_hindi}
+                            </div>
+                          )}
                         </div>
                         {p.brand && <div className="text-xs text-gray-500 font-medium">{p.brand}</div>}
 
@@ -825,6 +831,11 @@ export default function ProductsPage() {
                                   </button>
                                   <div className="min-w-0">
                                     <div className="font-black text-gray-900 text-xs sm:text-sm truncate max-w-xs">{p.name}</div>
+                                    {p.name_hindi && (
+                                      <div className="text-[11px] text-purple-700 font-semibold truncate max-w-xs leading-tight mt-0.5">
+                                        {p.name_hindi}
+                                      </div>
+                                    )}
                                     {p.brand && <div className="text-[11px] text-gray-500 font-medium">{p.brand}</div>}
                                   </div>
                                 </div>

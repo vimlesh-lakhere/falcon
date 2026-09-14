@@ -21,6 +21,7 @@ import { productsRepository } from "@/repositories/products.repo";
 import { UnitKey } from "@/lib/units-pricing";
 import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
 import { capitalizeFirstLetter } from "@/lib/utils";
+import { transliterateSync, transliterateToHindi } from "@/lib/transliterate";
 
 interface PosQuickAddModalProps {
   isOpen: boolean;
@@ -42,6 +43,8 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
   initialSearchQuery = "",
 }) => {
   const [name, setName] = useState("");
+  const [nameHindi, setNameHindi] = useState("");
+  const [isTransliterating, setIsTransliterating] = useState(false);
   const [barcode, setBarcode] = useState("");
   const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -78,6 +81,7 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
 
   const handleSelectExistingProduct = (p: Product) => {
     setName(p.name);
+    setNameHindi(p.name_hindi || "");
     if (p.barcode) setBarcode(p.barcode);
     if (p.category_id) setCategoryId(p.category_id);
     if (p.purchase_price) setPurchasePrice(Number(p.purchase_price));
@@ -98,9 +102,21 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
       if (isNumericBarcode) {
         setBarcode(query);
         setName("");
+        setNameHindi("");
       } else {
-        setName(capitalizeFirstLetter(query));
+        const formatted = capitalizeFirstLetter(query);
+        setName(formatted);
+        const fastHindi = transliterateSync(formatted);
+        setNameHindi(fastHindi);
         setBarcode("");
+
+        if (formatted) {
+          transliterateToHindi(formatted)
+            .then((hi) => {
+              if (hi) setNameHindi(hi);
+            })
+            .catch(() => {});
+        }
       }
 
       setSku(`SKU-${Date.now().toString().slice(-6)}`);
@@ -123,6 +139,35 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
       }, 100);
     }
   }, [isOpen, initialSearchQuery]);
+
+  // Debounced auto-transliteration for typed product names
+  useEffect(() => {
+    if (!name || !name.trim()) {
+      setNameHindi("");
+      return;
+    }
+
+    // 1. Instant synchronous phonetic transliteration for known presets
+    const instantHi = transliterateSync(name);
+    if (instantHi && instantHi !== name) {
+      setNameHindi(instantHi);
+    }
+
+    // 2. Async deep transliteration with 200ms debounce
+    const timer = setTimeout(async () => {
+      setIsTransliterating(true);
+      try {
+        const hi = await transliterateToHindi(name.trim());
+        if (hi) setNameHindi(hi);
+      } catch (e) {
+        console.warn("Transliterate notice:", e);
+      } finally {
+        setIsTransliterating(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [name]);
 
   if (!isOpen) return null;
 
@@ -168,9 +213,17 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
       setIsSaving(true);
       setErrorMsg("");
 
+      let finalHindi = nameHindi.trim();
+      if (!finalHindi && name.trim()) {
+        try {
+          finalHindi = await transliterateToHindi(name.trim());
+        } catch {}
+      }
+
       const productData: Partial<Product> = {
         shop_id: shopId,
         name: capitalizeFirstLetter(name.trim()),
+        name_hindi: finalHindi || null,
         barcode: barcode.trim() || null,
         sku: sku.trim() || null,
         category_id: categoryId || null,
@@ -333,6 +386,45 @@ export const PosQuickAddModal: React.FC<PosQuickAddModalProps> = ({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Hindi Transliterated Product Title */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-gray-700">
+                🇮🇳 Hindi Name / हिंदी नाम (Auto Transliterated for Bill)
+              </label>
+              {name.trim() && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsTransliterating(true);
+                    try {
+                      const hi = await transliterateToHindi(name);
+                      if (hi) setNameHindi(hi);
+                    } finally {
+                      setIsTransliterating(false);
+                    }
+                  }}
+                  className="text-[10px] text-purple-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Sparkles className="w-2.5 h-2.5" /> 🔄 Re-Generate Hindi
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <Input
+                value={nameHindi}
+                onChange={(e) => setNameHindi(e.target.value)}
+                placeholder="उदा. पैराशूट कोकोनट ऑयल 100ml"
+                className="rounded-xl text-sm font-medium focus:ring-purple-500"
+              />
+              {isTransliterating && (
+                <span className="absolute right-3 top-2.5 text-[11px] text-purple-600 font-bold flex items-center gap-1 animate-pulse">
+                  ट्रांसलेट हो रहा है...
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Category & Barcode Row */}
