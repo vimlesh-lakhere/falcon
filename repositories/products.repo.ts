@@ -1,6 +1,11 @@
 import { supabase } from "@/lib/supabase/client";
 import { Product, Category, Unit, Supplier } from "@/types/database";
 import { capitalizeFirstLetter } from "@/lib/utils";
+import {
+  attachOnlineConfigToDescription,
+  getProductOnlineConfig,
+  stripOnlineConfigFromDescription,
+} from "@/lib/product-online";
 
 export const productsRepository = {
   async getAll(shopId: string, options?: { categoryId?: string; search?: string; isActive?: boolean }) {
@@ -36,34 +41,139 @@ export const productsRepository = {
   },
 
   async create(product: Partial<Product>) {
-    const sanitizedProduct = {
+    const isOnline = product.is_online !== undefined ? product.is_online : true;
+    const onlinePrice = product.online_price !== undefined ? product.online_price : null;
+
+    // Always embed online config in description as a guaranteed persistence fallback
+    const originalDesc = product.description || "";
+    const descWithOnline = attachOnlineConfigToDescription(originalDesc, isOnline, onlinePrice);
+
+    const sanitizedProduct: any = {
       ...product,
+      description: descWithOnline,
       ...(product.name ? { name: capitalizeFirstLetter(product.name.trim()) } : {}),
       ...(product.brand ? { brand: capitalizeFirstLetter(product.brand.trim()) } : {}),
     };
-    const { data, error } = await supabase
-      .from("products")
-      .insert([sanitizedProduct])
-      .select("*, category:categories(*), supplier:suppliers(*)")
-      .single();
-    if (error) throw error;
-    return data as Product;
+
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .insert([sanitizedProduct])
+        .select("*, category:categories(*), supplier:suppliers(*)")
+        .single();
+
+      if (!error && data) {
+        return { ...(data as Product), is_online: isOnline, online_price: onlinePrice };
+      }
+      if (error && error.message.includes("is_online")) {
+        throw error;
+      }
+      if (error) throw error;
+      return data as Product;
+    } catch (err: any) {
+      // If table doesn't have is_online / online_price columns yet, strip them and retry
+      if (err?.message?.includes("is_online") || err?.message?.includes("online_price")) {
+        delete sanitizedProduct.is_online;
+        delete sanitizedProduct.online_price;
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("products")
+          .insert([sanitizedProduct])
+          .select("*, category:categories(*), supplier:suppliers(*)")
+          .single();
+        if (fallbackError) throw fallbackError;
+        return { ...(fallbackData as Product), is_online: isOnline, online_price: onlinePrice };
+      }
+      throw err;
+    }
   },
 
   async update(id: string, product: Partial<Product>) {
-    const sanitizedProduct = {
+    const isOnline = product.is_online;
+    const onlinePrice = product.online_price;
+
+    let updatedDescription = product.description;
+    if (isOnline !== undefined || onlinePrice !== undefined) {
+      const baseDesc = product.description !== undefined ? (product.description || "") : "";
+      const effectiveOnline = isOnline !== undefined ? isOnline : true;
+      updatedDescription = attachOnlineConfigToDescription(baseDesc, effectiveOnline, onlinePrice);
+    }
+
+    const sanitizedProduct: any = {
       ...product,
+      ...(updatedDescription !== undefined ? { description: updatedDescription } : {}),
       ...(product.name ? { name: capitalizeFirstLetter(product.name.trim()) } : {}),
       ...(product.brand ? { brand: capitalizeFirstLetter(product.brand.trim()) } : {}),
     };
-    const { data, error } = await supabase
+
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .update(sanitizedProduct)
+        .eq("id", id)
+        .select("*, category:categories(*), supplier:suppliers(*)")
+        .single();
+
+      if (!error && data) {
+        return {
+          ...(data as Product),
+          is_online: isOnline !== undefined ? isOnline : (data as Product).is_online,
+          online_price: onlinePrice !== undefined ? onlinePrice : (data as Product).online_price,
+        };
+      }
+      if (error && (error.message.includes("is_online") || error.message.includes("online_price"))) {
+        throw error;
+      }
+      if (error) throw error;
+      return data as Product;
+    } catch (err: any) {
+      if (err?.message?.includes("is_online") || err?.message?.includes("online_price")) {
+        delete sanitizedProduct.is_online;
+        delete sanitizedProduct.online_price;
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("products")
+          .update(sanitizedProduct)
+          .eq("id", id)
+          .select("*, category:categories(*), supplier:suppliers(*)")
+          .single();
+        if (fallbackError) throw fallbackError;
+        return {
+          ...(fallbackData as Product),
+          is_online: isOnline !== undefined ? isOnline : true,
+          online_price: onlinePrice !== undefined ? onlinePrice : null,
+        };
+      }
+      throw err;
+    }
+  },
+
+  async toggleOnlineVisibility(id: string, isOnline: boolean, currentProduct?: Product | null) {
+    const prod = currentProduct || await this.getById(id);
+    const cfg = getProductOnlineConfig(prod);
+    const updatedDesc = attachOnlineConfigToDescription(prod.description || "", isOnline, cfg.onlinePrice);
+
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .update({ is_online: isOnline, description: updatedDesc })
+        .eq("id", id)
+        .select("*, category:categories(*), supplier:suppliers(*)")
+        .single();
+
+      if (!error && data) {
+        return { ...(data as Product), is_online: isOnline, online_price: cfg.onlinePrice };
+      }
+    } catch {}
+
+    // Resilient fallback without direct is_online column
+    const { data: fallbackData, error: fallbackError } = await supabase
       .from("products")
-      .update(sanitizedProduct)
+      .update({ description: updatedDesc })
       .eq("id", id)
       .select("*, category:categories(*), supplier:suppliers(*)")
       .single();
-    if (error) throw error;
-    return data as Product;
+
+    if (fallbackError) throw fallbackError;
+    return { ...(fallbackData as Product), is_online: isOnline, online_price: cfg.onlinePrice };
   },
 
   async updateStock(id: string, newStock: number, reason: string = "Stock adjustment", shopId?: string) {

@@ -31,6 +31,7 @@ import {
   Minus,
   Camera,
   Image as ImageIcon,
+  Globe,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -51,6 +52,7 @@ import { ExcelBulkImportModal } from "@/components/products/ExcelBulkImportModal
 import { ManageCategoriesModal } from "@/components/products/ManageCategoriesModal";
 import { BarcodeLabelGenerator } from "@/components/products/BarcodeLabelGenerator";
 import { resolveCategoryVisual } from "@/lib/category-icons";
+import { isProductOnline, getProductOnlineConfig } from "@/lib/product-online";
 
 export default function ProductsPage() {
   const { currentStore, profile, fetchSession } = useAuthStore();
@@ -64,6 +66,7 @@ export default function ProductsPage() {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("all");
   const [stockStatusFilter, setStockStatusFilter] = useState<"all" | "in_stock" | "low_stock" | "out_of_stock">("all");
+  const [onlineStatusFilter, setOnlineStatusFilter] = useState<"all" | "online" | "store_only">("all");
 
   // Unified Add / Edit Product Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -160,6 +163,33 @@ export default function ProductsPage() {
     (p) => Number(p.current_stock) > 0 && Number(p.current_stock) <= Number(p.minimum_stock)
   ).length;
   const outOfStockCount = products.filter((p) => Number(p.current_stock) <= 0).length;
+  const liveOnlineCount = products.filter((p) => isProductOnline(p)).length;
+  const storeOnlyCount = products.length - liveOnlineCount;
+
+  const handleToggleOnline = async (product: Product) => {
+    const currentCfg = getProductOnlineConfig(product);
+    const nextStatus = !currentCfg.isOnline;
+
+    // Optimistic UI update
+    setProducts((prev) =>
+      prev.map((item) =>
+        item.id === product.id ? { ...item, is_online: nextStatus } : item
+      )
+    );
+
+    try {
+      await productsRepository.toggleOnlineVisibility(product.id, nextStatus, product);
+    } catch (err: any) {
+      console.error("Failed to toggle online status:", err);
+      // Rollback on error
+      setProducts((prev) =>
+        prev.map((item) =>
+          item.id === product.id ? { ...item, is_online: currentCfg.isOnline } : item
+        )
+      );
+      alert("Failed to update online visibility: " + (err.message || "Unknown error"));
+    }
+  };
 
   const handleExportCsv = () => {
     if (products.length === 0) return alert("No products to export!");
@@ -318,7 +348,12 @@ export default function ProductsPage() {
     else if (stockStatusFilter === "low_stock") matchesStock = stock > 0 && stock <= min;
     else if (stockStatusFilter === "out_of_stock") matchesStock = stock <= 0;
 
-    return matchesCat && matchesSearch && matchesStock;
+    const isOnline = isProductOnline(p);
+    let matchesOnline = true;
+    if (onlineStatusFilter === "online") matchesOnline = isOnline;
+    else if (onlineStatusFilter === "store_only") matchesOnline = !isOnline;
+
+    return matchesCat && matchesSearch && matchesStock && matchesOnline;
   });
 
   return (
@@ -462,6 +497,41 @@ export default function ProductsPage() {
                 }`}
               >
                 <span>🔴 Out ({outOfStockCount})</span>
+              </button>
+            </div>
+
+            {/* Online Storefront Visibility Filter Pills */}
+            <div className="hidden md:flex items-center gap-1 bg-purple-50/80 border border-purple-100 p-1 rounded-xl shrink-0">
+              <button
+                type="button"
+                onClick={() => setOnlineStatusFilter("all")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  onlineStatusFilter === "all" ? "bg-white text-purple-950 shadow-2xs" : "text-purple-700 hover:text-purple-950"
+                }`}
+              >
+                🌐 All
+              </button>
+              <button
+                type="button"
+                onClick={() => setOnlineStatusFilter("online")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  onlineStatusFilter === "online" ? "bg-emerald-600 text-white shadow-2xs" : "text-emerald-800 hover:bg-emerald-100/50"
+                }`}
+                title="Only products published on public website (/store)"
+              >
+                <span>🟢 Online</span>
+                {liveOnlineCount > 0 && <span className="text-[10px] font-mono font-bold">({liveOnlineCount})</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOnlineStatusFilter("store_only")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  onlineStatusFilter === "store_only" ? "bg-gray-700 text-white shadow-2xs" : "text-gray-600 hover:bg-gray-200/50"
+                }`}
+                title="Products sold exclusively in physical shop (POS only)"
+              >
+                <span>🔒 Store Only</span>
+                {storeOnlyCount > 0 && <span className="text-[10px] font-mono font-bold">({storeOnlyCount})</span>}
               </button>
             </div>
           </div>
@@ -676,6 +746,39 @@ export default function ProductsPage() {
                               {p.barcode}
                             </span>
                           )}
+                          {/* 1-Click Online Store Status Toggle */}
+                          {(() => {
+                            const onlineCfg = getProductOnlineConfig(p);
+                            const isOnline = onlineCfg.isOnline;
+                            const onlinePrice = onlineCfg.onlinePrice;
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleOnline(p);
+                                }}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer select-none active:scale-95 ${
+                                  isOnline
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                                    : "bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200"
+                                }`}
+                                title={
+                                  isOnline
+                                    ? "Live on Online Store (/store). Click to make Store Only."
+                                    : "Store Only (POS counter). Click to publish Online."
+                                }
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-gray-400"}`} />
+                                <span>{isOnline ? "Online" : "Store Only"}</span>
+                                {onlinePrice && isOnline && (
+                                  <span className="text-[9px] bg-emerald-200/90 text-emerald-900 px-1 rounded">
+                                    ₹{onlinePrice}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -786,6 +889,7 @@ export default function ProductsPage() {
                         <tr>
                           <th className="px-5 py-3.5">Product Name & Brand</th>
                           <th className="px-5 py-3.5">Category</th>
+                          <th className="px-5 py-3.5 text-center">Online Store</th>
                           <th className="px-5 py-3.5">SKU / Barcode</th>
                           <th className="px-5 py-3.5 text-right">Cost Price</th>
                           <th className="px-5 py-3.5 text-right">Retail Price</th>
@@ -805,6 +909,10 @@ export default function ProductsPage() {
                           const profit = sell - cost;
                           const marginPercent = sell > 0 ? Math.round((profit / sell) * 100) : 0;
                           const visual = resolveCategoryVisual(p.category_id || "", p.category?.name || "General");
+
+                          const onlineCfg = getProductOnlineConfig(p);
+                          const isOnline = onlineCfg.isOnline;
+                          const onlinePrice = onlineCfg.onlinePrice;
 
                           return (
                             <tr key={p.id} className="hover:bg-purple-50/30 transition-colors group">
@@ -850,6 +958,31 @@ export default function ProductsPage() {
                                   )}
                                   <span>{p.category?.name || "General"}</span>
                                 </span>
+                              </td>
+
+                              <td className="px-5 py-3.5 text-xs text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleOnline(p)}
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer select-none active:scale-95 ${
+                                    isOnline
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                                      : "bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200"
+                                  }`}
+                                  title={
+                                    isOnline
+                                      ? "Live on Online Store (/store). Click to make Store Only."
+                                      : "Store Only (POS counter). Click to publish Online."
+                                  }
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-gray-400"}`} />
+                                  <span>{isOnline ? "🌐 Online" : "🔒 Store Only"}</span>
+                                  {onlinePrice && isOnline && (
+                                    <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-bold">
+                                      ₹{onlinePrice}
+                                    </span>
+                                  )}
+                                </button>
                               </td>
 
                               <td className="px-5 py-3.5 font-mono text-xs text-gray-600">

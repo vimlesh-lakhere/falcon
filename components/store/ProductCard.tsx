@@ -6,6 +6,7 @@ import { Heart, MessageCircle, Plus, Check } from "lucide-react";
 import { Product } from "@/types/database";
 import { useStoreCart } from "@/store/useStoreCart";
 import { extractProductVariants, CleanVariant } from "@/lib/product-variants";
+import { getProductEffectiveOnlinePrice, getProductOnlineConfig } from "@/lib/product-online";
 
 interface ProductCardProps {
   product: Product;
@@ -28,9 +29,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     (it) => it.product.id === product.id && it.selectedVariant === selectedVariant?.size
   );
 
-  const price = selectedVariant ? selectedVariant.price : Number(product.selling_price) || 0;
-  const mrp = selectedVariant ? selectedVariant.mrp : Number((product as any).mrp) || price;
+  const onlineConfig = getProductOnlineConfig(product);
+  const effectiveBasePrice = getProductEffectiveOnlinePrice(product);
+  const price = selectedVariant ? selectedVariant.price : effectiveBasePrice;
+  const mrp = selectedVariant ? selectedVariant.mrp : Number((product as any).mrp) || Number(product.selling_price) || price;
   const discountPercent = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+  const hasOnlineSpecialPrice = !selectedVariant && onlineConfig.online_price !== null && onlineConfig.online_price < (Number(product.selling_price) || 0);
   const isOutOfStock = (selectedVariant?.stock ?? product.current_stock) <= 0;
 
   const rawImages = (product.image_url || "").split("|||").filter(Boolean);
@@ -78,7 +82,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     >
       {/* Discount & Wishlist Badges */}
       <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between pointer-events-none">
-        {discountPercent > 0 ? (
+        {hasOnlineSpecialPrice ? (
+          <span className="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs tracking-wider">
+            ONLINE OFFER
+          </span>
+        ) : discountPercent > 0 ? (
           <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs tracking-wider">
             {discountPercent}% OFF
           </span>
@@ -194,11 +202,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         {/* Price & Cart Actions */}
         <div className="space-y-2 pt-1 border-t border-gray-50">
           <div className="flex items-baseline justify-between">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-sm sm:text-base font-black text-gray-900">₹{price}</span>
-              {mrp > price && (
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className={`text-sm sm:text-base font-black ${hasOnlineSpecialPrice ? 'text-emerald-700' : 'text-gray-900'}`}>
+                ₹{price}
+              </span>
+              {hasOnlineSpecialPrice ? (
+                <span className="text-[11px] text-gray-400 line-through font-medium" title="Counter price">
+                  ₹{Number(product.selling_price) || 0}
+                </span>
+              ) : mrp > price ? (
                 <span className="text-[11px] text-gray-400 line-through font-medium">₹{mrp}</span>
-              )}
+              ) : null}
             </div>
             {selectedVariant && (
               <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded-md">

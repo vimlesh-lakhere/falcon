@@ -233,5 +233,8 @@ export function attachVariantsToDescription(
  */
 export function stripVariantsFromDescription(description: string | null | undefined): string {
   if (!description) return "";
-  return description.replace(/<!--variants:[\s\S]*?-->/g, "").trim();
+  return description
+    .replace(/<!--variants:[\s\S]*?-->/g, "")
+    .replace(/<!--online:[\s\S]*?-->/g, "")
+    .trim();
 }

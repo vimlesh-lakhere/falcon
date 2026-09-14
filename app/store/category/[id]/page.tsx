@@ -7,8 +7,8 @@ import { ArrowLeft, ShoppingBag, Sparkles, Filter } from "lucide-react";
 import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product, Category } from "@/types/database";
-
 import { resolveActiveShopId } from "@/lib/tenant";
+import { isProductOnline } from "@/lib/product-online";
 
 export default function CategoryCatalogPage() {
   const params = useParams();
@@ -44,7 +44,7 @@ export default function CategoryCatalogPage() {
           .eq("is_active", true)
           .order("created_at", { ascending: false });
 
-        setProducts(prods || []);
+        setProducts((prods || []).filter(isProductOnline));
       } catch (err) {
         console.error("Failed to load category catalog:", err);
       } finally {

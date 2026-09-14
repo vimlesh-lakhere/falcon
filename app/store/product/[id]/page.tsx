@@ -33,6 +33,11 @@ import {
   CleanVariant,
 } from "@/lib/product-variants";
 import { resolveActiveShopId } from "@/lib/tenant";
+import {
+  isProductOnline,
+  getProductOnlineConfig,
+  getProductEffectiveOnlinePrice,
+} from "@/lib/product-online";
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -83,7 +88,7 @@ export default function ProductDetailPage() {
             .eq("is_active", true)
             .limit(4);
 
-          setSimilarProducts(simList || []);
+          setSimilarProducts((simList || []).filter(isProductOnline));
         }
       } catch (err) {
         console.error("Failed to load product detail:", err);
@@ -129,10 +134,14 @@ export default function ProductDetailPage() {
   const isFavorite = isInWishlist(product.id);
 
   // Use selected variant pricing or base product pricing
-  const price = selectedVariant ? selectedVariant.price : Number(product.selling_price) || 0;
-  const mrp = selectedVariant ? selectedVariant.mrp : Number((product as any).mrp) || price;
+  const isOnline = isProductOnline(product);
+  const onlineConfig = getProductOnlineConfig(product);
+  const effectiveBasePrice = getProductEffectiveOnlinePrice(product);
+  const price = selectedVariant ? selectedVariant.price : effectiveBasePrice;
+  const mrp = selectedVariant ? selectedVariant.mrp : Number((product as any).mrp) || Number(product.selling_price) || price;
   const savings = mrp > price ? mrp - price : 0;
   const discountPercent = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+  const hasOnlineOffer = !selectedVariant && onlineConfig.online_price !== null && onlineConfig.online_price < (Number(product.selling_price) || 0);
   const stockCount = selectedVariant?.stock ?? product.current_stock;
   const isOutOfStock = stockCount <= 0;
 
@@ -286,7 +295,17 @@ export default function ProductDetailPage() {
                     : Number((Number(product.wholesale_price) / 12).toFixed(0))
                   : price}
               </span>
-              {mrp > price && (
+              {hasOnlineOffer && (
+                <span className="text-xs font-black text-white bg-emerald-600 px-2.5 py-0.5 rounded-full shadow-xs">
+                  ONLINE DEAL
+                </span>
+              )}
+              {hasOnlineOffer && Number(product.selling_price) > price && (
+                <span className="text-xs sm:text-sm text-gray-400 line-through font-medium" title="Counter Price">
+                  ₹{product.selling_price}
+                </span>
+              )}
+              {mrp > price && !hasOnlineOffer && (
                 <>
                   <span className="text-sm sm:text-base text-gray-400 line-through font-semibold">
                     MRP ₹{mrp}
@@ -382,6 +401,21 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
+          {/* Store Only Exclusivity Notice */}
+          {!isOnline && (
+            <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-900 flex items-start gap-3 shadow-xs">
+              <span className="text-xl">🏢</span>
+              <div className="space-y-1">
+                <div className="text-xs font-bold uppercase tracking-wider text-amber-950">
+                  Store Counter Exclusive Item
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  This product is currently available exclusively at our physical shop counter. Online courier dispatch is paused for this item. You can message us on WhatsApp to verify current in-store stock or place a pickup hold.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Quantity Selector & Action Buttons */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center gap-3">
@@ -408,32 +442,42 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              {/* Add to Cart */}
-              <button
-                type="button"
-                disabled={isOutOfStock}
-                onClick={() => addToCart(product, quantity)}
-                className="w-full py-3.5 px-4 rounded-2xl bg-purple-100 hover:bg-purple-200 text-purple-950 font-black text-xs sm:text-sm border border-purple-300 shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-              >
-                <ShoppingCart className="w-4 h-4 text-purple-700" />
-                <span>Add to Cart</span>
-              </button>
+            {!isOnline ? (
+              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 text-center space-y-2.5">
+                <div className="text-xs font-bold text-gray-700">Available In-Store Only</div>
+                <p className="text-[11px] text-gray-500">Contact our store team on WhatsApp for queries or in-person shop visits.</p>
+                <WhatsAppOrderButton product={product} variant="secondary" className="w-full py-3" />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  {/* Add to Cart */}
+                  <button
+                    type="button"
+                    disabled={isOutOfStock}
+                    onClick={() => handleAddToCartWithVariant(quantity)}
+                    className="w-full py-3.5 px-4 rounded-2xl bg-purple-100 hover:bg-purple-200 text-purple-950 font-black text-xs sm:text-sm border border-purple-300 shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    <ShoppingCart className="w-4 h-4 text-purple-700" />
+                    <span>Add to Cart</span>
+                  </button>
 
-              {/* Fast 1-Click Buy Now */}
-              <button
-                type="button"
-                disabled={isOutOfStock}
-                onClick={handleBuyNow}
-                className="w-full py-3.5 px-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-              >
-                <Zap className="w-4 h-4 text-amber-300" />
-                <span>Buy Now (Express)</span>
-              </button>
-            </div>
+                  {/* Fast 1-Click Buy Now */}
+                  <button
+                    type="button"
+                    disabled={isOutOfStock}
+                    onClick={handleBuyNow}
+                    className="w-full py-3.5 px-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Zap className="w-4 h-4 text-amber-300" />
+                    <span>Buy Now (Express)</span>
+                  </button>
+                </div>
 
-            {/* Direct WhatsApp Order */}
-            <WhatsAppOrderButton product={product} variant="secondary" className="w-full py-3" />
+                {/* Direct WhatsApp Order */}
+                <WhatsAppOrderButton product={product} variant="secondary" className="w-full py-3" />
+              </>
+            )}
           </div>
 
           {/* Value Highlights */}

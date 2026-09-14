@@ -24,6 +24,7 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product, Category } from "@/types/database";
 import { resolveActiveShopId, DEFAULT_FALLBACK_SHOP_ID } from "@/lib/tenant";
+import { isProductOnline, getProductOnlineConfig } from "@/lib/product-online";
 
 function StoreHomeContent() {
   const searchParams = useSearchParams();
@@ -72,7 +73,8 @@ function StoreHomeContent() {
             .limit(12),
         ]);
 
-        setProducts(prodList || []);
+        const onlineOnly = (prodList || []).filter(isProductOnline);
+        setProducts(onlineOnly);
         setCategories(catList || []);
       } catch (err) {
         console.error("Failed to load storefront products:", err);
@@ -87,9 +89,12 @@ function StoreHomeContent() {
   // Filter sections
   const featuredProducts = products.slice(0, 8);
   const bestSellers = products.slice(8, 16).length > 0 ? products.slice(8, 16) : products.slice(0, 8);
-  const todaysOffers = products.filter(
-    (p) => Number((p as any).mrp) > Number(p.selling_price)
-  ).slice(0, 8);
+  const todaysOffers = products.filter((p) => {
+    const onlineCfg = getProductOnlineConfig(p);
+    const hasOnlineOffer = onlineCfg.online_price !== null && onlineCfg.online_price < (Number(p.selling_price) || 0);
+    const hasMrpDiscount = Number((p as any).mrp) > Number(p.selling_price);
+    return hasOnlineOffer || hasMrpDiscount;
+  }).slice(0, 8);
 
   return (
     <div className="space-y-10 sm:space-y-14 max-w-7xl mx-auto px-4 sm:px-6 pt-4 sm:pt-6">

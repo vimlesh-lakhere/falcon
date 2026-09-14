@@ -58,6 +58,7 @@ import {
 } from "@/lib/ai/types";
 import { Product, Category, Supplier, Unit } from "@/types/database";
 import { formatCurrency, capitalizeFirstLetter } from "@/lib/utils";
+import { productsRepository } from "@/repositories/products.repo";
 import { createClient } from "@/lib/supabase/client";
 import { transliterateToHindi, transliterateSync } from "@/lib/transliterate";
 import { localImageStudio, StudioTheme } from "@/lib/ai/local-image-studio";
@@ -191,6 +192,8 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
     country_of_origin: "India",
     manufacturer: "",
     is_website_published: true,
+    is_online: true,
+    online_price: 0,
   });
 
   // UI accordion sections
@@ -448,6 +451,8 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         country_of_origin: result.attributes?.countryOfOrigin || "India",
         manufacturer: result.attributes?.manufacturer || (result.brandName ? `${result.brandName} Laboratories` : ""),
         is_website_published: true,
+        is_online: true,
+        online_price: 0,
       });
 
       // Clear synthetic showroom url so the user's real product photo is the primary hero
@@ -733,6 +738,8 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         country_of_origin: "India",
         manufacturer: `${promptFormData.brand || "Falcon"} Enterprise Pvt. Ltd.`,
         is_website_published: true,
+        is_online: true,
+        online_price: 0,
       });
 
       setAiResult({
@@ -954,15 +961,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         description: formData.short_description || formData.long_description || null,
         image_url: heroImg, // Primary website & showroom display image
         is_active: true,
+        is_online: formData.is_online !== false,
+        online_price: Number(formData.online_price) > 0 ? Number(formData.online_price) : null,
       };
 
-      const { data: newProd, error: prodError } = await supabase
-        .from("products")
-        .insert([productPayload])
-        .select()
-        .single();
-
-      if (prodError) throw prodError;
+      const newProd = await productsRepository.create(productPayload as any);
 
       // Create initial stock movement if opening stock > 0
       if (Number(formData.current_stock) > 0 && newProd) {
@@ -2221,6 +2224,60 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* Online Storefront Visibility & Special Price */}
+                <div className="bg-gradient-to-br from-purple-50/60 to-indigo-50/40 border border-purple-200/80 rounded-2xl p-3.5 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${formData.is_online !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                        <Globe className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-gray-950">Online Storefront</div>
+                        <div className="text-[10px] text-gray-500">
+                          {formData.is_online !== false ? '🟢 Visible on /store' : '🔒 Store counter sale only'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, is_online: formData.is_online === false ? true : false })}
+                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        formData.is_online !== false ? 'bg-emerald-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          formData.is_online !== false ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {formData.is_online !== false && (
+                    <div className="pt-2 border-t border-purple-100/80">
+                      <label className="block text-[10px] font-bold text-gray-700 mb-0.5">
+                        Online Offer Price (₹) <span className="font-normal text-gray-500">(Optional)</span>
+                      </label>
+                      <input
+                        type="number"
+                        placeholder={formData.selling_price ? `Default: ₹${formData.selling_price}` : "0.00"}
+                        value={formData.online_price === 0 || !formData.online_price ? "" : formData.online_price}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            online_price: e.target.value === "" ? 0 : parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full text-xs font-bold text-purple-900 bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                      />
+                      <p className="text-[9px] text-gray-500 mt-1">
+                        Leave empty to sell online at standard counter price (₹{formData.selling_price || 0}).
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

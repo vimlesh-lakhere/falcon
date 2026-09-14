@@ -32,6 +32,7 @@ import { aiImageEnhancer } from "@/lib/ai/image-enhancer";
 import { findInIndianRetailCatalog, searchIndianRetailCatalog } from "@/lib/catalog/indian-retail-catalog";
 import { transliterateToHindi, transliterateSync } from "@/lib/transliterate";
 import { capitalizeFirstLetter } from "@/lib/utils";
+import { getProductOnlineConfig } from "@/lib/product-online";
 
 import {
   extractProductVariants,
@@ -91,6 +92,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [minSellingPrice, setMinSellingPrice] = useState<number>(0);
   const [currentStock, setCurrentStock] = useState<number>(10);
   const [minStock, setMinStock] = useState<number>(5);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [onlinePrice, setOnlinePrice] = useState<string>("");
   const [description, setDescription] = useState("");
   const [variants, setVariants] = useState<CleanVariant[]>([]);
   
@@ -372,6 +375,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setMinSellingPrice(Number(editingProduct.minimum_selling_price || 0));
         setCurrentStock(Number(editingProduct.current_stock || 0));
         setMinStock(Number(editingProduct.minimum_stock || 5));
+        const onlineCfg = getProductOnlineConfig(editingProduct);
+        setIsOnline(onlineCfg.isOnline);
+        setOnlinePrice(onlineCfg.onlinePrice ? String(onlineCfg.onlinePrice) : "");
         setDescription(stripVariantsFromDescription(editingProduct.description));
 
         // Load variants
@@ -399,6 +405,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setMinSellingPrice(0);
         setCurrentStock(10);
         setMinStock(5);
+        setIsOnline(true);
+        setOnlinePrice("");
         setDescription("");
         setVariants([]);
         setImageUrl("");
@@ -794,6 +802,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         wholesale_min_qty: wholesaleMinQty > 0 ? wholesaleMinQty : 12,
         minimum_selling_price: minSellingPrice || null,
         minimum_stock: minStock,
+        is_online: isOnline,
+        online_price: Number(onlinePrice) > 0 ? Number(onlinePrice) : null,
         description: finalDescription.trim() || null,
         image_url: combinedImageUrl,
       };
@@ -1890,6 +1900,61 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* =================================================================== */}
+              {/* 🌐 ONLINE STOREFRONT VISIBILITY & SPECIAL PRICE                     */}
+              {/* =================================================================== */}
+              <div className="bg-gradient-to-r from-emerald-50/80 via-teal-50/60 to-cyan-50/50 border-2 border-emerald-300/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                      🌐
+                    </span>
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                        Online Store Visibility / ऑनलाइन स्टोर पर दिखाएं
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                          isOnline ? "bg-emerald-200 text-emerald-900" : "bg-gray-200 text-gray-700"
+                        }`}>
+                          {isOnline ? "Live on /store" : "In-Store POS Only"}
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-gray-500">
+                        Controls whether customers can view and order this product on your public website and WhatsApp catalog
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={isOnline}
+                      onChange={(e) => setIsOnline(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {isOnline && (
+                  <div className="pt-2 border-t border-emerald-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-150">
+                    <div className="text-[11px] text-emerald-900 flex-1">
+                      <span className="font-bold">🏷️ Online Special Offer Price (₹):</span> Set a special discounted rate exclusively for website and WhatsApp customers. Leave blank to automatically use standard in-store selling price (₹{sellingPrice || 0}).
+                    </div>
+                    <div className="w-full sm:w-44 shrink-0">
+                      <div className="relative">
+                        <span className="absolute left-3 top-2 text-xs font-bold text-emerald-700">₹</span>
+                        <input
+                          type="number"
+                          value={onlinePrice}
+                          onChange={(e) => setOnlinePrice(e.target.value)}
+                          placeholder={`POS: ₹${sellingPrice || 0}`}
+                          className="w-full pl-7 pr-3 py-1.5 text-xs font-bold bg-white border border-emerald-400 rounded-xl text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-2xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* =================================================================== */}

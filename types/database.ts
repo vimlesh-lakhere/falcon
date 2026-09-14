@@ -126,6 +126,8 @@ export interface Product {
   minimum_stock: number;
   image_url: string | null;
   description: string | null;
+  is_online?: boolean;
+  online_price?: number | null;
   is_active: boolean;
   created_at: string;
   category?: Category;
