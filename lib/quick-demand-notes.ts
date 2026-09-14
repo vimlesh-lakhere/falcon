@@ -1,3 +1,6 @@
+import { demandNotesRepository } from "@/repositories/demand-notes.repo";
+import { DemandNote } from "@/types/database";
+
 export interface QuickDemandNote {
   id: string;
   shopId: string;
@@ -7,28 +10,53 @@ export interface QuickDemandNote {
   supplierId?: string | null;
   supplierPhone?: string | null;
   notes?: string;
+  status?: "pending" | "ordered" | "fulfilled";
   isDone: boolean;
+  priority?: "normal" | "urgent";
   createdAt: string;
 }
 
-const STORAGE_PREFIX = "falcon_demand_notes_";
+// Convert DemandNote (database format) to QuickDemandNote (UI format)
+export function toQuickDemandNote(d: DemandNote): QuickDemandNote {
+  return {
+    id: d.id,
+    shopId: d.shop_id,
+    itemName: d.item_name,
+    quantity: d.quantity || undefined,
+    groupName: d.group_name || "General",
+    supplierId: d.supplier_id || null,
+    supplierPhone: d.supplier_phone || null,
+    notes: d.notes || undefined,
+    status: d.status,
+    isDone: d.is_done || d.status === "fulfilled",
+    priority: d.priority || "normal",
+    createdAt: d.created_at,
+  };
+}
 
 export const quickDemandNotesService = {
-  getStorageKey(shopId: string): string {
-    return `${STORAGE_PREFIX}${shopId}`;
+  /**
+   * Synchronous load from local cache with immediate background cloud sync
+   */
+  getAll(shopId: string): QuickDemandNote[] {
+    const cached = demandNotesRepository.getLocalCache(shopId);
+
+    // Trigger background cloud fetch and reconciliation
+    if (typeof window !== "undefined" && shopId) {
+      demandNotesRepository.getAll(shopId).catch((err) => {
+        console.warn("Background demand notes sync:", err);
+      });
+    }
+
+    return cached.map(toQuickDemandNote);
   },
 
-  getAll(shopId: string): QuickDemandNote[] {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = localStorage.getItem(this.getStorageKey(shopId));
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      console.warn("Failed to load demand notes from storage", e);
-      return [];
-    }
+  /**
+   * Async fetch from cloud
+   */
+  async getAllAsync(shopId: string): Promise<QuickDemandNote[]> {
+    const data = await demandNotesRepository.getAll(shopId);
+    return data.map(toQuickDemandNote);
   },
 
   save(
@@ -40,92 +68,85 @@ export const quickDemandNotesService = {
       supplierId?: string | null;
       supplierPhone?: string | null;
       notes?: string;
+      priority?: "normal" | "urgent";
     }
   ): QuickDemandNote[] {
-    if (typeof window === "undefined") return [];
-    const notes = this.getAll(shopId);
-    const newNote: QuickDemandNote = {
-      id: `dmd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      shopId,
-      itemName: data.itemName.trim(),
-      quantity: data.quantity?.trim() || undefined,
-      groupName: data.groupName?.trim() || "General",
-      supplierId: data.supplierId || null,
-      supplierPhone: data.supplierPhone || null,
-      notes: data.notes?.trim() || undefined,
-      isDone: false,
-      createdAt: new Date().toISOString(),
-    };
+    demandNotesRepository.create(shopId, {
+      item_name: data.itemName,
+      quantity: data.quantity,
+      group_name: data.groupName,
+      supplier_id: data.supplierId,
+      supplier_phone: data.supplierPhone,
+      notes: data.notes,
+      priority: data.priority,
+    });
 
-    const updated = [newNote, ...notes];
-    try {
-      localStorage.setItem(this.getStorageKey(shopId), JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent("falcon_demand_notes_updated", { detail: { shopId } }));
-    } catch (e) {
-      console.error("Failed to save demand note", e);
-    }
-    return updated;
+    return this.getAll(shopId);
+  },
+
+  async bulkSave(
+    shopId: string,
+    items: Array<{
+      itemName: string;
+      quantity?: string;
+      groupName?: string;
+      supplierId?: string | null;
+      priority?: "normal" | "urgent";
+    }>
+  ): Promise<QuickDemandNote[]> {
+    const payloads = items.map((it) => ({
+      item_name: it.itemName,
+      quantity: it.quantity,
+      group_name: it.groupName,
+      supplier_id: it.supplierId,
+      priority: it.priority,
+    }));
+
+    const inserted = await demandNotesRepository.bulkCreate(shopId, payloads);
+    return inserted.map(toQuickDemandNote);
   },
 
   toggleDone(shopId: string, id: string): QuickDemandNote[] {
-    if (typeof window === "undefined") return [];
-    const notes = this.getAll(shopId);
-    const updated = notes.map((n) => (n.id === id ? { ...n, isDone: !n.isDone } : n));
-    try {
-      localStorage.setItem(this.getStorageKey(shopId), JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent("falcon_demand_notes_updated", { detail: { shopId } }));
-    } catch (e) {
-      console.error("Failed to update demand note", e);
-    }
-    return updated;
+    demandNotesRepository.toggleDone(shopId, id);
+    return this.getAll(shopId);
+  },
+
+  cycleStatus(shopId: string, id: string, currentStatus: string = "pending"): QuickDemandNote[] {
+    demandNotesRepository.cycleStatus(shopId, id, currentStatus);
+    return this.getAll(shopId);
   },
 
   delete(shopId: string, id: string): QuickDemandNote[] {
-    if (typeof window === "undefined") return [];
-    const notes = this.getAll(shopId);
-    const updated = notes.filter((n) => n.id !== id);
-    try {
-      localStorage.setItem(this.getStorageKey(shopId), JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent("falcon_demand_notes_updated", { detail: { shopId } }));
-    } catch (e) {
-      console.error("Failed to delete demand note", e);
-    }
-    return updated;
+    demandNotesRepository.delete(shopId, id);
+    return this.getAll(shopId);
   },
 
   clearDone(shopId: string): QuickDemandNote[] {
-    if (typeof window === "undefined") return [];
-    const notes = this.getAll(shopId);
-    const updated = notes.filter((n) => !n.isDone);
-    try {
-      localStorage.setItem(this.getStorageKey(shopId), JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent("falcon_demand_notes_updated", { detail: { shopId } }));
-    } catch (e) {
-      console.error("Failed to clear completed notes", e);
-    }
-    return updated;
+    demandNotesRepository.clearFulfilled(shopId);
+    return this.getAll(shopId);
   },
 
   getStats(shopId: string): {
     total: number;
     pending: number;
     completed: number;
+    ordered?: number;
+    urgent?: number;
     byGroup: Record<string, number>;
   } {
-    const notes = this.getAll(shopId);
-    const pendingNotes = notes.filter((n) => !n.isDone);
-    const byGroup: Record<string, number> = {};
-
-    pendingNotes.forEach((n) => {
-      const g = n.groupName || "General";
-      byGroup[g] = (byGroup[g] || 0) + 1;
+    const stats = demandNotesRepository.getStats(shopId);
+    const byGroupCounts: Record<string, number> = {};
+    Object.entries(stats.byGroup).forEach(([k, v]) => {
+      byGroupCounts[k] = v.pending;
     });
 
     return {
-      total: notes.length,
-      pending: pendingNotes.length,
-      completed: notes.length - pendingNotes.length,
-      byGroup,
+      total: stats.total,
+      pending: stats.pending,
+      completed: stats.fulfilled,
+      ordered: stats.ordered,
+      urgent: stats.urgent,
+      byGroup: byGroupCounts,
     };
   },
 };

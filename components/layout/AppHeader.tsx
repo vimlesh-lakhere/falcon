@@ -107,6 +107,16 @@ export function AppHeader({ title, subtitle, onOpenMobileMenu }: AppHeaderProps)
           </a>
         )}
 
+        {/* Quick Demand Pad (Parchi) Shortcut */}
+        <Link
+          href="/demand-pad"
+          className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 rounded-lg text-xs font-bold transition-all shadow-2xs"
+          title="Demand Pad (खरीदी पर्ची)"
+        >
+          <span className="text-amber-600 font-black">⚡</span>
+          <span className="hidden sm:inline">पर्ची (Demand)</span>
+        </Link>
+
         {/* Quick Add Menu */}
         <QuickActionMenu />
 

@@ -18,11 +18,13 @@ import {
   Settings,
   Store,
   ChevronRight,
+  ClipboardList,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StoreSwitcher } from "@/components/layout/StoreSwitcher";
 import { useAuthStore } from "@/store/useAuthStore";
+import { quickDemandNotesService } from "@/lib/quick-demand-notes";
 
 const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, shortcut: "G D" },
@@ -31,6 +33,7 @@ const navigationItems = [
   { name: "Products", href: "/products", icon: Package },
   { name: "Inventory", href: "/inventory", icon: Boxes, shortcut: "G I" },
   { name: "Purchases", href: "/purchases", icon: Truck },
+  { name: "Demand Pad (पर्ची)", href: "/demand-pad", icon: ClipboardList, shortcut: "G N" },
   { name: "Sales & Invoices", href: "/sales", icon: Receipt, shortcut: "G S" },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Customer Requests", href: "/requests", icon: MessageSquare },
@@ -57,8 +60,27 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
     profile?.email === "vlakhere@gmail.com" ||
     profile?.email === "owner_1786762700828@agsstore.com";
 
+  const [pendingDemands, setPendingDemands] = React.useState(0);
+  const shopId = currentStore?.id || profile?.store_id || "";
+
+  React.useEffect(() => {
+    if (!shopId) return;
+    const updateStats = () => {
+      const stats = quickDemandNotesService.getStats(shopId);
+      setPendingDemands(stats.pending);
+    };
+    updateStats();
+    window.addEventListener("falcon_demand_notes_updated", updateStats);
+    return () => window.removeEventListener("falcon_demand_notes_updated", updateStats);
+  }, [shopId]);
+
   const dynamicNavItems = [
-    ...navigationItems,
+    ...navigationItems.map((item) => {
+      if (item.href === "/demand-pad" && pendingDemands > 0) {
+        return { ...item, badge: `${pendingDemands}` };
+      }
+      return item;
+    }),
     ...(isMasterOwner
       ? [
           {

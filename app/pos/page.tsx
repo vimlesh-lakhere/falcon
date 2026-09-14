@@ -50,6 +50,7 @@ import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 import { CameraBarcodeScanner, ScanFeedback } from "@/components/pos/CameraBarcodeScanner";
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
 import { PosFastCalculatorModal } from "@/components/pos/PosFastCalculatorModal";
+import { QuickDemandPadModal } from "@/components/dashboard/QuickDemandPadModal";
 import { PosCategoryRightRail } from "@/components/pos/PosCategoryRightRail";
 import { PosCategorySidebar } from "@/components/pos/PosCategorySidebar";
 import { PrinterSettingsTab } from "@/components/settings/PrinterSettingsTab";
@@ -159,6 +160,7 @@ export default function PosBillingPage() {
 
   // Fast Calculator Billing Modal State
   const [isFastCalculatorOpen, setIsFastCalculatorOpen] = useState(false);
+  const [isDemandPadOpen, setIsDemandPadOpen] = useState(false);
 
   // Mobile Active Tab (Catalog vs Cart)
   const [mobileTab, setMobileTab] = useState<"catalog" | "cart">("catalog");
@@ -1283,6 +1285,17 @@ export default function PosBillingPage() {
           >
             <Calculator className="w-4 h-4 text-amber-100" />
             <span className="hidden sm:inline">Calc</span>
+          </button>
+
+          {/* Demand Pad (Parchi) Header Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setIsDemandPadOpen(true)}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 transition-all text-white flex items-center gap-1 text-xs font-black shrink-0 cursor-pointer shadow-xs active:scale-95 border border-purple-400/40"
+            title="Demand Pad (खरीदी पर्ची) - Jot down customer demands & shortages"
+          >
+            <span className="text-amber-300 font-black">⚡</span>
+            <span className="hidden sm:inline">पर्ची</span>
           </button>
 
           {/* Mobile Cart View Toggle Button */}
@@ -2633,6 +2646,20 @@ export default function PosBillingPage() {
         onAddItemsToCart={handleAddCalculatorItemsToCart}
         onDirectQuickCheckout={handleDirectQuickCalculatorCheckout}
       />
+
+      {/* ⚡ Quick Demand Pad (Kharidi Parchi) Modal */}
+      {isDemandPadOpen && (
+        <QuickDemandPadModal
+          isOpen={isDemandPadOpen}
+          onClose={() => setIsDemandPadOpen(false)}
+          shopId={SHOP_ID}
+          onAddAsProduct={(name) => {
+            setIsDemandPadOpen(false);
+            setSearchQuery(name);
+            setIsQuickAddOpen(true);
+          }}
+        />
+      )}
     </div>
   );
 }

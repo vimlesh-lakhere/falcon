@@ -337,3 +337,21 @@ export interface AuditLog {
   after_value: Json | null;
   created_at: string;
 }
+
+export interface DemandNote {
+  id: string;
+  shop_id: string;
+  item_name: string;
+  quantity?: string | null;
+  group_name: string; // "General" or Party / Supplier Name
+  supplier_id?: string | null;
+  supplier_phone?: string | null;
+  notes?: string | null;
+  status: 'pending' | 'ordered' | 'fulfilled';
+  is_done: boolean;
+  priority?: 'normal' | 'urgent';
+  created_at: string;
+  updated_at?: string;
+  supplier?: Supplier;
+}
+
