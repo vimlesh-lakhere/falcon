@@ -24,8 +24,8 @@ export const mediaPipeSegmenter = {
     initPromise = (async () => {
       try {
         isInitializing = true;
-        // Strict 1500ms timeout for MediaPipe CDN fetch to avoid blocking UI
-        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+        // 4000ms timeout for MediaPipe CDN fetch
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
 
         const loader = (async () => {
           const { ImageSegmenter, FilesetResolver } = await import("@mediapipe/tasks-vision");
@@ -61,6 +61,8 @@ export const mediaPipeSegmenter = {
    * High-Speed Smart Edge-Gradient & Perimeter Matting Engine
    * Samples border regions, flood-fills connected background, and creates smooth transparency
    * Works on any product (bottles, boxes, pouches, electronics) in <30ms without network calls.
+   * Reinforced with corner-based background profiling, gradient edge stops, core product protection,
+   * and morphological hole filling to prevent any erasing or erosion of the product body.
    */
   smartEdgeMatting(
     imgOrCanvas: HTMLImageElement | HTMLCanvasElement
@@ -89,72 +91,78 @@ export const mediaPipeSegmenter = {
     const outImgData = outCtx.createImageData(w, h);
     const outPixels = outImgData.data;
 
-    // 1. Sample perimeter border pixels (corners & edges) to determine background color profile
-    const borderSamples: [number, number, number][] = [];
-    const sampleBorderThickness = Math.max(3, Math.min(18, Math.floor(Math.min(w, h) * 0.03)));
+    // 1. Sample 4 corner zones to determine true background color profile (corners rarely contain product)
+    const cornerSamples: [number, number, number][] = [];
+    const cornerW = Math.max(8, Math.floor(w * 0.12));
+    const cornerH = Math.max(8, Math.floor(h * 0.12));
 
-    for (let x = 0; x < w; x += 4) {
-      // Top & Bottom border
-      for (let y = 0; y < sampleBorderThickness; y += 2) {
-        const idx = (y * w + x) * 4;
-        borderSamples.push([srcPixels[idx], srcPixels[idx + 1], srcPixels[idx + 2]]);
+    const sampleCorner = (startX: number, endX: number, startY: number, endY: number) => {
+      for (let y = startY; y < endY; y += 3) {
+        for (let x = startX; x < endX; x += 3) {
+          const idx = (y * w + x) * 4;
+          cornerSamples.push([srcPixels[idx], srcPixels[idx + 1], srcPixels[idx + 2]]);
+        }
       }
-      for (let y = h - sampleBorderThickness; y < h; y += 2) {
-        const idx = (y * w + x) * 4;
-        borderSamples.push([srcPixels[idx], srcPixels[idx + 1], srcPixels[idx + 2]]);
-      }
-    }
+    };
 
-    for (let y = 0; y < h; y += 4) {
-      // Left & Right border
-      for (let x = 0; x < sampleBorderThickness; x += 2) {
-        const idx = (y * w + x) * 4;
-        borderSamples.push([srcPixels[idx], srcPixels[idx + 1], srcPixels[idx + 2]]);
-      }
-      for (let x = w - sampleBorderThickness; x < w; x += 2) {
-        const idx = (y * w + x) * 4;
-        borderSamples.push([srcPixels[idx], srcPixels[idx + 1], srcPixels[idx + 2]]);
-      }
-    }
+    // Top-left, top-right, bottom-left, bottom-right
+    sampleCorner(0, cornerW, 0, cornerH);
+    sampleCorner(w - cornerW, w, 0, cornerH);
+    sampleCorner(0, cornerW, h - cornerH, h);
+    sampleCorner(w - cornerW, w, h - cornerH, h);
 
-    if (borderSamples.length === 0) return srcCanvas;
+    if (cornerSamples.length === 0) return srcCanvas;
 
-    // Calculate median background color
-    let totalR = 0, totalG = 0, totalB = 0;
-    for (const [r, g, b] of borderSamples) {
-      totalR += r;
-      totalG += g;
-      totalB += b;
-    }
-    const bgR = totalR / borderSamples.length;
-    const bgG = totalG / borderSamples.length;
-    const bgB = totalB / borderSamples.length;
+    // Use median RGB to avoid being skewed by a thumb, table shadow or stray corner
+    const sortedR = cornerSamples.map((s) => s[0]).sort((a, b) => a - b);
+    const sortedG = cornerSamples.map((s) => s[1]).sort((a, b) => a - b);
+    const sortedB = cornerSamples.map((s) => s[2]).sort((a, b) => a - b);
+    const mid = Math.floor(cornerSamples.length / 2);
+    const bgR = sortedR[mid];
+    const bgG = sortedG[mid];
+    const bgB = sortedB[mid];
 
-    // Calculate background variance to set adaptive tolerance
+    // Calculate background variance around median
     let varianceSum = 0;
-    for (const [r, g, b] of borderSamples) {
+    for (const [r, g, b] of cornerSamples) {
       const dist = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
       varianceSum += dist;
     }
-    const avgDeviation = varianceSum / borderSamples.length;
-    const tolerance = Math.max(28, Math.min(65, avgDeviation * 2.2));
+    const avgDeviation = varianceSum / cornerSamples.length;
+    // Strict tolerance capped tightly (16-36) so it never bleeds into light or white packaging
+    const tolerance = Math.max(16, Math.min(36, avgDeviation * 1.3));
 
-    // 2. Flood fill mask from outer perimeter (0 = background, 1 = product)
-    const mask = new Uint8Array(w * h); // 0 = unvisited, 1 = background, 2 = product
+    // 2. Flood fill mask from outer perimeter
+    // 0 = unvisited (potential product), 1 = verified connected background
+    const mask = new Uint8Array(w * h);
     const queue: number[] = [];
 
-    // Seed the perimeter pixels
+    // Core product safe zone: center 44% width and 50% height
+    const coreXMin = Math.floor(w * 0.28);
+    const coreXMax = Math.floor(w * 0.72);
+    const coreYMin = Math.floor(h * 0.22);
+    const coreYMax = Math.floor(h * 0.78);
+
+    // Seed outer perimeter ONLY if pixel closely matches background
+    const maybeSeed = (idx: number) => {
+      const p = idx * 4;
+      const r = srcPixels[p];
+      const g = srcPixels[p + 1];
+      const b = srcPixels[p + 2];
+      const diff = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
+      if (diff <= tolerance * 1.1) {
+        mask[idx] = 1;
+        queue.push(idx);
+      }
+    };
+
     for (let x = 0; x < w; x++) {
-      queue.push(x); // top row: y = 0
-      queue.push((h - 1) * w + x); // bottom row
-      mask[x] = 1;
-      mask[(h - 1) * w + x] = 1;
+      maybeSeed(x); // top row
+      maybeSeed((h - 1) * w + x); // bottom row
     }
-    for (let y = 0; y < h; y++) {
-      queue.push(y * w); // left col: x = 0
-      queue.push(y * w + (w - 1)); // right col
-      mask[y * w] = 1;
-      mask[y * w + (w - 1)] = 1;
+    for (let y = 1; y < h - 1; y++) {
+      maybeSeed(y * w); // left column
+      maybeSeed(y * w + (w - 1)); // right column
     }
 
     let head = 0;
@@ -163,7 +171,17 @@ export const mediaPipeSegmenter = {
       const cx = currIdx % w;
       const cy = Math.floor(currIdx / w);
 
-      // Check 4-connected neighbors
+      // Core product safe zone protection: flood-fill never enters the inner core
+      if (cx >= coreXMin && cx <= coreXMax && cy >= coreYMin && cy <= coreYMax) {
+        continue;
+      }
+
+      const currP = currIdx * 4;
+      const currR = srcPixels[currP];
+      const currG = srcPixels[currP + 1];
+      const currB = srcPixels[currP + 2];
+
+      // 4-connected neighbors
       const neighbors = [
         cy > 0 ? currIdx - w : -1,
         cy < h - 1 ? currIdx + w : -1,
@@ -173,22 +191,55 @@ export const mediaPipeSegmenter = {
 
       for (const nIdx of neighbors) {
         if (nIdx !== -1 && mask[nIdx] === 0) {
-          const pixelOffset = nIdx * 4;
-          const r = srcPixels[pixelOffset];
-          const g = srcPixels[pixelOffset + 1];
-          const b = srcPixels[pixelOffset + 2];
+          const nx = nIdx % w;
+          const ny = Math.floor(nIdx / w);
+
+          // Never cross into central core
+          if (nx >= coreXMin && nx <= coreXMax && ny >= coreYMin && ny <= coreYMax) {
+            continue;
+          }
+
+          const nP = nIdx * 4;
+          const r = srcPixels[nP];
+          const g = srcPixels[nP + 1];
+          const b = srcPixels[nP + 2];
+
+          // Check gradient edge: do not cross strong contrast boundaries (object contours)
+          const edgeGradient = Math.abs(r - currR) + Math.abs(g - currG) + Math.abs(b - currB);
+          if (edgeGradient > 30) {
+            continue;
+          }
 
           const diff = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
-
           if (diff <= tolerance) {
-            mask[nIdx] = 1; // Mark as connected background
+            mask[nIdx] = 1;
             queue.push(nIdx);
           }
         }
       }
     }
 
-    // 3. Compose result with feathered alpha transitions
+    // 3. Morphological hole restoration:
+    // If any pixel in the central area was marked background (1), but is surrounded by product (0),
+    // restore it so the product NEVER has holes or missing patches.
+    for (let cy = Math.max(1, coreYMin - 20); cy < Math.min(h - 1, coreYMax + 20); cy++) {
+      for (let cx = Math.max(1, coreXMin - 20); cx < Math.min(w - 1, coreXMax + 20); cx++) {
+        const idx = cy * w + cx;
+        if (mask[idx] === 1) {
+          // Check if horizontally or vertically bounded by product
+          const leftProd = mask[idx - 1] === 0 || mask[idx - 2] === 0;
+          const rightProd = mask[idx + 1] === 0 || mask[idx + 2] === 0;
+          const topProd = mask[idx - w] === 0 || mask[idx - w * 2] === 0;
+          const bottomProd = mask[idx + w] === 0 || mask[idx + w * 2] === 0;
+
+          if ((leftProd && rightProd) || (topProd && bottomProd)) {
+            mask[idx] = 0; // Restore to product!
+          }
+        }
+      }
+    }
+
+    // 4. Compose result with soft anti-aliased edges
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const idx = y * w + x;
@@ -199,10 +250,10 @@ export const mediaPipeSegmenter = {
         outPixels[pOffset + 2] = srcPixels[pOffset + 2];
 
         if (mask[idx] === 1) {
-          // Connected background
+          // Connected background is made transparent
           outPixels[pOffset + 3] = 0;
         } else {
-          // Check if adjacent to background for soft feathering
+          // Product pixel - verify if adjacent to background for smooth feathering
           let isBorderEdge = false;
           if (
             (x > 0 && mask[idx - 1] === 1) ||
@@ -214,9 +265,9 @@ export const mediaPipeSegmenter = {
           }
 
           if (isBorderEdge) {
-            outPixels[pOffset + 3] = 180; // Soft edge anti-aliasing
+            outPixels[pOffset + 3] = 200; // Anti-aliased outer edge
           } else {
-            outPixels[pOffset + 3] = srcPixels[pOffset + 3];
+            outPixels[pOffset + 3] = srcPixels[pOffset + 3] || 255;
           }
         }
       }

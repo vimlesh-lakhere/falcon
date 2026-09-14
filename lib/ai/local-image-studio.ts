@@ -447,11 +447,26 @@ export const localImageStudio = {
         const savedHf = localStorage.getItem("falcon_hf_token") || undefined;
         const savedRbg = localStorage.getItem("falcon_remove_bg_api_key") || undefined;
 
+        // Downscale before sending to server API if image is large to prevent payload lag
+        let apiImageSrc = src;
+        const maxApiDim = 1024;
+        if (srcW > maxApiDim || srcH > maxApiDim) {
+          const scale = Math.min(maxApiDim / srcW, maxApiDim / srcH);
+          const scaledC = document.createElement("canvas");
+          scaledC.width = Math.round(srcW * scale);
+          scaledC.height = Math.round(srcH * scale);
+          const sCtx = scaledC.getContext("2d");
+          if (sCtx) {
+            sCtx.drawImage(rawImg, 0, 0, scaledC.width, scaledC.height);
+            apiImageSrc = scaledC.toDataURL("image/jpeg", 0.92);
+          }
+        }
+
         const bgRes = await fetch("/api/ai/remove-background", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            image: src,
+            image: apiImageSrc,
             hfToken: savedHf,
             removeBgApiKey: savedRbg,
           }),

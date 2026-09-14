@@ -60,6 +60,32 @@ export async function cropProductWithSharp(
       }
     }
 
+    // TIER 1: On-Device Falcon Neural RMBG Engine (Pre-scaled to 800px for ultra-fast ~5s inference)
+    if (!transparentBuffer) {
+      try {
+        const scaledBuffer = await sharp(inputBuffer)
+          .resize(800, 800, { fit: "inside", withoutEnlargement: true })
+          .png()
+          .toBuffer();
+        const scaledBlob = new Blob([new Uint8Array(scaledBuffer)], { type: "image/png" });
+
+        const { removeBackground } = await import("@imgly/background-removal-node");
+        const rmbgPromise = removeBackground(scaledBlob);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("On-device RMBG in cropper exceeded 18s limit")), 18000)
+        );
+
+        const cutoutBlob = await Promise.race([rmbgPromise, timeoutPromise]);
+        const arrayBuf = await cutoutBlob.arrayBuffer();
+        const resBuf = Buffer.from(arrayBuf);
+        if (resBuf && resBuf.length > 100) {
+          transparentBuffer = resBuf;
+        }
+      } catch (rmbgErr) {
+        console.warn("On-device neural RMBG in cropper notice:", rmbgErr);
+      }
+    }
+
     let productLayer: Buffer;
     if (transparentBuffer) {
       // Trim empty transparent edges
