@@ -176,10 +176,37 @@ export interface Customer {
   phone: string | null;
   email: string | null;
   address: string | null;
+  opening_balance?: number;
   total_spend: number;
   outstanding_balance: number;
   notes: string | null;
   created_at: string;
+}
+
+export interface CustomerPayment {
+  id: string;
+  shop_id: string;
+  customer_id: string;
+  amount: number;
+  payment_method: 'cash' | 'upi' | 'card' | 'bank_transfer' | 'cheque' | 'other' | string;
+  reference_no: string | null;
+  notes: string | null;
+  payment_date: string;
+  created_at: string;
+  customer?: Customer;
+}
+
+export interface CustomerLedgerEntry {
+  id: string;
+  date: string;
+  type: 'sale' | 'payment' | 'return' | 'opening';
+  reference_no: string;
+  description: string;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  payment_method?: string | null;
+  notes?: string | null;
 }
 
 export interface CustomerPrice {

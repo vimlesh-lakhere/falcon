@@ -268,11 +268,28 @@ CREATE TABLE IF NOT EXISTS customers (
   phone TEXT,
   email TEXT,
   address TEXT,
+  opening_balance NUMERIC NOT NULL DEFAULT 0,
   total_spend NUMERIC NOT NULL DEFAULT 0,
   outstanding_balance NUMERIC NOT NULL DEFAULT 0,
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS customer_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  amount NUMERIC NOT NULL CHECK (amount > 0),
+  payment_method TEXT NOT NULL DEFAULT 'cash',
+  reference_no TEXT,
+  notes TEXT,
+  payment_date TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_payments_shop_id ON customer_payments(shop_id);
+CREATE INDEX IF NOT EXISTS idx_customer_payments_customer_id ON customer_payments(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_payments_date ON customer_payments(payment_date DESC);
 
 CREATE TABLE IF NOT EXISTS customer_prices (
   customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,

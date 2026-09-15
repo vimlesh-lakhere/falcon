@@ -116,6 +116,12 @@ export function ThermalReceipt({
   const custName = customer?.name || (sale as any).customer?.name || "Walk-in Customer";
   const custPhone = customer?.phone || (sale as any).customer?.phone || "";
 
+  // Calculate payment and due split
+  const totalBillAmt = Number(sale.total_amount) || 0;
+  const paidAmount = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+  const todayDue = Math.max(0, totalBillAmt - paidAmount);
+  const currentCustomerBalance = Number(customer?.outstanding_balance || (sale as any).customer?.outstanding_balance || 0);
+
   // 1. Generate formatted WhatsApp Billing Receipt text
   const itemsText = items
     .map((it: any, idx: number) => {
@@ -126,20 +132,20 @@ export function ThermalReceipt({
     })
     .join("\n");
 
-  const payMethod = payments.map((p) => p.method.toUpperCase()).join(", ") || "CASH";
+  const payMethod = payments.length > 0 ? payments.map((p: any) => p.method.toUpperCase()).join(", ") : "उधार / KHATA (DUE)";
   const upiPayLink =
     printerConfig.upiId && printerConfig.showDynamicUpiQr
       ? `\n📲 *Pay via UPI:* ${buildUpiPaymentUrl(
           printerConfig.upiId,
           printerConfig.upiPayeeName || activeShopName,
-          Number(sale.total_amount) || 0,
+          todayDue > 0 ? todayDue : Number(sale.total_amount) || 0,
           sale.invoice_number
         )}`
       : "";
 
   const freightAmount = parseFreightCharge(sale);
 
-  const whatsappBillMessage = `🧾 *CASH BILL / INVOICE - ${activeShopName}*
+  const whatsappBillMessage = `🧾 *INVOICE / BILL - ${activeShopName}*
 ━━━━━━━━━━━━━━━━━━━━
 📍 *Address:* ${activeShopAddress}
 📞 *Help/Contact:* ${activeShopPhone}
@@ -152,8 +158,9 @@ ${printerConfig.showGstin && activeShopGst ? `🏛️ *GSTIN:* ${activeShopGst}\
 ${itemsText}
 ━━━━━━━━━━━━━━━━━━━━
 💵 *Subtotal:* ₹${Number(sale.subtotal).toFixed(2)}
-${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}${freightAmount > 0 ? `🚚 *भाड़ा / Freight:* +₹${freightAmount.toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${Number(sale.total_amount).toFixed(2)}*
-💳 *Payment Mode:* ${payMethod}${upiPayLink}
+${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}${freightAmount > 0 ? `🚚 *भाड़ा / Freight:* +₹${freightAmount.toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${totalBillAmt.toFixed(2)}*
+💵 *Paid Amount:* ₹${paidAmount.toFixed(2)} (${payMethod})
+${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${todayDue.toFixed(2)}*\n` : ""}${todayDue > 0 && currentCustomerBalance > 0 ? `📕 *कुल शेष बकाया (Total Khata Balance):* *₹${currentCustomerBalance.toFixed(2)}*\n` : ""}${upiPayLink}
 ━━━━━━━━━━━━━━━━━━━━
 🙏 *${printerConfig.customFooter || "Thank you for shopping with us!"}*
 ⚡ *Visit again soon.*`;
@@ -479,7 +486,7 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
           <div className="py-2 border-b border-dashed border-black text-[10px] space-y-0.5">
             <div className="flex justify-between font-bold">
               <span>Payment Mode:</span>
-              <span>{payMethod}</span>
+              <span>{paidAmount > 0 ? payMethod : "उधार / KHATA (DUE)"}</span>
             </div>
             {payments.map((p, i) => (
               <div key={i} className="flex justify-between text-[9px] text-gray-600">
@@ -487,6 +494,18 @@ ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discoun
                 <span>₹{Number(p.amount).toFixed(2)}</span>
               </div>
             ))}
+            {todayDue > 0 && (
+              <div className="flex justify-between font-black text-amber-950 bg-amber-50 px-1.5 py-0.5 rounded mt-1 border border-amber-300">
+                <span>आज का उधार (Today's Due):</span>
+                <span>₹{todayDue.toFixed(2)}</span>
+              </div>
+            )}
+            {todayDue > 0 && currentCustomerBalance > 0 && (
+              <div className="flex justify-between font-black text-red-700 pt-0.5">
+                <span>कुल शेष बकाया (Total Balance):</span>
+                <span>₹{currentCustomerBalance.toFixed(2)}</span>
+              </div>
+            )}
           </div>
 
           {/* Dynamic Bank UPI QR Code Section */}

@@ -31,6 +31,7 @@ import {
   Zap,
   Package,
   Calculator,
+  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -46,6 +47,7 @@ import { offlinePosEngine } from "@/lib/offline-pos";
 import { useAuthStore } from "@/store/useAuthStore";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
 import { PosCustomerSelector } from "@/components/pos/PosCustomerSelector";
+import { CollectPaymentModal } from "@/components/khata/CollectPaymentModal";
 import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 import { CameraBarcodeScanner, ScanFeedback } from "@/components/pos/CameraBarcodeScanner";
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
@@ -147,12 +149,13 @@ export default function PosBillingPage() {
 
   // Checkout modal
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "upi" | "card" | "split">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "upi" | "card" | "udhaar" | "split">("cash");
   const [cashAmount, setCashAmount] = useState<number>(0);
   const [upiAmount, setUpiAmount] = useState<number>(0);
   const [cardAmount, setCardAmount] = useState<number>(0);
   const [paymentRef, setPaymentRef] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCollectPaymentOpen, setIsCollectPaymentOpen] = useState(false);
 
   // Success Receipt modal
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
@@ -1017,11 +1020,11 @@ export default function PosBillingPage() {
   const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount + freightAmount);
 
   // Open checkout modal
-  const handleOpenCheckout = (methodOrEvent?: "cash" | "upi" | "card" | "split" | React.MouseEvent) => {
+  const handleOpenCheckout = (methodOrEvent?: "cash" | "upi" | "card" | "udhaar" | "split" | React.MouseEvent) => {
     if (cart.length === 0) return;
-    const method: "cash" | "upi" | "card" | "split" =
-      typeof methodOrEvent === "string" && ["cash", "upi", "card", "split"].includes(methodOrEvent)
-        ? (methodOrEvent as "cash" | "upi" | "card" | "split")
+    const method: "cash" | "upi" | "card" | "udhaar" | "split" =
+      typeof methodOrEvent === "string" && ["cash", "upi", "card", "udhaar", "split"].includes(methodOrEvent)
+        ? (methodOrEvent as "cash" | "upi" | "card" | "udhaar" | "split")
         : "cash";
 
     setPaymentMethod(method);
@@ -1032,6 +1035,14 @@ export default function PosBillingPage() {
     } else if (method === "upi") {
       setUpiAmount(totalAmount);
       setCashAmount(0);
+      setCardAmount(0);
+    } else if (method === "card") {
+      setCardAmount(totalAmount);
+      setCashAmount(0);
+      setUpiAmount(0);
+    } else if (method === "udhaar") {
+      setCashAmount(0);
+      setUpiAmount(0);
       setCardAmount(0);
     } else {
       setCashAmount(totalAmount);
@@ -1046,6 +1057,21 @@ export default function PosBillingPage() {
     try {
       setIsProcessing(true);
 
+      // 1. Calculate tendered amounts & check due/udhaar
+      const totalPaid = paymentMethod === "udhaar" ? 0 : (
+        paymentMethod === "cash" ? totalAmount :
+        paymentMethod === "upi" ? totalAmount :
+        paymentMethod === "card" ? totalAmount :
+        ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0))
+      );
+      const dueAmount = Math.max(0, totalAmount - totalPaid);
+
+      if (dueAmount > 0 && !selectedCustomer) {
+        alert("⚠️ उधार (Credit) बिल बनाने के लिए ग्राहक का चयन करना आवश्यक है। कृपया ऊपर से ग्राहक चुनें या 'New' बटन से ग्राहक जोड़ें।");
+        setIsProcessing(false);
+        return;
+      }
+
       const payments: CheckoutPayload["payments"] = [];
       if (paymentMethod === "cash") {
         payments.push({ method: "cash", amount: totalAmount });
@@ -1054,9 +1080,9 @@ export default function PosBillingPage() {
       } else if (paymentMethod === "card") {
         payments.push({ method: "card", amount: totalAmount, reference_no: paymentRef });
       } else if (paymentMethod === "split") {
-        if (cashAmount > 0) payments.push({ method: "cash", amount: cashAmount });
-        if (upiAmount > 0) payments.push({ method: "upi", amount: upiAmount, reference_no: paymentRef });
-        if (cardAmount > 0) payments.push({ method: "card", amount: cardAmount });
+        if (cashAmount > 0) payments.push({ method: "cash", amount: Number(cashAmount) });
+        if (upiAmount > 0) payments.push({ method: "upi", amount: Number(upiAmount), reference_no: paymentRef });
+        if (cardAmount > 0) payments.push({ method: "card", amount: Number(cardAmount) });
       }
 
       // Snapshot customer before state reset
@@ -1136,6 +1162,18 @@ export default function PosBillingPage() {
       setIsCheckoutModalOpen(false);
       setIsReceiptModalOpen(true);
       clearCart();
+
+      // Update customer outstanding balance in local state if credit/udhaar was extended
+      if (customerSnapshot && dueAmount > 0) {
+        const updatedBal = (Number(customerSnapshot.outstanding_balance) || 0) + dueAmount;
+        const updatedCust = {
+          ...customerSnapshot,
+          outstanding_balance: updatedBal,
+        };
+        setSelectedCustomer(updatedCust);
+        setCustomers((prev) => prev.map((c) => (c.id === updatedCust.id ? updatedCust : c)));
+      }
+
       if (navigator.onLine) {
         loadCatalog(); // Refresh current_stock
       }
@@ -1956,6 +1994,7 @@ export default function PosBillingPage() {
             onCustomerCreated={(newCust) => {
               setCustomers((prev) => [newCust, ...prev.filter((c) => c.id !== newCust.id)]);
             }}
+            onCollectPayment={() => setIsCollectPaymentOpen(true)}
             shopId={SHOP_ID}
           />
 
@@ -2276,75 +2315,100 @@ export default function PosBillingPage() {
         maxWidth="md"
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-1.5">
             <button
-              onClick={() => setPaymentMethod("cash")}
-              className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-xs font-bold transition-all ${
+              onClick={() => handleOpenCheckout("cash")}
+              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
                 paymentMethod === "cash"
-                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-sm"
+                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-xs"
                   : "border-gray-200 hover:bg-gray-50 text-gray-700"
               }`}
             >
-              <Banknote className="w-5 h-5" />
-              Cash
+              <Banknote className="w-4 h-4" />
+              <span>Cash</span>
             </button>
             <button
-              onClick={() => setPaymentMethod("upi")}
-              className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-xs font-bold transition-all ${
+              onClick={() => handleOpenCheckout("upi")}
+              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
                 paymentMethod === "upi"
-                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-sm"
+                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-xs"
                   : "border-gray-200 hover:bg-gray-50 text-gray-700"
               }`}
             >
-              <QrCode className="w-5 h-5" />
-              UPI / QR
+              <QrCode className="w-4 h-4" />
+              <span>UPI / QR</span>
             </button>
             <button
-              onClick={() => setPaymentMethod("card")}
-              className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-xs font-bold transition-all ${
+              onClick={() => handleOpenCheckout("card")}
+              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
                 paymentMethod === "card"
-                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-sm"
+                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-xs"
                   : "border-gray-200 hover:bg-gray-50 text-gray-700"
               }`}
             >
-              <CreditCard className="w-5 h-5" />
-              Card
+              <CreditCard className="w-4 h-4" />
+              <span>Card</span>
             </button>
             <button
-              onClick={() => setPaymentMethod("split")}
-              className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-xs font-bold transition-all ${
-                paymentMethod === "split"
-                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-sm"
+              onClick={() => handleOpenCheckout("udhaar")}
+              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
+                paymentMethod === "udhaar"
+                  ? "border-amber-600 bg-amber-50 text-amber-900 shadow-xs ring-1 ring-amber-500"
                   : "border-gray-200 hover:bg-gray-50 text-gray-700"
               }`}
             >
-              <Plus className="w-5 h-5" />
-              Split
+              <BookOpen className="w-4 h-4 text-amber-700" />
+              <span>उधार</span>
+            </button>
+            <button
+              onClick={() => handleOpenCheckout("split")}
+              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
+                paymentMethod === "split"
+                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-xs"
+                  : "border-gray-200 hover:bg-gray-50 text-gray-700"
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Split</span>
             </button>
           </div>
 
-          {paymentMethod === "split" ? (
-            <div className="space-y-2 p-3 bg-gray-50 rounded-lg text-xs">
+          {/* 100% Udhaar / Credit Sale Notice */}
+          {paymentMethod === "udhaar" && (
+            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                <BookOpen className="w-4 h-4 text-amber-700" />
+                <span>100% उधार खाता बिक्री (Credit Sale)</span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-snug">
+                पूरा बिल {formatCurrency(totalAmount)} ग्राहक के खाते में उधार दर्ज होगा और रसीद प्रिंट होगी।
+              </p>
+            </div>
+          )}
+
+          {/* Split Payment Breakdown Inputs */}
+          {paymentMethod === "split" && (
+            <div className="space-y-2.5 p-3 bg-gray-50 rounded-xl text-xs border border-gray-200">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-700">Cash Portion:</span>
+                <span className="font-semibold text-gray-700">Cash Portion (नकद):</span>
                 <input
                   type="number"
                   placeholder="0.00"
                   value={cashAmount === 0 ? "" : cashAmount}
                   onFocus={(e) => e.currentTarget.select()}
                   onChange={(e) => setCashAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-                  className="w-28 p-1.5 border border-gray-300 rounded font-semibold text-right"
+                  className="w-32 p-1.5 border border-gray-300 rounded-lg font-bold text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-700">UPI Portion:</span>
+                <span className="font-semibold text-gray-700">UPI / QR Portion:</span>
                 <input
                   type="number"
                   placeholder="0.00"
                   value={upiAmount === 0 ? "" : upiAmount}
                   onFocus={(e) => e.currentTarget.select()}
                   onChange={(e) => setUpiAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-                  className="w-28 p-1.5 border border-gray-300 rounded font-semibold text-right"
+                  className="w-32 p-1.5 border border-gray-300 rounded-lg font-bold text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -2355,11 +2419,42 @@ export default function PosBillingPage() {
                   value={cardAmount === 0 ? "" : cardAmount}
                   onFocus={(e) => e.currentTarget.select()}
                   onChange={(e) => setCardAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-                  className="w-28 p-1.5 border border-gray-300 rounded font-semibold text-right"
+                  className="w-32 p-1.5 border border-gray-300 rounded-lg font-bold text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
+
+              {/* Dynamic Tender Calculations */}
+              {(() => {
+                const tendered = (Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0);
+                const diff = totalAmount - tendered;
+                if (diff > 0.01) {
+                  return (
+                    <div className="p-2 bg-amber-50 rounded-lg border border-amber-300 flex items-center justify-between font-bold text-amber-950 text-xs">
+                      <span>📕 खाते में उधार (Balance Due):</span>
+                      <span className="font-black text-amber-900">+{formatCurrency(diff)}</span>
+                    </div>
+                  );
+                } else if (diff < -0.01) {
+                  return (
+                    <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-300 flex items-center justify-between font-bold text-emerald-950 text-xs">
+                      <span>💵 ग्राहक को वापसी छुट्टे (Change Return):</span>
+                      <span className="font-black text-emerald-800">{formatCurrency(Math.abs(diff))}</span>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="p-2 bg-purple-50 rounded-lg border border-purple-200 flex items-center justify-between font-bold text-purple-950 text-xs">
+                      <span>✓ पूर्ण भुगतान (Fully Paid):</span>
+                      <span className="font-black text-purple-800">{formatCurrency(tendered)}</span>
+                    </div>
+                  );
+                }
+              })()}
             </div>
-          ) : (
+          )}
+
+          {/* Reference No for UPI/Card/Other */}
+          {paymentMethod !== "split" && paymentMethod !== "udhaar" && (
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
                 Transaction / Reference No. (Optional)
@@ -2374,12 +2469,74 @@ export default function PosBillingPage() {
             </div>
           )}
 
+          {/* Customer Khata Linking & Warning when Due > 0 */}
+          {(() => {
+            const tendered = paymentMethod === "udhaar" ? 0 : (
+              paymentMethod === "split" ? ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0)) : totalAmount
+            );
+            const dueOnBill = Math.max(0, totalAmount - tendered);
+
+            if (dueOnBill <= 0.01) return null;
+
+            if (!selectedCustomer) {
+              return (
+                <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-xs space-y-2">
+                  <div className="font-bold text-red-800 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                    <span>⚠️ उधार बिल के लिए ग्राहक चुनना आवश्यक है:</span>
+                  </div>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const found = customers.find((c) => c.id === e.target.value) || null;
+                      if (found) setSelectedCustomer(found);
+                    }}
+                    className="w-full text-xs p-2 bg-white border border-red-300 rounded-lg font-bold text-gray-900 focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- ग्राहक चुनें (Select Customer) --</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.phone ? `(${c.phone})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
+
+            const prevDue = Number(selectedCustomer.outstanding_balance || 0);
+            const newDue = prevDue + dueOnBill;
+
+            return (
+              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 text-xs space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-medium">खाता धारक (Customer):</span>
+                  <span className="font-black text-purple-950">
+                    👤 {selectedCustomer.name} {selectedCustomer.phone ? `(+91 ${selectedCustomer.phone})` : ""}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-gray-600">पिछला बकाया (Previous Due):</span>
+                  <span className="font-bold text-gray-800">{formatCurrency(prevDue)}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-amber-800 font-bold">इस बिल का उधार (This Bill Due):</span>
+                  <span className="font-black text-amber-900">+{formatCurrency(dueOnBill)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-purple-200 text-xs font-black">
+                  <span className="text-purple-950">नया कुल बकाया (New Balance):</span>
+                  <span className="text-red-700 font-black text-sm">{formatCurrency(newDue)}</span>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="pt-3 border-t border-gray-200">
             <Button
               size="lg"
               onClick={handleCompleteCheckout}
               isLoading={isProcessing}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4 mr-1.5" />
               Complete & Print Receipt
@@ -2657,6 +2814,21 @@ export default function PosBillingPage() {
             setIsDemandPadOpen(false);
             setSearchQuery(name);
             setIsQuickAddOpen(true);
+          }}
+        />
+      )}
+
+      {/* 💰 Quick Collect Customer Khata Payment Modal */}
+      {selectedCustomer && (
+        <CollectPaymentModal
+          isOpen={isCollectPaymentOpen}
+          onClose={() => setIsCollectPaymentOpen(false)}
+          customer={selectedCustomer}
+          shopId={SHOP_ID}
+          onPaymentSuccess={(payment, newBal) => {
+            const updated = { ...selectedCustomer, outstanding_balance: newBal };
+            setSelectedCustomer(updated);
+            setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
           }}
         />
       )}

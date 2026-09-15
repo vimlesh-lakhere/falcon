@@ -99,16 +99,36 @@ export const posRepository = {
     const { error: itemsError } = await supabase.from("sale_items").insert(saleItems);
     if (itemsError) throw itemsError;
 
-    // 3. Insert payments
-    const payments = payload.payments.map((p) => ({
+    // 3. Insert payments if any were tendered at counter
+    const payments = (payload.payments || []).map((p) => ({
       sale_id: sale.id,
       method: p.method,
       amount: p.amount,
       reference_no: p.reference_no || null,
     }));
 
-    const { error: paymentError } = await supabase.from("payments").insert(payments);
-    if (paymentError) throw paymentError;
+    if (payments.length > 0) {
+      const { error: paymentError } = await supabase.from("payments").insert(payments);
+      if (paymentError) throw paymentError;
+    }
+
+    // 3b. If partial payment or full credit (Udhaar), update customer's outstanding_balance
+    const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const dueAmount = Math.max(0, Number(payload.total_amount) - totalPaid);
+
+    if (dueAmount > 0 && payload.customer_id) {
+      const { data: custData } = await supabase
+        .from("customers")
+        .select("outstanding_balance")
+        .eq("id", payload.customer_id)
+        .single();
+
+      const prevBal = Number(custData?.outstanding_balance) || 0;
+      await supabase
+        .from("customers")
+        .update({ outstanding_balance: prevBal + dueAmount })
+        .eq("id", payload.customer_id);
+    }
 
     // 4. Insert stock movements for each item (triggers automatically deduct product current_stock in base units)
     const stockMovements = payload.items.map((item) => {

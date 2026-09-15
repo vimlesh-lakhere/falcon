@@ -27,6 +27,7 @@ interface PosCustomerSelectorProps {
   selectedCustomer: Customer | null;
   onSelectCustomer: (customer: Customer | null) => void;
   onCustomerCreated: (customer: Customer) => void;
+  onCollectPayment?: () => void;
   shopId: string;
 }
 
@@ -35,6 +36,7 @@ export const PosCustomerSelector: React.FC<PosCustomerSelectorProps> = ({
   selectedCustomer,
   onSelectCustomer,
   onCustomerCreated,
+  onCollectPayment,
   shopId,
 }) => {
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -134,32 +136,53 @@ export const PosCustomerSelector: React.FC<PosCustomerSelectorProps> = ({
 
         {/* Selected Customer View vs Dropdown */}
         {selectedCustomer ? (
-          <div className="flex items-center justify-between p-2 bg-purple-50 rounded-xl border border-purple-200 animate-in fade-in duration-150">
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-black text-purple-950 truncate flex items-center gap-1">
-                <span>👤 {selectedCustomer.name}</span>
-                {selectedCustomer.phone && (
-                  <span className="text-[10px] font-mono font-semibold text-purple-700">
-                    (+91 {selectedCustomer.phone})
-                  </span>
+          <div className="p-2 bg-purple-50 rounded-xl border border-purple-200 animate-in fade-in duration-150 space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-black text-purple-950 truncate flex items-center gap-1">
+                  <span>👤 {selectedCustomer.name}</span>
+                  {selectedCustomer.phone && (
+                    <span className="text-[10px] font-mono font-semibold text-purple-700">
+                      (+91 {selectedCustomer.phone})
+                    </span>
+                  )}
+                </div>
+                {selectedCustomer.address && (
+                  <div className="text-[10px] text-gray-500 truncate flex items-center gap-0.5">
+                    <MapPin className="w-2.5 h-2.5" />
+                    <span>{selectedCustomer.address}</span>
+                  </div>
                 )}
               </div>
-              {selectedCustomer.address && (
-                <div className="text-[10px] text-gray-500 truncate flex items-center gap-0.5">
-                  <MapPin className="w-2.5 h-2.5" />
-                  <span>{selectedCustomer.address}</span>
-                </div>
-              )}
+
+              <button
+                type="button"
+                onClick={() => onSelectCustomer(null)}
+                className="p-1 text-purple-600 hover:text-rose-600 hover:bg-white rounded-lg transition-colors cursor-pointer ml-1"
+                title="Switch to Walk-in Customer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => onSelectCustomer(null)}
-              className="p-1 text-purple-600 hover:text-rose-600 hover:bg-white rounded-lg transition-colors cursor-pointer ml-1"
-              title="Switch to Walk-in Customer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            {/* Khata / Udhaar Badge if customer has pending balance */}
+            {Number(selectedCustomer.outstanding_balance) > 0 && (
+              <div className="flex items-center justify-between pt-1 border-t border-purple-200/60 text-[10px]">
+                <span className="font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1">
+                  <span>📕 पुराना बकाया:</span>
+                  <span className="font-black">₹{Number(selectedCustomer.outstanding_balance).toFixed(2)}</span>
+                </span>
+                {onCollectPayment && (
+                  <button
+                    type="button"
+                    onClick={onCollectPayment}
+                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-bold text-[10px] shadow-2xs cursor-pointer transition-all active:scale-95"
+                  >
+                    + जमा करें (Settle)
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="relative">
@@ -174,7 +197,7 @@ export const PosCustomerSelector: React.FC<PosCustomerSelectorProps> = ({
               <option value="">Walk-in Customer (Standard Retail)</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} {c.phone ? `(${c.phone})` : ""}
+                  {c.name} {c.phone ? `(${c.phone})` : ""} {Number(c.outstanding_balance) > 0 ? `• [बकाया: ₹${Number(c.outstanding_balance).toFixed(0)}]` : ""}
                 </option>
               ))}
             </select>

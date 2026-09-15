@@ -13,6 +13,7 @@ import {
   Receipt,
   Eye,
   Package,
+  BookOpen,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -27,6 +28,7 @@ import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { CustomerLedgerModal } from "@/components/customers/CustomerLedgerModal";
 import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
+import { CollectPaymentModal } from "@/components/khata/CollectPaymentModal";
 
 export default function CustomersPage() {
   const { currentStore, profile, fetchSession } = useAuthStore();
@@ -39,6 +41,7 @@ export default function CustomersPage() {
 
   // Customer Profit Ledger Modal
   const [selectedCustForLedger, setSelectedCustForLedger] = useState<string | null>(null);
+  const [custForKhataPay, setCustForKhataPay] = useState<Customer | null>(null);
 
   // Add Customer Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -305,6 +308,28 @@ export default function CustomersPage() {
                       </div>
                     </div>
 
+                    {/* Pending Khata Due Balance */}
+                    {Number(cust.outstanding_balance) > 0 && (
+                      <div className="p-2.5 bg-red-50 rounded-xl border border-red-200 flex items-center justify-between text-xs">
+                        <div>
+                          <span className="text-[10px] font-bold text-red-700 uppercase block">
+                            उधार बकाया (Pending Due)
+                          </span>
+                          <span className="font-black text-red-900 text-sm tabular-nums">
+                            ₹{Number(cust.outstanding_balance).toFixed(2)}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => setCustForKhataPay(cust)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-7 px-2.5 shadow-2xs cursor-pointer"
+                        >
+                          <DollarSign className="w-3.5 h-3.5 mr-0.5" />
+                          <span>जमा करें</span>
+                        </Button>
+                      </div>
+                    )}
+
                     {/* Actions */}
                     <div className="pt-1 flex items-center justify-between gap-1.5 text-xs">
                       <Button
@@ -499,6 +524,19 @@ export default function CustomersPage() {
             initialCustomerPhone={shippingCustomer.phone || ""}
             initialDestination={shippingCustomer.address || ""}
             initialAddress={shippingCustomer.address || ""}
+          />
+        )}
+
+        {/* 💰 Customer Khata Payment Collect Modal */}
+        {custForKhataPay && (
+          <CollectPaymentModal
+            isOpen={!!custForKhataPay}
+            onClose={() => setCustForKhataPay(null)}
+            customer={custForKhataPay}
+            shopId={activeShopId}
+            onPaymentSuccess={() => {
+              loadData();
+            }}
           />
         )}
       </div>

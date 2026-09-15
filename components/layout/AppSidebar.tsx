@@ -19,6 +19,7 @@ import {
   Store,
   ChevronRight,
   ClipboardList,
+  BookOpen,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ import { quickDemandNotesService } from "@/lib/quick-demand-notes";
 const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, shortcut: "G D" },
   { name: "POS / Billing", href: "/pos", icon: ShoppingCart, shortcut: "G P", highlight: true },
+  { name: "Khata / Ledger (खाता)", href: "/khata", icon: BookOpen, badge: "उधार", highlight: true },
   { name: "Online Orders", href: "/sales?tab=online", icon: Store, badge: "Live" },
   { name: "Products", href: "/products", icon: Package },
   { name: "Inventory", href: "/inventory", icon: Boxes, shortcut: "G I" },
