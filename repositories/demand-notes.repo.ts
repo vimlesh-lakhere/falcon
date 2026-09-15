@@ -120,8 +120,10 @@ export const demandNotesRepository = {
       priority?: "normal" | "urgent";
     }
   ): Promise<DemandNote> {
-    const newNote: DemandNote = {
-      id: `dmd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    // Optimistic local note with temp ID (will be replaced by real UUID from cloud)
+    const tempId = `dmd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const optimisticNote: DemandNote = {
+      id: tempId,
       shop_id: shopId,
       item_name: data.item_name.trim(),
       quantity: data.quantity?.trim() || null,
@@ -136,45 +138,45 @@ export const demandNotesRepository = {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Optimistically update local cache
+    // 1. Optimistically update local cache for instant UI feedback
     const current = this.getLocalCache(shopId);
-    const updated = [newNote, ...current];
-    this.setLocalCache(shopId, updated);
+    this.setLocalCache(shopId, [optimisticNote, ...current]);
     this.notifyUpdate(shopId);
 
-    // 2. Persist to Supabase
+    // 2. Persist to Supabase cloud (primary source of truth for cross-device sync)
     try {
-      const payload = {
-        shop_id: shopId,
-        item_name: newNote.item_name,
-        quantity: newNote.quantity,
-        group_name: newNote.group_name,
-        supplier_id: newNote.supplier_id,
-        supplier_phone: newNote.supplier_phone,
-        notes: newNote.notes,
-        status: newNote.status,
-        is_done: newNote.is_done,
-        priority: newNote.priority,
-      };
-
       const { data: inserted, error } = await supabase
         .from("demand_notes")
-        .insert([payload])
+        .insert([{
+          shop_id: shopId,
+          item_name: optimisticNote.item_name,
+          quantity: optimisticNote.quantity,
+          group_name: optimisticNote.group_name,
+          supplier_id: optimisticNote.supplier_id,
+          supplier_phone: optimisticNote.supplier_phone,
+          notes: optimisticNote.notes,
+          status: optimisticNote.status,
+          is_done: optimisticNote.is_done,
+          priority: optimisticNote.priority,
+        }])
         .select("*, supplier:suppliers(*)")
         .single();
 
       if (!error && inserted) {
-        // Update local with server id
-        const synced = updated.map((n) => (n.id === newNote.id ? inserted : n));
+        // Replace temp ID with real cloud UUID in local cache
+        const latest = this.getLocalCache(shopId);
+        const synced = latest.map((n) => (n.id === tempId ? inserted : n));
         this.setLocalCache(shopId, synced);
         this.notifyUpdate(shopId);
         return inserted;
+      } else if (error) {
+        console.warn("Cloud save failed, item retained in offline cache:", error.message);
       }
     } catch (err) {
-      console.warn("Cloud save failed, retained in permanent local cache:", err);
+      console.warn("Cloud save exception, retained in offline cache:", err);
     }
 
-    return newNote;
+    return optimisticNote;
   },
 
   /**
@@ -273,12 +275,13 @@ export const demandNotesRepository = {
     this.setLocalCache(shopId, updated);
     this.notifyUpdate(shopId);
 
-    // Persist to Supabase if valid UUID
+    // Persist to Supabase — works for both UUID (cloud) and temp IDs (local-only)
+    // For temp IDs starting with "dmd-", skip cloud update (not yet saved to cloud)
     if (id && !id.startsWith("dmd-")) {
       try {
         const { error } = await supabase
           .from("demand_notes")
-          .update(updates)
+          .update({ ...updates, updated_at: new Date().toISOString() })
           .eq("id", id);
         if (error) console.warn("Cloud update failed:", error.message);
       } catch (err) {
