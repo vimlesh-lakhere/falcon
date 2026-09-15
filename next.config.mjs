@@ -5,6 +5,9 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   experimental: {
+    serverActions: {
+      bodySizeLimit: "12mb",
+    },
     serverComponentsExternalPackages: [
       "@imgly/background-removal-node",
       "sharp",

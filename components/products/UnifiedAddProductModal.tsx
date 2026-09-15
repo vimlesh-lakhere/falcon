@@ -43,6 +43,8 @@ import {
 } from "@/lib/product-variants";
 import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
 import { ProductPhotoCameraModal } from "@/components/products/ProductPhotoCameraModal";
+import { ImageEnhancePreview, type EnhanceStatus } from "@/components/products/ImageEnhancePreview";
+import type { EnhanceBackgroundPreset, EnhanceForUploadResult } from "@/lib/ai/image-enhancer";
 
 interface UnifiedAddProductModalProps {
   isOpen: boolean;
@@ -118,6 +120,15 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [studioTheme, setStudioTheme] = useState<
     "pure_white" | "luxury_marble" | "modern_wood" | "dark_obsidian" | "botanical_fresh"
   >("pure_white");
+
+  // AI Image Enhancement State (feature-flagged via ENABLE_AI_IMAGE_ENHANCE env var)
+  const isAiEnhanceEnabled = process.env.NEXT_PUBLIC_ENABLE_AI_IMAGE_ENHANCE !== "false";
+  const [frontEnhanceStatus, setFrontEnhanceStatus] = useState<EnhanceStatus>("idle");
+  const [backEnhanceStatus, setBackEnhanceStatus] = useState<EnhanceStatus>("idle");
+  const [frontEnhanceResult, setFrontEnhanceResult] = useState<EnhanceForUploadResult | null>(null);
+  const [backEnhanceResult, setBackEnhanceResult] = useState<EnhanceForUploadResult | null>(null);
+  const [frontEnhanceOriginal, setFrontEnhanceOriginal] = useState<string>("");
+  const [backEnhanceOriginal, setBackEnhanceOriginal] = useState<string>("");
 
   const handleOpenGalleryPicker = () => {
     setIsPhotoActionSheetOpen(false);
@@ -726,6 +737,79 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       console.error(e);
       if (target === "front") setImageUrl(rawDataUrl);
       else setBackImageUrl(rawDataUrl);
+    }
+  };
+
+  // ── AI Image Enhancement Handler ─────────────────────────────────────────
+  const triggerAiEnhance = async (
+    target: "front" | "back" = "front",
+    preset: EnhanceBackgroundPreset = "white"
+  ) => {
+    if (!isAiEnhanceEnabled) return;
+
+    const rawSource = target === "front"
+      ? (rawFrontPhoto || imageUrl)
+      : (rawBackPhoto || backImageUrl);
+
+    if (!rawSource) return;
+
+    const setStatus = target === "front" ? setFrontEnhanceStatus : setBackEnhanceStatus;
+    const setResult = target === "front" ? setFrontEnhanceResult : setBackEnhanceResult;
+    const setOriginal = target === "front" ? setFrontEnhanceOriginal : setBackEnhanceOriginal;
+
+    try {
+      setStatus("enhancing");
+      setOriginal(rawSource);
+
+      const result = await aiImageEnhancer.enhanceForUpload(rawSource, {
+        backgroundPreset: preset,
+        targetSize: 1080,
+      });
+
+      setResult(result);
+
+      if (result.success) {
+        setStatus("done");
+      } else {
+        setStatus("failed");
+      }
+    } catch (err) {
+      console.warn("AI enhancement error:", err);
+      setResult({
+        success: false,
+        originalUrl: rawSource,
+        enhancedUrl: rawSource,
+        thumbnailUrl: rawSource,
+        transparentUrl: null,
+        backgroundPreset: preset,
+        warnings: [(err as Error).message || "Enhancement failed"],
+        metadata: null,
+      });
+      setStatus("failed");
+    }
+  };
+
+  const handleAcceptEnhancement = (target: "front" | "back", enhancedUrl: string) => {
+    if (target === "front") {
+      setImageUrl(enhancedUrl);
+      setFrontEnhanceStatus("idle");
+      setAiSuccessMsg("✅ AI Enhanced photo accepted!");
+    } else {
+      setBackImageUrl(enhancedUrl);
+      setBackEnhanceStatus("idle");
+      setAiSuccessMsg("✅ AI Enhanced back photo accepted!");
+    }
+  };
+
+  const handleKeepOriginalEnhancement = (target: "front" | "back") => {
+    if (target === "front") {
+      if (frontEnhanceOriginal) setImageUrl(frontEnhanceOriginal);
+      setFrontEnhanceStatus("idle");
+      setFrontEnhanceResult(null);
+    } else {
+      if (backEnhanceOriginal) setBackImageUrl(backEnhanceOriginal);
+      setBackEnhanceStatus("idle");
+      setBackEnhanceResult(null);
     }
   };
 
@@ -1444,7 +1528,46 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       <span>🤖 Scan Packaging & MRP with AI</span>
                     </Button>
                   )}
+                  {/* 3. AI Image Enhancement Button (Feature-flagged) */}
+                  {isAiEnhanceEnabled && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => triggerAiEnhance(activeImageTab)}
+                      isLoading={activeImageTab === "front" ? frontEnhanceStatus === "enhancing" : backEnhanceStatus === "enhancing"}
+                      disabled={frontEnhanceStatus === "enhancing" || backEnhanceStatus === "enhancing"}
+                      className="w-full bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md active:scale-95 transition-all py-2"
+                      title="AI-powered: remove background, clean dust, fix lighting, straighten, crop & convert to WebP"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-300" />
+                      <span>🔮 AI Enhance (BG Remove, Clean, Straighten & Convert)</span>
+                    </Button>
+                  )}
                 </div>
+              )}
+
+              {/* AI Enhancement Before/After Preview */}
+              {isAiEnhanceEnabled && activeImageTab === "front" && frontEnhanceStatus !== "idle" && (
+                <ImageEnhancePreview
+                  originalUrl={frontEnhanceOriginal || rawFrontPhoto || imageUrl}
+                  enhanceResult={frontEnhanceResult}
+                  status={frontEnhanceStatus}
+                  onAccept={(url) => handleAcceptEnhancement("front", url)}
+                  onKeepOriginal={() => handleKeepOriginalEnhancement("front")}
+                  onRerun={(preset) => triggerAiEnhance("front", preset)}
+                  className="mt-2"
+                />
+              )}
+              {isAiEnhanceEnabled && activeImageTab === "back" && backEnhanceStatus !== "idle" && (
+                <ImageEnhancePreview
+                  originalUrl={backEnhanceOriginal || rawBackPhoto || backImageUrl}
+                  enhanceResult={backEnhanceResult}
+                  status={backEnhanceStatus}
+                  onAccept={(url) => handleAcceptEnhancement("back", url)}
+                  onKeepOriginal={() => handleKeepOriginalEnhancement("back")}
+                  onRerun={(preset) => triggerAiEnhance("back", preset)}
+                  className="mt-2"
+                />
               )}
 
               {!editingProduct && (

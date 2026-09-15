@@ -431,4 +431,133 @@ export const aiImageEnhancer = {
         : await this.fileToDataUrl(dataUrlOrFile);
     }
   },
+
+  /**
+   * AI Image Enhancement for Product Upload
+   * Sends the image to the server-side /api/ai/enhance-image endpoint which runs
+   * the full 7-step pipeline: straighten → bg removal → cleanup → light correction →
+   * crop & center → format conversion.
+   *
+   * Returns enhanced outputs (WebP, PNG, thumbnail) and the untouched original.
+   * On failure, gracefully returns the original image so the upload flow is never blocked.
+   */
+  async enhanceForUpload(
+    dataUrlOrFile: File | string,
+    options: {
+      backgroundPreset?: EnhanceBackgroundPreset;
+      skipBgRemoval?: boolean;
+      skipCleanup?: boolean;
+      skipLightCorrection?: boolean;
+      targetSize?: number;
+    } = {}
+  ): Promise<EnhanceForUploadResult> {
+    let originalUrl = "";
+    if (typeof dataUrlOrFile === "string") {
+      originalUrl = dataUrlOrFile;
+    } else {
+      originalUrl = await this.fileToDataUrl(dataUrlOrFile);
+    }
+
+    try {
+      // Compress before sending to server to reduce payload size
+      const compressed = await this.fastCompress(
+        originalUrl,
+        options.targetSize || 1080,
+        0.92
+      );
+
+      const res = await fetch("/api/ai/enhance-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: compressed,
+          backgroundPreset: options.backgroundPreset || "white",
+          skipBgRemoval: options.skipBgRemoval || false,
+          skipCleanup: options.skipCleanup || false,
+          skipLightCorrection: options.skipLightCorrection || false,
+          targetSize: options.targetSize || 1080,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        console.warn("AI enhancement API error:", data.error);
+        return {
+          success: false,
+          originalUrl,
+          enhancedUrl: originalUrl,
+          thumbnailUrl: originalUrl,
+          transparentUrl: null,
+          backgroundPreset: options.backgroundPreset || "white",
+          warnings: [data.error || "Enhancement failed"],
+          metadata: null,
+        };
+      }
+
+      return {
+        success: true,
+        originalUrl: data.originalUrl || originalUrl,
+        enhancedUrl: data.enhancedWebpUrl || data.enhancedPngUrl || originalUrl,
+        enhancedPngUrl: data.enhancedPngUrl,
+        thumbnailUrl: data.thumbnailUrl || originalUrl,
+        transparentUrl: data.transparentUrl || null,
+        backgroundPreset: data.backgroundPreset || "white",
+        warnings: data.warnings || [],
+        metadata: data.metadata || null,
+      };
+    } catch (err: any) {
+      console.warn("AI enhancement request failed, using original:", err);
+      return {
+        success: false,
+        originalUrl,
+        enhancedUrl: originalUrl,
+        thumbnailUrl: originalUrl,
+        transparentUrl: null,
+        backgroundPreset: options.backgroundPreset || "white",
+        warnings: [err.message || "Enhancement request failed"],
+        metadata: null,
+      };
+    }
+  },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types for the AI Enhancement API
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type EnhanceBackgroundPreset = "transparent" | "white" | "light_grey" | "soft_gradient";
+
+export interface EnhanceForUploadResult {
+  success: boolean;
+  /** Untouched original image data URL */
+  originalUrl: string;
+  /** Enhanced image data URL (WebP primary) */
+  enhancedUrl: string;
+  /** Enhanced PNG fallback data URL */
+  enhancedPngUrl?: string;
+  /** Thumbnail data URL */
+  thumbnailUrl: string;
+  /** Transparent cutout data URL (if background removal succeeded) */
+  transparentUrl: string | null;
+  /** Background preset used */
+  backgroundPreset: EnhanceBackgroundPreset;
+  /** Non-fatal warnings */
+  warnings: string[];
+  /** Processing metadata from the server */
+  metadata: {
+    originalWidth: number;
+    originalHeight: number;
+    outputWidth: number;
+    outputHeight: number;
+    originalSizeBytes: number;
+    webpSizeBytes: number;
+    pngSizeBytes: number;
+    thumbnailSizeBytes: number;
+    processingTimeMs: number;
+    bgRemovalProvider: string | null;
+    stepsCompleted: string[];
+    stepsFailed: string[];
+  } | null;
+}
+
