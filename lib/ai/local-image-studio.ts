@@ -383,16 +383,9 @@ export const localImageStudio = {
       ctx.fillRect(0, 0, size, size);
 
     } else {
-      // Amazon / Flipkart Standard Pure White Studio (#FFFFFF)
-      // Pure White Studio with subtle vignette & floor ground lighting
+      // Amazon / Flipkart Standard 100% Solid Pure White Studio (#FFFFFF)
+      // Flat solid pure white without any grey vignette or off-white tint
       ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, size, size);
-
-      const grad = ctx.createRadialGradient(size / 2, size * 0.42, 40, size / 2, size * 0.5, size * 0.75);
-      grad.addColorStop(0, "#FFFFFF");
-      grad.addColorStop(0.6, "#FCFCFD");
-      grad.addColorStop(1, "#F3F4F6");
-      ctx.fillStyle = grad;
       ctx.fillRect(0, 0, size, size);
     }
   },
@@ -537,8 +530,8 @@ export const localImageStudio = {
     // 6.1 Render 3D Studio Backdrop
     this.renderStudioBackdrop(masterCtx, targetSize, theme, hasTransparentProduct);
 
-    // 6.2 Ground Physics Contact & Ambient Shadows
-    if (options.addGroundShadow !== false) {
+    // 6.2 Ground Physics Contact & Ambient Shadows (Disabled for pure_white e-commerce standard)
+    if (options.addGroundShadow !== false && theme !== "pure_white" && hasTransparentProduct) {
       masterCtx.save();
       const shadowY = drawY + drawH;
       const isDark = theme === "dark_obsidian";
@@ -575,8 +568,8 @@ export const localImageStudio = {
       masterCtx.restore();
     }
 
-    // 6.3 Subtle Inverted Acrylic Mirror Floor Reflection
-    if (options.addReflection !== false && theme !== "modern_wood") {
+    // 6.3 Subtle Inverted Acrylic Mirror Floor Reflection (Disabled for pure_white)
+    if (options.addReflection !== false && theme !== "pure_white" && theme !== "modern_wood" && hasTransparentProduct) {
       masterCtx.save();
       const reflectionY = drawY + drawH;
       const reflectionH = drawH * 0.28;

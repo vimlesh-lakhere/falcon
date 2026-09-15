@@ -43,8 +43,6 @@ import {
 } from "@/lib/product-variants";
 import { CameraBarcodeScanner } from "@/components/pos/CameraBarcodeScanner";
 import { ProductPhotoCameraModal } from "@/components/products/ProductPhotoCameraModal";
-import { ImageEnhancePreview, type EnhanceStatus } from "@/components/products/ImageEnhancePreview";
-import type { EnhanceBackgroundPreset, EnhanceForUploadResult } from "@/lib/ai/image-enhancer";
 
 interface UnifiedAddProductModalProps {
   isOpen: boolean;
@@ -117,18 +115,6 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [autoScanWithAi, setAutoScanWithAi] = useState(false);
   const [autoStudioPolish, setAutoStudioPolish] = useState(true);
   const [isPolishing, setIsPolishing] = useState(false);
-  const [studioTheme, setStudioTheme] = useState<
-    "pure_white" | "luxury_marble" | "modern_wood" | "dark_obsidian" | "botanical_fresh"
-  >("pure_white");
-
-  // AI Image Enhancement State (feature-flagged via ENABLE_AI_IMAGE_ENHANCE env var)
-  const isAiEnhanceEnabled = process.env.NEXT_PUBLIC_ENABLE_AI_IMAGE_ENHANCE !== "false";
-  const [frontEnhanceStatus, setFrontEnhanceStatus] = useState<EnhanceStatus>("idle");
-  const [backEnhanceStatus, setBackEnhanceStatus] = useState<EnhanceStatus>("idle");
-  const [frontEnhanceResult, setFrontEnhanceResult] = useState<EnhanceForUploadResult | null>(null);
-  const [backEnhanceResult, setBackEnhanceResult] = useState<EnhanceForUploadResult | null>(null);
-  const [frontEnhanceOriginal, setFrontEnhanceOriginal] = useState<string>("");
-  const [backEnhanceOriginal, setBackEnhanceOriginal] = useState<string>("");
 
   const handleOpenGalleryPicker = () => {
     setIsPhotoActionSheetOpen(false);
@@ -617,14 +603,12 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     }
   };
 
-  // Instant Studio Polish & Clean Handler (Dust cleaning + Gloss + White BG)
+  // ── 1-Click Pure White Studio Polish ──────────────────────────────────────
   const handleStudioPolishPhoto = async (
     customSource?: string,
-    customTarget?: "front" | "back",
-    customTheme?: "pure_white" | "luxury_marble" | "modern_wood" | "dark_obsidian" | "botanical_fresh"
+    customTarget?: "front" | "back"
   ) => {
     const target = customTarget || activeImageTab;
-    const themeToUse = customTheme || studioTheme;
     const rawSource =
       customSource ||
       (target === "front"
@@ -632,13 +616,12 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         : rawBackPhoto || backImageUrl);
 
     if (!rawSource) {
-      alert("Please upload or capture a photo first.");
       return;
     }
 
     try {
       setIsPolishing(true);
-      setAiSuccessMsg("✨ Removing background & applying 3D studio polish...");
+      setAiSuccessMsg("✨ Processing 1-click pure white studio photo...");
 
       let imageToPolish = rawSource;
 
@@ -671,14 +654,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         console.warn("Server AI background remover notice:", bgErr);
       }
 
-      // 2. Final Studio Polish (Framing, Centering, Gloss & Staged Background)
+      // 2. Final Studio Polish: 100% Solid Pure White Canvas (#FFFFFF), no grey shadows, no reflections
       const polished = await aiImageEnhancer.studioPolish(imageToPolish, {
         targetSize: 1080,
-        theme: themeToUse,
-        addGloss: true,
-        addGroundShadow: true,
-        addReflection: true,
-        sharpnessBoost: true,
+        theme: "pure_white",
+        addGloss: false,        // Clean packaging without artificial glare
+        addGroundShadow: false, // Strict pure white without grey ground shadows
+        addReflection: false,   // No floor reflections
+        sharpnessBoost: true,   // Crisp barcode and product label
       });
 
       if (target === "front") {
@@ -686,7 +669,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       } else {
         setBackImageUrl(polished);
       }
-      setAiSuccessMsg("✨ Studio Cleaned & Polished: Background isolated, dust smoothed & staged on 3D backdrop!");
+      setAiSuccessMsg("✨ 1-Click Pure White Studio: Background isolated & centered!");
     } catch (e) {
       console.error("Studio polish error:", e);
       setAiSuccessMsg("⚠️ Studio polish notice: Applied safe photo enhancement.");
@@ -698,7 +681,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   // Process Image Data URL (From Live Camera Snapshot or File Upload)
   const handleProcessImageDataUrl = async (rawDataUrl: string, target: "front" | "back" = "front") => {
     try {
-      // Store un-padded raw source so studio polish can be reverted or re-run cleanly anytime
+      // Store un-padded raw source so studio polish can be reverted cleanly anytime
       if (target === "front") {
         setRawFrontPhoto(rawDataUrl);
       } else {
@@ -714,14 +697,14 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setBackImageUrl(fastCompressedUrl);
       }
 
-      // 2. Automated Studio Polish (enabled by default)
+      // 2. Automated Pure White Studio Polish (1-Click automatically applied)
       if (autoStudioPolish) {
         await handleStudioPolishPhoto(fastCompressedUrl, target);
       }
 
       // 3. IF EDITING EXISTING PRODUCT: Do NOT run OCR, do NOT overwrite details
       if (editingProduct) {
-        setAiSuccessMsg("✓ Photo updated & studio staged! Click 'Update Product' below to save.");
+        setAiSuccessMsg("✓ Photo updated & pure white staged! Click 'Update Product' below to save.");
         return;
       }
 
@@ -731,85 +714,12 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         const backToScan = target === "back" ? fastCompressedUrl : backImageUrl;
         await handleTriggerAiOcr(frontToScan, backToScan);
       } else {
-        setAiSuccessMsg("✨ Studio Polished! Tap 'Show Original' to revert or 'Scan with AI' for auto-fill.");
+        setAiSuccessMsg("✨ Pure White Studio applied! Tap 'Show Original' to revert.");
       }
     } catch (e) {
       console.error(e);
       if (target === "front") setImageUrl(rawDataUrl);
       else setBackImageUrl(rawDataUrl);
-    }
-  };
-
-  // ── AI Image Enhancement Handler ─────────────────────────────────────────
-  const triggerAiEnhance = async (
-    target: "front" | "back" = "front",
-    preset: EnhanceBackgroundPreset = "white"
-  ) => {
-    if (!isAiEnhanceEnabled) return;
-
-    const rawSource = target === "front"
-      ? (rawFrontPhoto || imageUrl)
-      : (rawBackPhoto || backImageUrl);
-
-    if (!rawSource) return;
-
-    const setStatus = target === "front" ? setFrontEnhanceStatus : setBackEnhanceStatus;
-    const setResult = target === "front" ? setFrontEnhanceResult : setBackEnhanceResult;
-    const setOriginal = target === "front" ? setFrontEnhanceOriginal : setBackEnhanceOriginal;
-
-    try {
-      setStatus("enhancing");
-      setOriginal(rawSource);
-
-      const result = await aiImageEnhancer.enhanceForUpload(rawSource, {
-        backgroundPreset: preset,
-        targetSize: 1080,
-      });
-
-      setResult(result);
-
-      if (result.success) {
-        setStatus("done");
-      } else {
-        setStatus("failed");
-      }
-    } catch (err) {
-      console.warn("AI enhancement error:", err);
-      setResult({
-        success: false,
-        originalUrl: rawSource,
-        enhancedUrl: rawSource,
-        thumbnailUrl: rawSource,
-        transparentUrl: null,
-        backgroundPreset: preset,
-        warnings: [(err as Error).message || "Enhancement failed"],
-        metadata: null,
-      });
-      setStatus("failed");
-    }
-  };
-
-  const handleAcceptEnhancement = (target: "front" | "back", enhancedUrl: string) => {
-    if (target === "front") {
-      setImageUrl(enhancedUrl);
-      setFrontEnhanceStatus("idle");
-      setAiSuccessMsg("✅ AI Enhanced photo accepted!");
-    } else {
-      setBackImageUrl(enhancedUrl);
-      setBackEnhanceStatus("idle");
-      setAiSuccessMsg("✅ AI Enhanced back photo accepted!");
-    }
-  };
-
-  const handleKeepOriginalEnhancement = (target: "front" | "back") => {
-    if (target === "front") {
-      if (frontEnhanceOriginal) setImageUrl(frontEnhanceOriginal);
-      setFrontEnhanceStatus("idle");
-      setFrontEnhanceResult(null);
-    } else {
-      if (backEnhanceOriginal) setBackImageUrl(backEnhanceOriginal);
-      setBackEnhanceStatus("idle");
-      setBackEnhanceResult(null);
     }
   };
 
@@ -1447,73 +1357,45 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 </div>
               )}
 
-              {/* Auto-Clean Background & Studio Polish Toggle */}
-              <label className="flex items-center justify-between p-2 rounded-xl bg-purple-50/70 border border-purple-200/80 text-[11px] text-purple-900 cursor-pointer select-none">
-                <div className="flex items-center gap-1.5 font-medium">
-                  <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                  <span>Auto-Clean Background & Studio Polish</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={autoStudioPolish}
-                  onChange={(e) => setAutoStudioPolish(e.target.checked)}
-                  className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5 cursor-pointer"
-                />
-              </label>
 
-              {/* Studio Polish & AI Controls */}
+              {/* Clean Status & Action Controls when Photo is Present */}
               {(imageUrl || backImageUrl) && (
-                <div className="space-y-2 pt-1">
-                  {/* Studio Theme Presets */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
-                      3D Studio Staging Backdrop:
-                    </span>
-                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                      {[
-                        { id: "pure_white", label: "Pure White", icon: "⚪" },
-                        { id: "luxury_marble", label: "Marble Podium", icon: "🏛️" },
-                        { id: "modern_wood", label: "Warm Wood", icon: "🪵" },
-                        { id: "dark_obsidian", label: "Obsidian Stage", icon: "🌑" },
-                      ].map((t) => (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-50 border border-emerald-200/80 text-[11px]">
+                    <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Pure White Studio Auto-Applied</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleStudioPolishPhoto()}
+                        disabled={isPolishing}
+                        className="text-purple-600 hover:text-purple-800 font-bold hover:underline disabled:opacity-50 text-[11px]"
+                      >
+                        {isPolishing ? "Polishing..." : "✨ Re-polish"}
+                      </button>
+                      {((activeImageTab === "front" && rawFrontPhoto) || (activeImageTab === "back" && rawBackPhoto)) && (
                         <button
-                          key={t.id}
                           type="button"
                           onClick={() => {
-                            const newTheme = t.id as any;
-                            setStudioTheme(newTheme);
-                            const currentPhoto = activeImageTab === "front" ? (rawFrontPhoto || imageUrl) : (rawBackPhoto || backImageUrl);
-                            if (currentPhoto) {
-                              handleStudioPolishPhoto(undefined, undefined, newTheme);
+                            if (activeImageTab === "front" && rawFrontPhoto) {
+                              setImageUrl(rawFrontPhoto);
+                              setAiSuccessMsg("Restored original front photo.");
+                            } else if (activeImageTab === "back" && rawBackPhoto) {
+                              setBackImageUrl(rawBackPhoto);
+                              setAiSuccessMsg("Restored original back photo.");
                             }
                           }}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border transition-all ${
-                            studioTheme === t.id
-                              ? "bg-purple-600 text-white border-purple-600 shadow-xs"
-                              : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
-                          }`}
+                          className="text-gray-500 hover:text-gray-800 font-medium hover:underline text-[11px]"
                         >
-                          <span>{t.icon}</span>
-                          <span>{t.label}</span>
+                          ↩ Show Original
                         </button>
-                      ))}
+                      )}
                     </div>
                   </div>
 
-                  {/* 1. Studio Clean & Polish Button (Works for BOTH existing and new products) */}
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => handleStudioPolishPhoto()}
-                    isLoading={isPolishing}
-                    className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md active:scale-95 transition-all py-2"
-                    title="Isolate background, add softbox specular shine, 3D physics shadow and center on chosen stage"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 mr-1 text-yellow-300 animate-pulse" />
-                    <span>✨ 1-Click Studio Polish (Shine, Clean & 3D Stage)</span>
-                  </Button>
-
-                  {/* 2. AI Auto-fill (Only when creating a new product) */}
+                  {/* AI Scan Packaging & MRP (Only for new products) */}
                   {!editingProduct && (
                     <Button
                       type="button"
@@ -1528,58 +1410,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       <span>🤖 Scan Packaging & MRP with AI</span>
                     </Button>
                   )}
-                  {/* 3. AI Image Enhancement Button (Feature-flagged) */}
-                  {isAiEnhanceEnabled && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => triggerAiEnhance(activeImageTab)}
-                      isLoading={activeImageTab === "front" ? frontEnhanceStatus === "enhancing" : backEnhanceStatus === "enhancing"}
-                      disabled={frontEnhanceStatus === "enhancing" || backEnhanceStatus === "enhancing"}
-                      className="w-full bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md active:scale-95 transition-all py-2"
-                      title="AI-powered: remove background, clean dust, fix lighting, straighten, crop & convert to WebP"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-300" />
-                      <span>🔮 AI Enhance (BG Remove, Clean, Straighten & Convert)</span>
-                    </Button>
-                  )}
                 </div>
-              )}
-
-              {/* AI Enhancement Before/After Preview */}
-              {isAiEnhanceEnabled && activeImageTab === "front" && frontEnhanceStatus !== "idle" && (
-                <ImageEnhancePreview
-                  originalUrl={frontEnhanceOriginal || rawFrontPhoto || imageUrl}
-                  enhanceResult={frontEnhanceResult}
-                  status={frontEnhanceStatus}
-                  onAccept={(url) => handleAcceptEnhancement("front", url)}
-                  onKeepOriginal={() => handleKeepOriginalEnhancement("front")}
-                  onRerun={(preset) => triggerAiEnhance("front", preset)}
-                  className="mt-2"
-                />
-              )}
-              {isAiEnhanceEnabled && activeImageTab === "back" && backEnhanceStatus !== "idle" && (
-                <ImageEnhancePreview
-                  originalUrl={backEnhanceOriginal || rawBackPhoto || backImageUrl}
-                  enhanceResult={backEnhanceResult}
-                  status={backEnhanceStatus}
-                  onAccept={(url) => handleAcceptEnhancement("back", url)}
-                  onKeepOriginal={() => handleKeepOriginalEnhancement("back")}
-                  onRerun={(preset) => triggerAiEnhance("back", preset)}
-                  className="mt-2"
-                />
-              )}
-
-              {!editingProduct && (
-                <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer pt-0.5 select-none">
-                  <input
-                    type="checkbox"
-                    checked={autoScanWithAi}
-                    onChange={(e) => setAutoScanWithAi(e.target.checked)}
-                    className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
-                  />
-                  <span>Auto-extract product details when photo is selected</span>
-                </label>
               )}
 
               {/* Side-by-Side Dual Thumbnail Previews */}
