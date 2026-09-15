@@ -1080,11 +1080,9 @@ export default function PosBillingPage() {
       setIsPickingContact(true);
       const contact = await pickContactFromDevice();
       if (!contact) return;
-      const shopId = shop?.id;
-      if (!shopId) return;
-      const customer = await syncOrRegisterCustomerFromContact(contact, shopId, customers);
+      if (!SHOP_ID) return;
+      const customer = await syncOrRegisterCustomerFromContact(contact, SHOP_ID, customers);
       setSelectedCustomer(customer);
-      // Refresh customers list if new customer was created
       if (!customers.find((c) => c.id === customer.id)) {
         setCustomers((prev) => [customer, ...prev]);
       }
@@ -1100,12 +1098,11 @@ export default function PosBillingPage() {
   // Inline quick-add new customer during checkout
   const handleAddNewCustomerInline = async () => {
     if (!newCustomerName.trim()) return;
-    const shopId = shop?.id;
-    if (!shopId) return;
+    if (!SHOP_ID) return;
     try {
       setIsProcessing(true);
       const newCust = await customersRepository.create({
-        shop_id: shopId,
+        shop_id: SHOP_ID,
         name: newCustomerName.trim(),
         phone: newCustomerPhone.trim() || null,
       });
