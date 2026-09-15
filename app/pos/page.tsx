@@ -153,6 +153,8 @@ export default function PosBillingPage() {
   const [cashAmount, setCashAmount] = useState<number>(0);
   const [upiAmount, setUpiAmount] = useState<number>(0);
   const [cardAmount, setCardAmount] = useState<number>(0);
+  // advancePaidAmount: how much customer actually paid NOW (rest goes to udhaar)
+  const [advancePaidAmount, setAdvancePaidAmount] = useState<number>(0);
   const [paymentRef, setPaymentRef] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCollectPaymentOpen, setIsCollectPaymentOpen] = useState(false);
@@ -1028,26 +1030,25 @@ export default function PosBillingPage() {
         : "cash";
 
     setPaymentMethod(method);
-    if (method === "cash") {
+    setPaymentRef("");
+    if (method === "udhaar") {
+      // 100% credit — advance = 0
+      setCashAmount(0);
+      setUpiAmount(0);
+      setCardAmount(0);
+      setAdvancePaidAmount(0);
+    } else if (method === "split") {
+      // Legacy split — preset cash = full
       setCashAmount(totalAmount);
       setUpiAmount(0);
       setCardAmount(0);
-    } else if (method === "upi") {
-      setUpiAmount(totalAmount);
-      setCashAmount(0);
-      setCardAmount(0);
-    } else if (method === "card") {
-      setCardAmount(totalAmount);
-      setCashAmount(0);
-      setUpiAmount(0);
-    } else if (method === "udhaar") {
-      setCashAmount(0);
-      setUpiAmount(0);
-      setCardAmount(0);
+      setAdvancePaidAmount(totalAmount);
     } else {
-      setCashAmount(totalAmount);
-      setUpiAmount(0);
-      setCardAmount(0);
+      // cash / upi / card — default advance = full amount (can be reduced)
+      setCashAmount(method === "cash" ? totalAmount : 0);
+      setUpiAmount(method === "upi" ? totalAmount : 0);
+      setCardAmount(method === "card" ? totalAmount : 0);
+      setAdvancePaidAmount(totalAmount);
     }
     setIsCheckoutModalOpen(true);
   };
@@ -1058,12 +1059,15 @@ export default function PosBillingPage() {
       setIsProcessing(true);
 
       // 1. Calculate tendered amounts & check due/udhaar
-      const totalPaid = paymentMethod === "udhaar" ? 0 : (
-        paymentMethod === "cash" ? totalAmount :
-        paymentMethod === "upi" ? totalAmount :
-        paymentMethod === "card" ? totalAmount :
-        ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0))
-      );
+      let totalPaid: number;
+      if (paymentMethod === "udhaar") {
+        totalPaid = 0;
+      } else if (paymentMethod === "split") {
+        totalPaid = (Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0);
+      } else {
+        // cash / upi / card with optional partial advance
+        totalPaid = Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
+      }
       const dueAmount = Math.max(0, totalAmount - totalPaid);
 
       if (dueAmount > 0 && !selectedCustomer) {
@@ -1073,12 +1077,12 @@ export default function PosBillingPage() {
       }
 
       const payments: CheckoutPayload["payments"] = [];
-      if (paymentMethod === "cash") {
-        payments.push({ method: "cash", amount: totalAmount });
-      } else if (paymentMethod === "upi") {
-        payments.push({ method: "upi", amount: totalAmount, reference_no: paymentRef });
-      } else if (paymentMethod === "card") {
-        payments.push({ method: "card", amount: totalAmount, reference_no: paymentRef });
+      if (paymentMethod === "cash" && totalPaid > 0) {
+        payments.push({ method: "cash", amount: totalPaid });
+      } else if (paymentMethod === "upi" && totalPaid > 0) {
+        payments.push({ method: "upi", amount: totalPaid, reference_no: paymentRef });
+      } else if (paymentMethod === "card" && totalPaid > 0) {
+        payments.push({ method: "card", amount: totalPaid, reference_no: paymentRef });
       } else if (paymentMethod === "split") {
         if (cashAmount > 0) payments.push({ method: "cash", amount: Number(cashAmount) });
         if (upiAmount > 0) payments.push({ method: "upi", amount: Number(upiAmount), reference_no: paymentRef });
@@ -2311,150 +2315,154 @@ export default function PosBillingPage() {
         isOpen={isCheckoutModalOpen}
         onClose={() => setIsCheckoutModalOpen(false)}
         title="Complete Payment & Checkout"
-        description={`Total Amount Payable: ${formatCurrency(totalAmount)}`}
+        description={`कुल देय राशि (Total Payable): ${formatCurrency(totalAmount)}`}
         maxWidth="md"
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-5 gap-1.5">
-            <button
-              onClick={() => handleOpenCheckout("cash")}
-              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
-                paymentMethod === "cash"
-                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-xs"
-                  : "border-gray-200 hover:bg-gray-50 text-gray-700"
-              }`}
-            >
-              <Banknote className="w-4 h-4" />
-              <span>Cash</span>
-            </button>
-            <button
-              onClick={() => handleOpenCheckout("upi")}
-              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
-                paymentMethod === "upi"
-                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-xs"
-                  : "border-gray-200 hover:bg-gray-50 text-gray-700"
-              }`}
-            >
-              <QrCode className="w-4 h-4" />
-              <span>UPI / QR</span>
-            </button>
-            <button
-              onClick={() => handleOpenCheckout("card")}
-              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
-                paymentMethod === "card"
-                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-xs"
-                  : "border-gray-200 hover:bg-gray-50 text-gray-700"
-              }`}
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>Card</span>
-            </button>
-            <button
-              onClick={() => handleOpenCheckout("udhaar")}
-              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
-                paymentMethod === "udhaar"
-                  ? "border-amber-600 bg-amber-50 text-amber-900 shadow-xs ring-1 ring-amber-500"
-                  : "border-gray-200 hover:bg-gray-50 text-gray-700"
-              }`}
-            >
-              <BookOpen className="w-4 h-4 text-amber-700" />
-              <span>उधार</span>
-            </button>
-            <button
-              onClick={() => handleOpenCheckout("split")}
-              className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-bold transition-all ${
-                paymentMethod === "split"
-                  ? "border-brand-600 bg-brand-50 text-brand-700 shadow-xs"
-                  : "border-gray-200 hover:bg-gray-50 text-gray-700"
-              }`}
-            >
-              <Plus className="w-4 h-4" />
-              <span>Split</span>
-            </button>
+
+          {/* ─── Payment Mode Selector ─── */}
+          <div className="grid grid-cols-4 gap-2">
+            {([
+              { key: "cash", icon: <Banknote className="w-5 h-5" />, label: "नकद (Cash)", color: "emerald" },
+              { key: "upi",  icon: <QrCode className="w-5 h-5" />,  label: "UPI / QR",   color: "blue" },
+              { key: "card", icon: <CreditCard className="w-5 h-5" />, label: "Card",    color: "indigo" },
+              { key: "udhaar", icon: <BookOpen className="w-5 h-5" />, label: "उधार",   color: "amber" },
+            ] as const).map(({ key, icon, label, color }) => (
+              <button
+                key={key}
+                onClick={() => handleOpenCheckout(key)}
+                className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 text-xs font-bold transition-all cursor-pointer active:scale-95 ${
+                  paymentMethod === key
+                    ? key === "udhaar"
+                      ? "border-amber-500 bg-amber-50 text-amber-900 shadow-md"
+                      : "border-brand-600 bg-brand-50 text-brand-800 shadow-md"
+                    : "border-gray-200 bg-white hover:bg-gray-50 text-gray-600"
+                }`}
+              >
+                {icon}
+                <span>{label}</span>
+              </button>
+            ))}
           </div>
 
-          {/* 100% Udhaar / Credit Sale Notice */}
+          {/* ─── Bill Total Recap ─── */}
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-900 rounded-2xl text-white">
+            <span className="text-xs font-semibold text-gray-400">कुल बिल (Bill Total)</span>
+            <span className="text-xl font-black tabular-nums">{formatCurrency(totalAmount)}</span>
+          </div>
+
+          {/* ─── 100% Udhaar Mode ─── */}
           {paymentMethod === "udhaar" && (
-            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs space-y-1">
-              <div className="flex items-center gap-1.5 font-bold text-amber-950">
-                <BookOpen className="w-4 h-4 text-amber-700" />
-                <span>100% उधार खाता बिक्री (Credit Sale)</span>
+            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-300 space-y-2">
+              <div className="flex items-center gap-2 font-black text-amber-950 text-sm">
+                <BookOpen className="w-5 h-5 text-amber-700" />
+                <span>100% उधार खाता बिक्री</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-white rounded-xl border border-amber-200 flex flex-col items-center">
+                  <span className="text-gray-500">Advance Paid (अभी)</span>
+                  <span className="text-lg font-black text-emerald-700">{formatCurrency(0)}</span>
+                </div>
+                <div className="p-2 bg-amber-100 rounded-xl border border-amber-300 flex flex-col items-center">
+                  <span className="text-amber-800">Udhaar Due (उधार)</span>
+                  <span className="text-lg font-black text-amber-900">{formatCurrency(totalAmount)}</span>
+                </div>
               </div>
               <p className="text-[11px] text-amber-800 leading-snug">
-                पूरा बिल {formatCurrency(totalAmount)} ग्राहक के खाते में उधार दर्ज होगा और रसीद प्रिंट होगी।
+                पूरा बिल ग्राहक के खाते में उधार दर्ज होगा।
               </p>
             </div>
           )}
 
-          {/* Split Payment Breakdown Inputs */}
-          {paymentMethod === "split" && (
-            <div className="space-y-2.5 p-3 bg-gray-50 rounded-xl text-xs border border-gray-200">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-700">Cash Portion (नकद):</span>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={cashAmount === 0 ? "" : cashAmount}
-                  onFocus={(e) => e.currentTarget.select()}
-                  onChange={(e) => setCashAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-                  className="w-32 p-1.5 border border-gray-300 rounded-lg font-bold text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-700">UPI / QR Portion:</span>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={upiAmount === 0 ? "" : upiAmount}
-                  onFocus={(e) => e.currentTarget.select()}
-                  onChange={(e) => setUpiAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-                  className="w-32 p-1.5 border border-gray-300 rounded-lg font-bold text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-700">Card Portion:</span>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={cardAmount === 0 ? "" : cardAmount}
-                  onFocus={(e) => e.currentTarget.select()}
-                  onChange={(e) => setCardAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-                  className="w-32 p-1.5 border border-gray-300 rounded-lg font-bold text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
+          {/* ─── Cash / UPI / Card with Advance + Udhaar ─── */}
+          {(paymentMethod === "cash" || paymentMethod === "upi" || paymentMethod === "card") && (() => {
+            const advance = Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
+            const udhaarDue = Math.max(0, totalAmount - advance);
+            const change = Math.max(0, advance - totalAmount);
+            const modeLabel = paymentMethod === "cash" ? "नकद (Cash)" : paymentMethod === "upi" ? "UPI / QR" : "Card";
+            return (
+              <div className="space-y-3">
+                {/* Advance Amount Input */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-gray-700">
+                      💵 {modeLabel} से प्राप्त (Advance Paid Now):
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setAdvancePaidAmount(totalAmount)}
+                      className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black rounded-full hover:bg-emerald-200 cursor-pointer transition-colors"
+                    >
+                      Full Pay
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    placeholder={`0 — Max: ${totalAmount}`}
+                    value={advancePaidAmount === 0 ? "" : advancePaidAmount}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) => {
+                      const val = e.target.value === "" ? 0 : parseFloat(e.target.value) || 0;
+                      setAdvancePaidAmount(Math.min(val, totalAmount));
+                    }}
+                    className="w-full text-2xl font-black text-right px-4 py-3 bg-white border-2 border-gray-300 rounded-xl focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 tabular-nums"
+                    autoFocus
+                  />
+                  {/* Quick Amount Chips */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {[50, 100, 200, 500, 1000].map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => setAdvancePaidAmount(Math.min(chip, totalAmount))}
+                        className="px-2.5 py-1 text-[11px] font-bold bg-white border border-gray-300 rounded-lg hover:bg-brand-50 hover:border-brand-400 hover:text-brand-700 transition-all cursor-pointer"
+                      >
+                        ₹{chip}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setAdvancePaidAmount(0)}
+                      className="px-2.5 py-1 text-[11px] font-bold bg-white border border-gray-200 rounded-lg hover:bg-amber-50 hover:border-amber-400 hover:text-amber-700 transition-all cursor-pointer"
+                    >
+                      ₹0 (Full Udhaar)
+                    </button>
+                  </div>
+                </div>
 
-              {/* Dynamic Tender Calculations */}
-              {(() => {
-                const tendered = (Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0);
-                const diff = totalAmount - tendered;
-                if (diff > 0.01) {
-                  return (
-                    <div className="p-2 bg-amber-50 rounded-lg border border-amber-300 flex items-center justify-between font-bold text-amber-950 text-xs">
-                      <span>📕 खाते में उधार (Balance Due):</span>
-                      <span className="font-black text-amber-900">+{formatCurrency(diff)}</span>
-                    </div>
-                  );
-                } else if (diff < -0.01) {
-                  return (
-                    <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-300 flex items-center justify-between font-bold text-emerald-950 text-xs">
-                      <span>💵 ग्राहक को वापसी छुट्टे (Change Return):</span>
-                      <span className="font-black text-emerald-800">{formatCurrency(Math.abs(diff))}</span>
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div className="p-2 bg-purple-50 rounded-lg border border-purple-200 flex items-center justify-between font-bold text-purple-950 text-xs">
-                      <span>✓ पूर्ण भुगतान (Fully Paid):</span>
-                      <span className="font-black text-purple-800">{formatCurrency(tendered)}</span>
-                    </div>
-                  );
-                }
-              })()}
-            </div>
-          )}
+                {/* Live Summary: Advance + Udhaar + Change */}
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col items-center gap-0.5">
+                    <span className="text-[10px] font-bold text-emerald-700 text-center">✅ अभी मिला</span>
+                    <span className="text-base font-black text-emerald-800 tabular-nums">{formatCurrency(advance)}</span>
+                  </div>
+                  <div className={`p-2.5 border rounded-xl flex flex-col items-center gap-0.5 ${
+                    udhaarDue > 0 ? "bg-amber-50 border-amber-300" : "bg-gray-50 border-gray-200"
+                  }`}>
+                    <span className={`text-[10px] font-bold text-center ${
+                      udhaarDue > 0 ? "text-amber-700" : "text-gray-500"
+                    }`}>📕 उधार बाकी</span>
+                    <span className={`text-base font-black tabular-nums ${
+                      udhaarDue > 0 ? "text-amber-900" : "text-gray-400"
+                    }`}>{formatCurrency(udhaarDue)}</span>
+                  </div>
+                  <div className={`p-2.5 border rounded-xl flex flex-col items-center gap-0.5 ${
+                    change > 0 ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"
+                  }`}>
+                    <span className={`text-[10px] font-bold text-center ${
+                      change > 0 ? "text-blue-700" : "text-gray-500"
+                    }`}>💵 वापसी</span>
+                    <span className={`text-base font-black tabular-nums ${
+                      change > 0 ? "text-blue-800" : "text-gray-400"
+                    }`}>{formatCurrency(change)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
-          {/* Reference No for UPI/Card/Other */}
-          {paymentMethod !== "split" && paymentMethod !== "udhaar" && (
+          {/* ─── Reference No for UPI/Card ─── */}
+          {(paymentMethod === "upi" || paymentMethod === "card") && (
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
                 Transaction / Reference No. (Optional)
@@ -2469,13 +2477,12 @@ export default function PosBillingPage() {
             </div>
           )}
 
-          {/* Customer Khata Linking & Warning when Due > 0 */}
+          {/* ─── Customer Khata Linking Warning when Due > 0 ─── */}
           {(() => {
-            const tendered = paymentMethod === "udhaar" ? 0 : (
-              paymentMethod === "split" ? ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0)) : totalAmount
-            );
-            const dueOnBill = Math.max(0, totalAmount - tendered);
-
+            const advance = paymentMethod === "udhaar" ? 0 :
+              paymentMethod === "split" ? ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0)) :
+              Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
+            const dueOnBill = Math.max(0, totalAmount - advance);
             if (dueOnBill <= 0.01) return null;
 
             if (!selectedCustomer) {
@@ -2483,7 +2490,7 @@ export default function PosBillingPage() {
                 <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-xs space-y-2">
                   <div className="font-bold text-red-800 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-                    <span>⚠️ उधार बिल के लिए ग्राहक चुनना आवश्यक है:</span>
+                    <span>⚠️ उधार है — ग्राहक का नाम चुनें:</span>
                   </div>
                   <select
                     value=""
@@ -2506,40 +2513,46 @@ export default function PosBillingPage() {
 
             const prevDue = Number(selectedCustomer.outstanding_balance || 0);
             const newDue = prevDue + dueOnBill;
-
             return (
-              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 text-xs space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 font-medium">खाता धारक (Customer):</span>
-                  <span className="font-black text-purple-950">
-                    👤 {selectedCustomer.name} {selectedCustomer.phone ? `(+91 ${selectedCustomer.phone})` : ""}
-                  </span>
+              <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs space-y-1.5">
+                <div className="flex justify-between items-center font-bold">
+                  <span className="text-gray-600">👤 {selectedCustomer.name}</span>
+                  {selectedCustomer.phone && <span className="text-gray-500 font-mono">+91 {selectedCustomer.phone}</span>}
                 </div>
                 <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-gray-600">पिछला बकाया (Previous Due):</span>
+                  <span className="text-gray-600">पिछला बकाया:</span>
                   <span className="font-bold text-gray-800">{formatCurrency(prevDue)}</span>
                 </div>
                 <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-amber-800 font-bold">इस बिल का उधार (This Bill Due):</span>
+                  <span className="text-amber-800 font-bold">इस बिल का उधार:</span>
                   <span className="font-black text-amber-900">+{formatCurrency(dueOnBill)}</span>
                 </div>
-                <div className="flex justify-between items-center pt-1 border-t border-purple-200 text-xs font-black">
-                  <span className="text-purple-950">नया कुल बकाया (New Balance):</span>
+                <div className="flex justify-between items-center pt-1.5 border-t border-purple-200">
+                  <span className="text-purple-950 font-bold text-xs">नया कुल बकाया:</span>
                   <span className="text-red-700 font-black text-sm">{formatCurrency(newDue)}</span>
                 </div>
               </div>
             );
           })()}
 
-          <div className="pt-3 border-t border-gray-200">
+          {/* ─── Submit Button ─── */}
+          <div className="pt-2 border-t border-gray-200">
             <Button
               size="lg"
               onClick={handleCompleteCheckout}
               isLoading={isProcessing}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer h-12 text-base"
             >
-              <CheckCircle2 className="w-4 h-4 mr-1.5" />
-              Complete & Print Receipt
+              <CheckCircle2 className="w-5 h-5 mr-2" />
+              {(() => {
+                const advance = paymentMethod === "udhaar" ? 0 :
+                  paymentMethod === "split" ? ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0)) :
+                  Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
+                const udhaarDue = Math.max(0, totalAmount - advance);
+                if (paymentMethod === "udhaar") return `पूरा उधार — बिल Save करें`;
+                if (udhaarDue > 0.01) return `${formatCurrency(advance)} प्राप्त + ${formatCurrency(udhaarDue)} उधार — बिल Save करें`;
+                return `Complete & Print Receipt`;
+              })()}
             </Button>
           </div>
         </div>
