@@ -8,6 +8,7 @@ import {
   Minus,
   Trash2,
   User,
+  UserPlus,
   CreditCard,
   Banknote,
   QrCode,
@@ -32,6 +33,8 @@ import {
   Package,
   Calculator,
   BookOpen,
+  Phone,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -71,6 +74,11 @@ import {
   savePrinterConfig,
 } from "@/lib/thermal-printer";
 import { findBestVoiceProductMatch } from "@/lib/voice-matcher";
+import {
+  isContactPickerSupported,
+  pickContactFromDevice,
+  syncOrRegisterCustomerFromContact,
+} from "@/lib/contact-picker";
 
 // Persistent LocalStorage keys for POS state resilience across page navigation/refresh
 const POS_CART_STORAGE_KEY = "falcon_pos_active_cart";
@@ -158,6 +166,13 @@ export default function PosBillingPage() {
   const [paymentRef, setPaymentRef] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCollectPaymentOpen, setIsCollectPaymentOpen] = useState(false);
+
+  // Customer picker state inside checkout modal
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [isAddingNewCustomer, setIsAddingNewCustomer] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [isPickingContact, setIsPickingContact] = useState(false);
 
   // Success Receipt modal
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
@@ -1031,20 +1046,22 @@ export default function PosBillingPage() {
 
     setPaymentMethod(method);
     setPaymentRef("");
+    // Reset customer picker state
+    setCustomerSearchQuery("");
+    setIsAddingNewCustomer(false);
+    setNewCustomerName("");
+    setNewCustomerPhone("");
     if (method === "udhaar") {
-      // 100% credit — advance = 0
       setCashAmount(0);
       setUpiAmount(0);
       setCardAmount(0);
       setAdvancePaidAmount(0);
     } else if (method === "split") {
-      // Legacy split — preset cash = full
       setCashAmount(totalAmount);
       setUpiAmount(0);
       setCardAmount(0);
       setAdvancePaidAmount(totalAmount);
     } else {
-      // cash / upi / card — default advance = full amount (can be reduced)
       setCashAmount(method === "cash" ? totalAmount : 0);
       setUpiAmount(method === "upi" ? totalAmount : 0);
       setCardAmount(method === "card" ? totalAmount : 0);
@@ -1052,6 +1069,58 @@ export default function PosBillingPage() {
     }
     setIsCheckoutModalOpen(true);
   };
+
+  // Pick contact from phone and auto-create/find customer
+  const handlePickContact = async () => {
+    if (!isContactPickerSupported()) {
+      alert("📱 Contact Picker आपके browser में support नहीं है। Chrome on Android पर काम करता है।");
+      return;
+    }
+    try {
+      setIsPickingContact(true);
+      const contact = await pickContactFromDevice();
+      if (!contact) return;
+      const shopId = shop?.id;
+      if (!shopId) return;
+      const customer = await syncOrRegisterCustomerFromContact(contact, shopId, customers);
+      setSelectedCustomer(customer);
+      // Refresh customers list if new customer was created
+      if (!customers.find((c) => c.id === customer.id)) {
+        setCustomers((prev) => [customer, ...prev]);
+      }
+      setCustomerSearchQuery("");
+      setIsAddingNewCustomer(false);
+    } catch (err) {
+      console.error("Contact pick failed:", err);
+    } finally {
+      setIsPickingContact(false);
+    }
+  };
+
+  // Inline quick-add new customer during checkout
+  const handleAddNewCustomerInline = async () => {
+    if (!newCustomerName.trim()) return;
+    const shopId = shop?.id;
+    if (!shopId) return;
+    try {
+      setIsProcessing(true);
+      const newCust = await customersRepository.create({
+        shop_id: shopId,
+        name: newCustomerName.trim(),
+        phone: newCustomerPhone.trim() || null,
+      });
+      setCustomers((prev) => [newCust, ...prev]);
+      setSelectedCustomer(newCust);
+      setIsAddingNewCustomer(false);
+      setNewCustomerName("");
+      setNewCustomerPhone("");
+    } catch (err) {
+      alert("Customer add नहीं हो सका। दोबारा try करें।");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
 
   // Submit checkout
   const handleCompleteCheckout = async () => {
@@ -2477,63 +2546,223 @@ export default function PosBillingPage() {
             </div>
           )}
 
-          {/* ─── Customer Khata Linking Warning when Due > 0 ─── */}
+          {/* ─── Customer Selector (Always visible) ─── */}
           {(() => {
             const advance = paymentMethod === "udhaar" ? 0 :
               paymentMethod === "split" ? ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0)) :
               Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
             const dueOnBill = Math.max(0, totalAmount - advance);
-            if (dueOnBill <= 0.01) return null;
 
-            if (!selectedCustomer) {
+            // If customer already selected — show summary card
+            if (selectedCustomer) {
+              const prevDue = Number(selectedCustomer.outstanding_balance || 0);
+              const newDue = prevDue + dueOnBill;
               return (
-                <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-xs space-y-2">
-                  <div className="font-bold text-red-800 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-                    <span>⚠️ उधार है — ग्राहक का नाम चुनें:</span>
+                <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2 font-black text-purple-900">
+                      <User className="w-4 h-4 text-purple-600 shrink-0" />
+                      <span>{selectedCustomer.name}</span>
+                      {selectedCustomer.phone && (
+                        <span className="font-mono text-gray-500 font-normal">
+                          {selectedCustomer.phone}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer(null);
+                        setCustomerSearchQuery("");
+                      }}
+                      className="p-1 rounded-lg hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
+                      title="Change customer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const found = customers.find((c) => c.id === e.target.value) || null;
-                      if (found) setSelectedCustomer(found);
-                    }}
-                    className="w-full text-xs p-2 bg-white border border-red-300 rounded-lg font-bold text-gray-900 focus:outline-none cursor-pointer"
-                  >
-                    <option value="">-- ग्राहक चुनें (Select Customer) --</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.phone ? `(${c.phone})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  {dueOnBill > 0.01 && (
+                    <>
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-gray-500">पिछला बकाया:</span>
+                        <span className="font-bold text-gray-700">{formatCurrency(prevDue)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-amber-800 font-bold">इस बिल का उधार:</span>
+                        <span className="font-black text-amber-900">+{formatCurrency(dueOnBill)}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1.5 border-t border-purple-200">
+                        <span className="text-purple-950 font-bold">नया कुल बकाया:</span>
+                        <span className="text-red-700 font-black text-sm">{formatCurrency(newDue)}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             }
 
-            const prevDue = Number(selectedCustomer.outstanding_balance || 0);
-            const newDue = prevDue + dueOnBill;
+            // Filtered customer list
+            const filteredCustomers = customerSearchQuery.trim()
+              ? customers.filter((c) => {
+                  const q = customerSearchQuery.toLowerCase();
+                  return (
+                    c.name.toLowerCase().includes(q) ||
+                    (c.phone && c.phone.includes(q))
+                  );
+                })
+              : customers.slice(0, 8);
+
             return (
-              <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs space-y-1.5">
-                <div className="flex justify-between items-center font-bold">
-                  <span className="text-gray-600">👤 {selectedCustomer.name}</span>
-                  {selectedCustomer.phone && <span className="text-gray-500 font-mono">+91 {selectedCustomer.phone}</span>}
+              <div className={`rounded-xl border text-xs space-y-2 p-3 ${
+                dueOnBill > 0.01
+                  ? "bg-red-50 border-red-200"
+                  : "bg-gray-50 border-gray-200"
+              }`}>
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div className={`flex items-center gap-1.5 font-bold text-xs ${
+                    dueOnBill > 0.01 ? "text-red-800" : "text-gray-700"
+                  }`}>
+                    {dueOnBill > 0.01 && (
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                    )}
+                    <User className="w-3.5 h-3.5" />
+                    <span>
+                      {dueOnBill > 0.01 ? "⚠️ उधार के लिए ग्राहक चुनें" : "👤 ग्राहक (Optional)"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {/* Contact Picker button — shows on mobile */}
+                    <button
+                      type="button"
+                      onClick={handlePickContact}
+                      disabled={isPickingContact}
+                      className="flex items-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-colors cursor-pointer disabled:opacity-60 text-[10px]"
+                      title="Mobile contact से add करें"
+                    >
+                      <Phone className="w-3 h-3" />
+                      {isPickingContact ? "..." : "Contact"}
+                    </button>
+                    {/* Add New button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewCustomer((v) => !v)}
+                      className="flex items-center gap-1 px-2 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-bold transition-colors cursor-pointer text-[10px]"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      New
+                    </button>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-gray-600">पिछला बकाया:</span>
-                  <span className="font-bold text-gray-800">{formatCurrency(prevDue)}</span>
-                </div>
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-amber-800 font-bold">इस बिल का उधार:</span>
-                  <span className="font-black text-amber-900">+{formatCurrency(dueOnBill)}</span>
-                </div>
-                <div className="flex justify-between items-center pt-1.5 border-t border-purple-200">
-                  <span className="text-purple-950 font-bold text-xs">नया कुल बकाया:</span>
-                  <span className="text-red-700 font-black text-sm">{formatCurrency(newDue)}</span>
-                </div>
+
+                {/* Inline Add New Customer Form */}
+                {isAddingNewCustomer && (
+                  <div className="p-2.5 bg-white rounded-xl border border-brand-200 space-y-2 animate-in fade-in duration-150">
+                    <div className="font-bold text-brand-800 text-[11px] flex items-center gap-1">
+                      <UserPlus className="w-3.5 h-3.5" /> नया ग्राहक जोड़ें
+                    </div>
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="नाम (Name) *"
+                      value={newCustomerName}
+                      onChange={(e) => setNewCustomerName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddNewCustomerInline()}
+                      className="w-full px-3 py-2 text-xs font-bold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                    />
+                    <input
+                      type="tel"
+                      placeholder="मोबाइल नंबर (Optional)"
+                      value={newCustomerPhone}
+                      onChange={(e) => setNewCustomerPhone(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddNewCustomerInline()}
+                      className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleAddNewCustomerInline}
+                        disabled={!newCustomerName.trim() || isProcessing}
+                        className="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs cursor-pointer"
+                      >
+                        <UserPlus className="w-3.5 h-3.5 mr-1" />
+                        Save & Select
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingNewCustomer(false)}
+                        className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer font-bold"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Box */}
+                {!isAddingNewCustomer && (
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="नाम या नंबर से खोजें..."
+                      value={customerSearchQuery}
+                      onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                  </div>
+                )}
+
+                {/* Customer List */}
+                {!isAddingNewCustomer && (
+                  <div className="max-h-36 overflow-y-auto space-y-0.5 rounded-lg">
+                    {filteredCustomers.length === 0 ? (
+                      <div className="text-center py-3 text-gray-400 text-[11px]">
+                        कोई ग्राहक नहीं मिला —{" "}
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingNewCustomer(true)}
+                          className="text-brand-600 font-bold underline cursor-pointer"
+                        >
+                          नया जोड़ें
+                        </button>
+                      </div>
+                    ) : (
+                      filteredCustomers.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCustomer(c);
+                            setCustomerSearchQuery("");
+                          }}
+                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-brand-50 hover:border-brand-300 border border-transparent text-left transition-all cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-black text-[10px] shrink-0">
+                              {c.name[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-gray-900 text-[11px] truncate">{c.name}</div>
+                              {c.phone && (
+                                <div className="text-[10px] text-gray-400 font-mono">{c.phone}</div>
+                              )}
+                            </div>
+                          </div>
+                          {Number(c.outstanding_balance || 0) > 0 && (
+                            <span className="text-[10px] font-bold text-red-600 shrink-0 ml-2">
+                              बकाया: {formatCurrency(Number(c.outstanding_balance))}
+                            </span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             );
           })()}
+
 
           {/* ─── Submit Button ─── */}
           <div className="pt-2 border-t border-gray-200">
