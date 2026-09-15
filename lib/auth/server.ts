@@ -23,7 +23,7 @@ export interface StaffContext {
   supabase: ReturnType<typeof createServerClient>;
 }
 
-function createRequestClient(request: NextRequest) {
+export function createRequestClient(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Supabase server configuration is missing.");
   }

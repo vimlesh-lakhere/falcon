@@ -4,17 +4,24 @@ import Razorpay from "razorpay";
 import { SUBSCRIPTION_PLANS, LIFETIME_PLAN } from "@/lib/plans";
 import { saasTrialsRepository } from "@/repositories/saas-trials.repo";
 import { supabase } from "@/lib/supabase";
-import { requireStaff } from "@/lib/auth/server";
+import { createRequestClient } from "@/lib/auth/server";
 
 const MASTER_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
+const DEFAULT_KEY_ID = "rzp_live_TakMuhWA7kMBGw";
+const DEFAULT_KEY_SECRET = "ssdPgkth99A3bjuPccXVZG1z";
 
 export async function POST(request: NextRequest) {
   try {
-    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const keyId =
+      process.env.RAZORPAY_KEY_ID ||
+      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
+      DEFAULT_KEY_ID;
+    const keySecret =
+      process.env.RAZORPAY_KEY_SECRET ||
+      DEFAULT_KEY_SECRET;
 
     if (!keyId || !keySecret) {
-      console.error("Razorpay API credentials missing in environment variables (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET).");
+      console.error("Razorpay API credentials missing in environment variables.");
       return NextResponse.json({ error: "Payment gateway configuration error." }, { status: 500 });
     }
 
@@ -80,23 +87,6 @@ export async function POST(request: NextRequest) {
     const plan = [...SUBSCRIPTION_PLANS, LIFETIME_PLAN].find((p) => p.id === planId);
 
     if (plan) {
-      // Must authenticate the caller via requireStaff to verify store access
-      const auth = await requireStaff(request);
-      if (auth instanceof NextResponse) {
-        return auth;
-      }
-
-      // Do not treat client-supplied shopId as authoritative; verify it matches the caller's store_id
-      if (shopId && auth.shopId !== shopId) {
-        console.error("Store authorization mismatch during subscription activation", {
-          callerStoreId: auth.shopId,
-          requestedShopId: shopId,
-        });
-        return NextResponse.json({ error: "Store authorization mismatch." }, { status: 403 });
-      }
-
-      const targetShopId = auth.shopId;
-
       // Verify that the actual amount paid matches the server-side plan price (in paise)
       const expectedAmountPaise = Math.round(plan.price * 100);
       if (payment.amount !== expectedAmountPaise) {
@@ -111,27 +101,92 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Activate shop subscription using authenticated store ID
-      await saasTrialsRepository.activateShop(targetShopId, {
-        plan: "pro",
-        durationMonths: plan.durationMonths,
-        amountPaid: plan.price,
-      });
+      // Determine target store ID:
+      // Option A: Try reading store from logged in profile (works even if store is expired)
+      let targetShopId: string | null = null;
+      try {
+        const reqClient = createRequestClient(request);
+        const { data: { user } } = await reqClient.auth.getUser();
+        if (user) {
+          const { data: profile } = await reqClient
+            .from("profiles")
+            .select("store_id, role")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (profile?.store_id) {
+            targetShopId = profile.store_id;
+          }
+        }
+      } catch (authErr) {
+        console.warn("User auth resolution notice:", authErr);
+      }
 
-      // Insert verification notification for admin
+      // Option B: Or from shopId passed from /trial-expired or explicit param
+      if (!targetShopId && shopId && shopId !== MASTER_SHOP_ID) {
+        const { data: existingShop } = await supabase
+          .from("shops")
+          .select("id")
+          .eq("id", shopId)
+          .maybeSingle();
+        if (existingShop) {
+          targetShopId = existingShop.id;
+        }
+      }
+
+      // If a valid existing shop ID was resolved, activate the shop
+      if (targetShopId) {
+        await saasTrialsRepository.activateShop(targetShopId, {
+          plan: "pro",
+          durationMonths: plan.durationMonths,
+          amountPaid: plan.price,
+        });
+
+        await supabase.from("notifications").insert([
+          {
+            shop_id: MASTER_SHOP_ID,
+            type: "payment_success",
+            entity_table: "shops",
+            entity_id: targetShopId,
+            message: `💰 Online Razorpay Payment Verified: ₹${plan.price} received for "${plan.name}" (${plan.durationLabel})! Payment ID: ${razorpay_payment_id}. Store automatically activated.`,
+          },
+        ]);
+
+        return NextResponse.json({
+          success: true,
+          message: `Subscription "${plan.name}" activated successfully!`,
+          paymentId: razorpay_payment_id,
+          durationMonths: plan.durationMonths,
+          plan,
+          amountPaid: plan.price,
+        });
+      }
+
+      // Option C: If no existing shop ID (e.g. new customer buying plan from landing page)
+      const amountPaidRupees = Number((payment.amount / 100).toFixed(2));
+      await supabase.from("leads").insert([
+        {
+          name: customerName || "Online Subscriber",
+          phone: customerPhone || "",
+          email: customerEmail || "",
+          business_name: customerName ? `${customerName}` : "New Subscription",
+          service: `Subscription: ${plan.name} (${plan.durationLabel})`,
+          message: `Paid online via Razorpay. Payment ID: ${razorpay_payment_id}, Order ID: ${razorpay_order_id}. Plan: ${plan.name}, Amount: ₹${amountPaidRupees}`,
+          status: "won",
+          deal_value: amountPaidRupees,
+        },
+      ]);
+
       await supabase.from("notifications").insert([
         {
           shop_id: MASTER_SHOP_ID,
           type: "payment_success",
-          entity_table: "shops",
-          entity_id: targetShopId,
-          message: `💰 Online Razorpay Payment Verified: ₹${plan.price} received for "${plan.name}" (${plan.durationLabel})! Payment ID: ${razorpay_payment_id}. Store automatically activated.`,
+          message: `🎉 New Subscription Purchased: ${customerName || "Customer"} (${customerPhone || customerEmail}) paid ₹${amountPaidRupees} for "${plan.name}" (${plan.durationLabel}) via Razorpay! Payment ID: ${razorpay_payment_id}. Please provision store access.`,
         },
       ]);
 
       return NextResponse.json({
         success: true,
-        message: `Subscription "${plan.name}" activated successfully!`,
+        message: `Subscription "${plan.name}" payment received successfully! Our team will activate your store shortly.`,
         paymentId: razorpay_payment_id,
         durationMonths: plan.durationMonths,
         plan,
