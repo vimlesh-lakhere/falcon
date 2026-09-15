@@ -71,6 +71,23 @@ export function ThermalReceipt({
   const [btState, setBtState] = useState<"connected" | "paired" | "disconnected" | "unsupported">("disconnected");
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
 
+  const items = sale.items || [];
+  const payments = sale.payments || [];
+  const custName = customer?.name || (sale as any).customer?.name || "Walk-in Customer";
+  const custPhone = customer?.phone || (sale as any).customer?.phone || "";
+
+  // Calculate payment and due split
+  const totalBillAmt = Number(sale.total_amount) || 0;
+  const paidAmount = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+  const todayDue = Math.max(0, totalBillAmt - paidAmount);
+  
+  // Outstanding balance of customer (ensuring pre-sale snapshot safely adds today's due)
+  const rawCustBalance = Number(customer?.outstanding_balance || (sale as any).customer?.outstanding_balance || 0);
+  const currentCustomerBalance = todayDue > 0 && rawCustBalance < todayDue ? rawCustBalance + todayDue : rawCustBalance;
+
+  // QR Amount for UPI
+  const qrAmount = todayDue > 0 ? todayDue : totalBillAmt;
+
   useEffect(() => {
     const cfg = getPrinterConfig(shopId);
     setPrinterConfig(cfg);
@@ -81,7 +98,7 @@ export function ThermalReceipt({
       const upiUrl = buildUpiPaymentUrl(
         cfg.upiId,
         cfg.upiPayeeName || cfg.shopName,
-        Number(sale.total_amount) || 0,
+        qrAmount,
         sale.invoice_number
       );
       if (upiUrl) {
@@ -102,7 +119,7 @@ export function ThermalReceipt({
         handlePrint(cfg);
       }, 350);
     }
-  }, [shopId, sale.total_amount, sale.invoice_number]);
+  }, [shopId, sale.total_amount, sale.invoice_number, qrAmount]);
 
   const activeShopName = shopName || printerConfig.shopName || "AGS STORE & COSMETICS";
   const activeShopPhone = shopPhone || printerConfig.shopPhone || "+91 9340362381";
@@ -110,17 +127,6 @@ export function ThermalReceipt({
   const rawGst = shopGst !== undefined ? shopGst : printerConfig.shopGst;
   const activeShopGst = rawGst && rawGst !== "23AAAAA0000A1Z5" ? rawGst.trim() : "";
   const paperWidth: PaperWidth = printerConfig.paperWidth || "80mm";
-
-  const items = sale.items || [];
-  const payments = sale.payments || [];
-  const custName = customer?.name || (sale as any).customer?.name || "Walk-in Customer";
-  const custPhone = customer?.phone || (sale as any).customer?.phone || "";
-
-  // Calculate payment and due split
-  const totalBillAmt = Number(sale.total_amount) || 0;
-  const paidAmount = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-  const todayDue = Math.max(0, totalBillAmt - paidAmount);
-  const currentCustomerBalance = Number(customer?.outstanding_balance || (sale as any).customer?.outstanding_balance || 0);
 
   // 1. Generate formatted WhatsApp Billing Receipt text
   const itemsText = items
@@ -138,7 +144,7 @@ export function ThermalReceipt({
       ? `\n📲 *Pay via UPI:* ${buildUpiPaymentUrl(
           printerConfig.upiId,
           printerConfig.upiPayeeName || activeShopName,
-          todayDue > 0 ? todayDue : Number(sale.total_amount) || 0,
+          qrAmount,
           sale.invoice_number
         )}`
       : "";
@@ -511,8 +517,12 @@ ${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${today
           {/* Dynamic Bank UPI QR Code Section */}
           {printerConfig.showQrCode && printerConfig.showDynamicUpiQr && printerConfig.upiId && (
             <div className="py-2.5 border-b border-dashed border-black text-center space-y-1">
-              <p className="font-black text-[10px] uppercase">📱 Scan & Pay with any UPI App</p>
-              <p className="font-bold text-[11px]">Exact Amount: ₹{Number(sale.total_amount).toFixed(2)}</p>
+              <p className="font-black text-[10px] uppercase">
+                {todayDue > 0 ? "📲 Scan & Pay Remaining Due (उधार चुकाएं)" : "📱 Scan & Pay with any UPI App"}
+              </p>
+              <p className="font-bold text-[11px]">
+                {todayDue > 0 ? `Due Amount: ₹${todayDue.toFixed(2)}` : `Exact Amount: ₹${totalBillAmt.toFixed(2)}`}
+              </p>
 
               {qrCodeDataUrl ? (
                 <div className="flex justify-center py-1.5">

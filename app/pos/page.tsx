@@ -1193,8 +1193,22 @@ export default function PosBillingPage() {
         }
       }
 
+      // Update customer outstanding balance in local state if credit/udhaar was extended
+      let updatedCust: Customer | null = customerSnapshot;
+      if (customerSnapshot) {
+        const prevBal = Number(customerSnapshot.outstanding_balance) || 0;
+        const updatedBal = dueAmount > 0 ? prevBal + dueAmount : prevBal;
+        const finalCust: Customer = {
+          ...customerSnapshot,
+          outstanding_balance: updatedBal,
+        };
+        updatedCust = finalCust;
+        setSelectedCustomer(finalCust);
+        setCustomers((prev) => prev.map((c) => (c.id === finalCust.id ? finalCust : c)));
+      }
+
       // Ensure customer & items have complete product objects attached for Thermal receipt & WhatsApp
-      const resolvedCustomer = customerSnapshot || sale.customer || (payload.customer_id ? customers.find((c) => c.id === payload.customer_id) : null) || null;
+      const resolvedCustomer = updatedCust || sale.customer || (payload.customer_id ? customers.find((c) => c.id === payload.customer_id) : null) || null;
 
       const rawItems = sale.items && sale.items.length > 0 ? sale.items : payload.items.map((it, idx) => {
         const cartMatch = cart[idx] || cart.find((c) => c.product.id === it.product_id);
@@ -1232,17 +1246,6 @@ export default function PosBillingPage() {
       setIsCheckoutModalOpen(false);
       setIsReceiptModalOpen(true);
       clearCart();
-
-      // Update customer outstanding balance in local state if credit/udhaar was extended
-      if (customerSnapshot && dueAmount > 0) {
-        const updatedBal = (Number(customerSnapshot.outstanding_balance) || 0) + dueAmount;
-        const updatedCust = {
-          ...customerSnapshot,
-          outstanding_balance: updatedBal,
-        };
-        setSelectedCustomer(updatedCust);
-        setCustomers((prev) => prev.map((c) => (c.id === updatedCust.id ? updatedCust : c)));
-      }
 
       if (navigator.onLine) {
         loadCatalog(); // Refresh current_stock

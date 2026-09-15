@@ -372,13 +372,20 @@ export async function buildRasterGraphicsReceipt(
   const titleFontSize = Math.round((is80mm ? 32 : 24) * scale);
   const smallFontSize = Math.round((is80mm ? 18 : 15) * scale);
 
+  // Calculate payment, due split, and dynamic QR amount
+  const payments = sale.payments || [];
+  const paidAmount = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+  const totalBillAmt = Number(sale.total_amount) || 0;
+  const todayDue = Math.max(0, totalBillAmt - paidAmount);
+  const qrPayAmount = todayDue > 0 ? todayDue : totalBillAmt;
+
   // Generate Dynamic QR Code image if enabled
   let qrImage: HTMLImageElement | null = null;
   if (config.showQrCode && config.showDynamicUpiQr && config.upiId) {
     const upiUrl = buildUpiPaymentUrl(
       config.upiId,
       config.upiPayeeName || config.shopName,
-      Number(sale.total_amount) || 0,
+      qrPayAmount,
       sale.invoice_number
     );
     if (upiUrl) {
@@ -560,15 +567,27 @@ export async function buildRasterGraphicsReceipt(
   y += baseFontSize + 26;
 
   // Payments
-  const payments = sale.payments || [];
-  const payMethod = payments.map((p) => p.method.toUpperCase()).join(", ") || "CASH";
+  const payMethod = payments.length > 0 ? payments.map((p) => p.method.toUpperCase()).join(", ") : (todayDue > 0 ? "उधार / KHATA (DUE)" : "CASH");
   drawRow("Payment Mode:", payMethod, smallFontSize, true);
+  payments.forEach((p: any) => {
+    drawRow(`  • ${p.method.toUpperCase()}:`, `₹${Number(p.amount).toFixed(2)}`, smallFontSize - 2);
+  });
+
+  const rawCustBalance = Number(customer?.outstanding_balance || (sale as any).customer?.outstanding_balance || 0);
+  const currentCustomerBalance = todayDue > 0 && rawCustBalance < todayDue ? rawCustBalance + todayDue : rawCustBalance;
+
+  if (todayDue > 0) {
+    drawRow("आज का उधार (Today's Due):", `₹${todayDue.toFixed(2)}`, baseFontSize, true);
+  }
+  if (todayDue > 0 && currentCustomerBalance > 0) {
+    drawRow("कुल शेष बकाया (Total Balance):", `₹${currentCustomerBalance.toFixed(2)}`, baseFontSize, true);
+  }
 
   // 6. Dynamic Bank UPI QR Code Section
   if (qrImage) {
     drawDashedLine();
-    drawCenteredText("📱 SCAN & PAY WITH ANY UPI APP", smallFontSize, true);
-    drawCenteredText(`Exact Amount: ₹${Number(sale.total_amount).toFixed(2)}`, baseFontSize, true);
+    drawCenteredText(todayDue > 0 ? "📲 SCAN & PAY REMAINING DUE" : "📱 SCAN & PAY WITH ANY UPI APP", smallFontSize, true);
+    drawCenteredText(`Exact Amount: ₹${qrPayAmount.toFixed(2)}`, baseFontSize, true);
 
     const qrSize = qrImage.width;
     const qrX = (canvasWidth - qrSize) / 2;
@@ -789,13 +808,30 @@ export function buildEscPosReceipt(
   writeBytes(ESC, 0x45, 0x00);
 
   const payments = sale.payments || [];
-  const payMethod = payments.map((p) => p.method.toUpperCase()).join(", ") || "CASH";
+  const totalBillAmt = Number(sale.total_amount) || 0;
+  const paidAmount = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+  const todayDue = Math.max(0, totalBillAmt - paidAmount);
+  const rawCustBalance = Number(customer?.outstanding_balance || (sale as any).customer?.outstanding_balance || 0);
+  const currentCustomerBalance = todayDue > 0 && rawCustBalance < todayDue ? rawCustBalance + todayDue : rawCustBalance;
+
+  const payMethod = payments.length > 0 ? payments.map((p) => p.method.toUpperCase()).join(", ") : (todayDue > 0 ? "UDHAAR / CREDIT" : "CASH");
   write(`Payment: ${payMethod}\n`);
+  payments.forEach((p: any) => {
+    write(`  - ${p.method.toUpperCase()}: INR ${Number(p.amount).toFixed(2)}\n`);
+  });
+
+  if (todayDue > 0) {
+    write(`Today's Due: INR ${todayDue.toFixed(2)}\n`);
+  }
+  if (todayDue > 0 && currentCustomerBalance > 0) {
+    write(`Total Balance: INR ${currentCustomerBalance.toFixed(2)}\n`);
+  }
 
   if (config.showQrCode && config.upiId) {
+    const qrAmt = todayDue > 0 ? todayDue : totalBillAmt;
     writeBytes(ESC, 0x61, 0x01);
     write(separator);
-    write(`UPI Payment: ${config.upiId}\n`);
+    write(`UPI Pay (${todayDue > 0 ? "Remaining Due" : "Exact Total"}): ${config.upiId} [Rs.${qrAmt.toFixed(2)}]\n`);
   }
 
   // Footer (Center Align)
