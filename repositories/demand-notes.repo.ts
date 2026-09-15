@@ -88,10 +88,22 @@ export const demandNotesRepository = {
       }
 
       if (data) {
-        // If local had unsynced notes, sync them up
-        if (local.length > 0 && data.length === 0) {
+        // Only sync local items that have temp IDs (never uploaded to cloud)
+        const unsynced = local.filter((n) => n.id.startsWith("dmd-"));
+        if (unsynced.length > 0 && data.length === 0) {
           try {
-            await this.syncLocalToCloud(shopId, local);
+            await this.syncLocalToCloud(shopId, unsynced);
+            // Re-fetch after sync so we get real UUIDs from cloud
+            const { data: refreshed } = await supabase
+              .from("demand_notes")
+              .select("*, supplier:suppliers(*)")
+              .eq("shop_id", shopId)
+              .order("created_at", { ascending: false });
+            if (refreshed) {
+              this.setLocalCache(shopId, refreshed);
+              this.notifyUpdate(shopId);
+              return refreshed;
+            }
           } catch {}
         }
 
