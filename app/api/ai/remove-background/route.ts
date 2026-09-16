@@ -83,7 +83,45 @@ export async function POST(req: NextRequest) {
     const imageBlob = new Blob([uint8Data], { type: "image/png" });
 
     // -----------------------------------------------------------------
-    // TIER 0: REMOVE.BG COMMERCIAL STUDIO API (50 Free High-Res Products / Month)
+    // TIER 0: REMBG LOCAL / SELF-HOSTED AI MICROSERVICE (danielgatis/rembg)
+    // 100% Free, Unlimited & Ultra-Fast on local machine / server
+    // -----------------------------------------------------------------
+    const rembgServiceUrl =
+      body.rembgUrl ||
+      process.env.REMBG_SERVICE_URL ||
+      process.env.NEXT_PUBLIC_REMBG_SERVICE_URL ||
+      "http://127.0.0.1:7000";
+
+    if (rembgServiceUrl) {
+      try {
+        const rembgFormData = new FormData();
+        rembgFormData.append("file", imageBlob, "product.png");
+        rembgFormData.append("model", body.model || process.env.REMBG_MODEL || "u2net");
+
+        const rembgRes = await fetch(`${rembgServiceUrl.replace(/\/+$/, "")}/api/remove`, {
+          method: "POST",
+          body: rembgFormData,
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (rembgRes.ok) {
+          const rembgBuf = await rembgRes.arrayBuffer();
+          if (rembgBuf.byteLength > 100) {
+            const rembgBase64 = Buffer.from(rembgBuf).toString("base64");
+            return NextResponse.json({
+              success: true,
+              provider: "Rembg Local Neural AI Engine (Offline & Unlimited)",
+              transparentImageUrl: `data:image/png;base64,${rembgBase64}`,
+            });
+          }
+        }
+      } catch {
+        // Rembg local service not active, silently cascade to next tier
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // TIER 1: REMOVE.BG COMMERCIAL STUDIO API (50 Free High-Res Products / Month)
     // -----------------------------------------------------------------
     const removeBgKey =
       body.removeBgApiKey ||

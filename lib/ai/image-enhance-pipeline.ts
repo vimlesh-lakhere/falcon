@@ -322,7 +322,37 @@ async function performBackgroundRemoval(
     .png()
     .toBuffer();
 
-  // TIER 0: Remove.bg Commercial API
+  // TIER 0: Rembg Local / Self-Hosted AI Microservice (danielgatis/rembg)
+  const rembgUrl =
+    process.env.REMBG_SERVICE_URL ||
+    process.env.NEXT_PUBLIC_REMBG_SERVICE_URL ||
+    "http://127.0.0.1:7000";
+
+  if (rembgUrl) {
+    try {
+      const formData = new FormData();
+      const blob = new Blob([new Uint8Array(scaledBuffer)], { type: "image/png" });
+      formData.append("file", blob, "product.png");
+      formData.append("model", process.env.REMBG_MODEL || "u2net");
+
+      const res = await fetch(`${rembgUrl.replace(/\/+$/, "")}/api/remove`, {
+        method: "POST",
+        body: formData,
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 100) {
+          return { transparentBuffer: buf, provider: "Rembg Local Neural AI (Offline & Unlimited)" };
+        }
+      }
+    } catch {
+      // Rembg local service not active, silently cascade to next tier
+    }
+  }
+
+  // TIER 1: Remove.bg Commercial API
   const rbgKey =
     removeBgApiKey ||
     process.env.REMOVE_BG_API_KEY ||
