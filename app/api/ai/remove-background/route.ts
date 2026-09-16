@@ -1,6 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import { HfInference } from "@huggingface/inference";
 import { requireStaff } from "@/lib/auth/server";
+import { spawn } from "child_process";
+import path from "path";
+
+let rembgAutoStartPromise: Promise<boolean> | null = null;
+
+async function autoStartLocalRembg(port = 7000): Promise<boolean> {
+  const isLocalEnv =
+    process.env.NODE_ENV === "development" ||
+    !process.env.VERCEL ||
+    process.platform === "win32";
+
+  if (!isLocalEnv) return false;
+  if (rembgAutoStartPromise) return rembgAutoStartPromise;
+
+  rembgAutoStartPromise = (async () => {
+    try {
+      console.log(`[Falcon AI] Rembg service not responding on port ${port}. Auto-starting Python daemon...`);
+      const scriptPath = path.join(process.cwd(), "scripts", "start-rembg.py");
+      const child = spawn("python", [scriptPath], {
+        detached: true,
+        stdio: "ignore",
+        shell: true,
+      });
+      child.unref();
+
+      // Poll until port 7000 becomes ready (up to 12 seconds)
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 600));
+        try {
+          const testRes = await fetch(`http://127.0.0.1:${port}/api`, { signal: AbortSignal.timeout(1200) });
+          if (testRes.ok || testRes.status < 500) {
+            console.log("[Falcon AI] Local Rembg microservice ready!");
+            return true;
+          }
+        } catch {}
+      }
+      return false;
+    } catch (e) {
+      console.warn("[Falcon AI] Auto-start rembg error:", e);
+      return false;
+    } finally {
+      rembgAutoStartPromise = null;
+    }
+  })();
+
+  return rembgAutoStartPromise;
+}
 
 function isSafeRemoteUrl(urlStr: string): boolean {
   try {
@@ -93,18 +140,32 @@ export async function POST(req: NextRequest) {
       "http://127.0.0.1:7000";
 
     if (rembgServiceUrl) {
-      try {
+      const isLocalHost = rembgServiceUrl.includes("127.0.0.1") || rembgServiceUrl.includes("localhost");
+
+      const executeRembgRequest = async () => {
         const rembgFormData = new FormData();
         rembgFormData.append("file", imageBlob, "product.png");
         rembgFormData.append("model", body.model || process.env.REMBG_MODEL || "u2net");
 
-        const rembgRes = await fetch(`${rembgServiceUrl.replace(/\/+$/, "")}/api/remove`, {
+        return await fetch(`${rembgServiceUrl.replace(/\/+$/, "")}/api/remove`, {
           method: "POST",
           body: rembgFormData,
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(20000),
         });
+      };
 
-        if (rembgRes.ok) {
+      try {
+        let rembgRes = await executeRembgRequest().catch(() => null);
+
+        // If local service is not responding and running locally, auto-start and retry
+        if ((!rembgRes || !rembgRes.ok) && isLocalHost) {
+          const started = await autoStartLocalRembg();
+          if (started) {
+            rembgRes = await executeRembgRequest().catch(() => null);
+          }
+        }
+
+        if (rembgRes && rembgRes.ok) {
           const rembgBuf = await rembgRes.arrayBuffer();
           if (rembgBuf.byteLength > 100) {
             const rembgBase64 = Buffer.from(rembgBuf).toString("base64");
@@ -115,8 +176,8 @@ export async function POST(req: NextRequest) {
             });
           }
         }
-      } catch {
-        // Rembg local service not active, silently cascade to next tier
+      } catch (rembgErr) {
+        console.warn("[Falcon AI] Rembg service request notice:", rembgErr);
       }
     }
 

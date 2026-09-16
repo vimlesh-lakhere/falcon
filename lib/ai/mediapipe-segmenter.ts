@@ -273,6 +273,30 @@ export const mediaPipeSegmenter = {
       }
     }
 
+    // Strict sanity check: verify that product area wasn't hollowed out or eroded
+    let productPixels = 0;
+    for (let i = 3; i < outPixels.length; i += 4) {
+      if (outPixels[i] > 50) productPixels++;
+    }
+    const productRatio = productPixels / (w * h);
+
+    // Check if product central core suffered erosion
+    let coreLoss = 0;
+    let coreSamples = 0;
+    for (let cy = coreYMin; cy <= coreYMax; cy += 4) {
+      for (let cx = coreXMin; cx <= coreXMax; cx += 4) {
+        coreSamples++;
+        const idx = cy * w + cx;
+        if (mask[idx] === 1) coreLoss++;
+      }
+    }
+
+    // If matting eroded the product core or failed ratio, reject and keep clean original photo
+    if (productRatio < 0.10 || productRatio > 0.95 || (coreSamples > 0 && coreLoss / coreSamples > 0.12)) {
+      console.warn("Smart edge matting detected ambiguous boundary or eroded core - safely keeping original photo");
+      return srcCanvas;
+    }
+
     outCtx.putImageData(outImgData, 0, 0);
     return outCanvas;
   },
