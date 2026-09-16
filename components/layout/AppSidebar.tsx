@@ -103,7 +103,7 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-              <img src="/falcon-icon.png" alt="Falcon 360 Logo" className="w-full h-full object-contain" />
+              <img src="/falcon-icon.png" alt="Falcon 360 Logo" decoding="async" className="w-full h-full object-contain" />
             </div>
             <div className="flex flex-col">
               <span className="font-black text-sm text-gray-900 leading-tight flex items-center gap-1 font-mono">

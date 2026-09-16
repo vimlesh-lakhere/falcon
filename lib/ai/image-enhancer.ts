@@ -387,6 +387,14 @@ export const aiImageEnhancer = {
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(img, 0, 0, width, height);
 
+      // Prefer WebP for ~60% smaller payload & crisp text, fallback to JPEG
+      try {
+        const webp = canvas.toDataURL("image/webp", quality);
+        if (webp.startsWith("data:image/webp")) {
+          return webp;
+        }
+      } catch {}
+
       return canvas.toDataURL("image/jpeg", quality);
     } catch (e) {
       console.warn("Fast compress fallback:", e);

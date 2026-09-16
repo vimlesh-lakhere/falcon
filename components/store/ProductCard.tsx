@@ -135,6 +135,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           alt={product.name}
           className="w-full h-full object-contain p-3 group-hover:scale-105 transition-all duration-300"
           loading="lazy"
+          decoding="async"
         />
         {isOutOfStock && (
           <div className="absolute inset-0 bg-black/40 backdrop-blur-2xs flex items-center justify-center text-white text-xs font-bold uppercase tracking-wider">

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     const productIds = cart.map((it) => it.product.id);
     const { data: dbProducts, error: prodErr } = await supabase
       .from("products")
-      .select("id, name, selling_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp")
+      .select("id, name, selling_price, purchase_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp")
       .in("id", productIds)
       .eq("shop_id", shopId);
 
@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
       productName: string;
       quantity: number;
       price: number;
+      costPrice: number;
       imageUrl?: string | null;
     }[] = [];
 
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
         productName: dbProd.name,
         quantity: qty,
         price,
+        costPrice: Number(dbProd.purchase_price) || 0,
         imageUrl: dbProd.image_url,
       });
     }
@@ -189,7 +191,7 @@ export async function POST(req: NextRequest) {
       product_id: it.productId,
       quantity: it.quantity,
       unit_price: it.price,
-      cost_price: 0,
+      cost_price: it.costPrice,
     }));
 
     await supabase.from("sale_items").insert(saleItemsPayload);
@@ -219,13 +221,25 @@ export async function POST(req: NextRequest) {
 
     await supabase.from("stock_movements").insert(stockMovements);
 
-    // 7. Compose WhatsApp notification string
+    // 7. Fetch shop details for dynamic notification
+    const { data: shopData } = await supabase
+      .from("shops")
+      .select("name, phone")
+      .eq("id", shopId)
+      .maybeSingle();
+
+    const currentShopName = shopData?.name || "Falcon Store";
+    const shopWhatsappPhone = shopData?.phone
+      ? shopData.phone.replace(/[^0-9]/g, "").slice(-10)
+      : SHOP_OWNER_WHATSAPP;
+
+    // 8. Compose WhatsApp notification string
     const itemsText = verifiedItems
       .map((it, idx) => `${idx + 1}. *${it.productName}* x ${it.quantity} = ₹${it.price * it.quantity}`)
       .join("\n");
 
     const payMode = paymentMethod === "upi" ? "📲 UPI Online" : "💵 Cash on Delivery (COD)";
-    const whatsappMessage = `🛍️ *NEW ONLINE ORDER - AGS STORE*
+    const whatsappMessage = `🛍️ *NEW ONLINE ORDER - ${currentShopName.toUpperCase()}*
 ━━━━━━━━━━━━━━━━━━━━
 📋 *Invoice:* #${invoiceNumber}
 👤 *Customer:* ${address.fullName}
@@ -240,7 +254,7 @@ ${itemsText}
 ━━━━━━━━━━━━━━━━━━━━
 ⚡ *Action:* Shopkeeper please open ERP to accept and pack this order.`;
 
-    const whatsappUrl = `https://wa.me/${SHOP_OWNER_WHATSAPP}?text=${encodeURIComponent(whatsappMessage)}`;
+    const whatsappUrl = `https://wa.me/${shopWhatsappPhone.startsWith("91") ? shopWhatsappPhone : `91${shopWhatsappPhone}`}?text=${encodeURIComponent(whatsappMessage)}`;
 
     return NextResponse.json({
       success: true,

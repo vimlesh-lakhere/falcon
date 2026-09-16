@@ -29,6 +29,7 @@ import {
 import { getPrinterConfig, buildUpiPaymentUrl } from "@/lib/thermal-printer";
 import { isContactPickerSupported, pickContactFromDevice } from "@/lib/contact-picker";
 import { AartiBillOfSupplyImage } from "@/components/pos/AartiBillOfSupplyImage";
+import { supabase } from "@/lib/supabase/client";
 
 interface WhatsAppInvoiceModalProps {
   isOpen: boolean;
@@ -36,6 +37,10 @@ interface WhatsAppInvoiceModalProps {
   sale: Sale;
   customer?: Customer | null;
   shopId: string;
+  shopName?: string;
+  shopPhone?: string;
+  shopAddress?: string;
+  shopGst?: string;
 }
 
 export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
@@ -44,6 +49,10 @@ export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
   sale,
   customer,
   shopId,
+  shopName,
+  shopPhone,
+  shopAddress,
+  shopGst,
 }) => {
   const [activeTab, setActiveTab] = useState<"image" | "text">("image");
   const [phone, setPhone] = useState<string>("");
@@ -53,9 +62,42 @@ export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [fetchedShop, setFetchedShop] = useState<{ name?: string; phone?: string; address?: string; gst_number?: string } | null>(null);
 
   const invoiceCardRef = useRef<HTMLDivElement>(null);
   const printerConfig = getPrinterConfig(shopId);
+
+  useEffect(() => {
+    if (!shopName && shopId) {
+      const loadShop = async () => {
+        try {
+          const { data } = await supabase
+            .from("shops")
+            .select("name, phone, address, gst_number")
+            .eq("id", shopId)
+            .maybeSingle();
+          if (data) setFetchedShop(data);
+        } catch (e) {
+          console.warn("Failed to fetch shop details for WhatsApp invoice:", e);
+        }
+      };
+      loadShop();
+    }
+  }, [shopName, shopId]);
+
+  const effectiveShopName = shopName || fetchedShop?.name || printerConfig.shopName || "Falcon Store";
+  const effectiveShopPhone = shopPhone || fetchedShop?.phone || printerConfig.shopPhone || "+91 9340362381";
+  const effectiveShopAddress = shopAddress || fetchedShop?.address || printerConfig.shopAddress || "Main Market Road, Town Area";
+  const effectiveShopGst = shopGst || fetchedShop?.gst_number || printerConfig.shopGst || "";
+
+  const effectivePrinterConfig = {
+    ...printerConfig,
+    shopName: effectiveShopName,
+    shopPhone: effectiveShopPhone,
+    shopAddress: effectiveShopAddress,
+    shopGst: effectiveShopGst,
+    showGstin: printerConfig.showGstin || Boolean(effectiveShopGst),
+  };
 
   useEffect(() => {
     if (isOpen && sale) {
@@ -67,8 +109,8 @@ export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
       setStatusMessage("");
 
       // Generate Dynamic UPI QR Code
-      const upiId = printerConfig.upiId || "9424970040@axl";
-      const payee = printerConfig.upiPayeeName || printerConfig.shopName || "Aarti General Store";
+      const upiId = printerConfig.upiId || "9340362381@ybl";
+      const payee = printerConfig.upiPayeeName || effectiveShopName;
       const total = Number(sale.total_amount) || 0;
       const upiUrl = buildUpiPaymentUrl(upiId, payee, total, sale.invoice_number);
 
@@ -76,18 +118,18 @@ export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
         .then((url) => setQrCodeDataUrl(url))
         .catch((err) => console.warn("Failed generating QR code for invoice image", err));
     }
-  }, [isOpen, sale, customer, shopId]);
+  }, [isOpen, sale, customer, shopId, effectiveShopName]);
 
   if (!isOpen || !sale) return null;
 
   const invoiceMessage = buildWhatsAppInvoiceText(sale, customer, {
-    shopName: printerConfig.shopName,
-    shopPhone: printerConfig.shopPhone,
-    shopAddress: printerConfig.shopAddress,
-    shopGst: printerConfig.shopGst,
-    showGstin: printerConfig.showGstin,
+    shopName: effectiveShopName,
+    shopPhone: effectiveShopPhone,
+    shopAddress: effectiveShopAddress,
+    shopGst: effectiveShopGst,
+    showGstin: effectivePrinterConfig.showGstin,
     upiId: printerConfig.upiId,
-    upiPayeeName: printerConfig.upiPayeeName,
+    upiPayeeName: printerConfig.upiPayeeName || effectiveShopName,
     customFooter: printerConfig.customFooter,
     billLanguage: printerConfig.billLanguage || "hindi",
   });
@@ -133,7 +175,7 @@ export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
         await navigator.share({
           files: [file],
           title: `Bill #${sale.invoice_number}`,
-          text: `🧾 Cash Bill from ${printerConfig.shopName || "Aarti General Store"} (#${sale.invoice_number})`,
+          text: `🧾 Cash Bill from ${effectiveShopName} (#${sale.invoice_number})`,
         });
         setStatusMessage("✓ Bill image shared successfully!");
       } else {
@@ -370,7 +412,7 @@ export const WhatsAppInvoiceModal: React.FC<WhatsAppInvoiceModalProps> = ({
                 ref={invoiceCardRef}
                 sale={sale}
                 customer={customer}
-                printerConfig={printerConfig}
+                printerConfig={effectivePrinterConfig}
                 qrCodeDataUrl={qrCodeDataUrl}
               />
             </div>

@@ -701,6 +701,8 @@ export default function ProductsPage() {
                           <img
                             src={p.image_url.split("|||")[0]}
                             alt={p.name}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-contain p-1"
                           />
                         ) : (
@@ -928,6 +930,8 @@ export default function ProductsPage() {
                                       <img
                                         src={p.image_url.split("|||")[0]}
                                         alt={p.name}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="w-full h-full object-contain p-0.5"
                                       />
                                     ) : (

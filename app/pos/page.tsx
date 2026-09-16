@@ -1032,9 +1032,11 @@ export default function PosBillingPage() {
   };
 
   // Calculations
-  const subtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-  const taxAmount = (subtotal - discountAmount) * (taxRate / 100);
-  const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount + freightAmount);
+  const rawSubtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  const subtotal = Math.round(rawSubtotal * 100) / 100;
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  const taxAmount = Math.round(taxableAmount * (taxRate / 100) * 100) / 100;
+  const totalAmount = Math.round(Math.max(0, taxableAmount + taxAmount + freightAmount) * 100) / 100;
 
   // Open checkout modal
   const handleOpenCheckout = (methodOrEvent?: "cash" | "upi" | "card" | "udhaar" | "split" | React.MouseEvent) => {
@@ -1817,6 +1819,7 @@ export default function PosBillingPage() {
                                 alt={p.name}
                                 className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
                                 loading="lazy"
+                                decoding="async"
                                 onError={(e) => {
                                   (e.currentTarget as HTMLElement).style.display = "none";
                                   const fallback = (e.currentTarget.parentElement?.querySelector(".img-fallback") as HTMLElement);
@@ -2110,6 +2113,8 @@ export default function PosBillingPage() {
                               src={item.product.image_url.split("|||")[0].trim()}
                               alt={item.product.name}
                               className="w-full h-full object-cover object-center"
+                              loading="lazy"
+                              decoding="async"
                               onError={(e) => {
                                 (e.currentTarget as HTMLElement).style.display = "none";
                                 const fallback = (e.currentTarget.parentElement?.querySelector(".cart-img-fallback") as HTMLElement);

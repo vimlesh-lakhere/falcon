@@ -187,7 +187,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
             {mounted && customerUser ? (
               <div className="flex items-center gap-1.5 bg-purple-50 border border-purple-200 rounded-xl px-2.5 py-1.5 text-xs text-purple-900 font-bold shadow-2xs">
                 {customerUser.avatarUrl ? (
-                  <img src={customerUser.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
+                  <img src={customerUser.avatarUrl} alt="" loading="lazy" decoding="async" className="w-4 h-4 rounded-full" />
                 ) : (
                   <User className="w-3.5 h-3.5 text-purple-600" />
                 )}
@@ -310,7 +310,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
               <div className="flex items-center justify-between bg-purple-50 p-3 rounded-2xl border border-purple-100">
                 <div className="flex items-center gap-2">
                   {customerUser.avatarUrl ? (
-                    <img src={customerUser.avatarUrl} alt="" className="w-8 h-8 rounded-full" />
+                    <img src={customerUser.avatarUrl} alt="" loading="lazy" decoding="async" className="w-8 h-8 rounded-full" />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-xs">
                       {customerUser.name[0]?.toUpperCase()}

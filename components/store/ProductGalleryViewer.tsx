@@ -77,6 +77,8 @@ export const ProductGalleryViewer: React.FC<ProductGalleryViewerProps> = ({
         <img
           src={selectedImage}
           alt={productName}
+          loading="lazy"
+          decoding="async"
           className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
         />
       </div>
@@ -104,7 +106,7 @@ export const ProductGalleryViewer: React.FC<ProductGalleryViewerProps> = ({
                 }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img} alt={`${productName} thumbnail ${idx}`} className="w-full h-14 object-contain" />
+                <img src={img} alt={`${productName} thumbnail ${idx}`} loading="lazy" decoding="async" className="w-full h-14 object-contain" />
                 <span className="w-full bg-slate-900/80 text-white text-[9px] font-bold text-center py-0.5 rounded-b-xl truncate px-1">
                   {label}
                 </span>

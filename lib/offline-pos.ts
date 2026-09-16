@@ -15,7 +15,13 @@ export interface OfflineQueuedBill {
   error?: string;
 }
 
+let isSyncInProgress = false;
+
 export const offlinePosEngine = {
+  isSyncing(): boolean {
+    return isSyncInProgress;
+  },
+
   // 1. Cache Product Catalog locally
   cacheCatalog(products: Product[]) {
     try {
@@ -168,6 +174,11 @@ export const offlinePosEngine = {
     syncedCount: number;
     failedCount: number;
   }> {
+    if (isSyncInProgress) {
+      console.warn("Offline bills sync is already running in parallel. Ignoring concurrent call.");
+      return { syncedCount: 0, failedCount: 0 };
+    }
+
     const bills = this.getQueuedBills();
     const pendingBills = bills.filter((b) => b.status === "pending" || b.status === "failed");
 
@@ -175,28 +186,33 @@ export const offlinePosEngine = {
       return { syncedCount: 0, failedCount: 0 };
     }
 
+    isSyncInProgress = true;
     let syncedCount = 0;
     let failedCount = 0;
     const remainingQueue: OfflineQueuedBill[] = [];
 
-    for (let i = 0; i < pendingBills.length; i++) {
-      const item = pendingBills[i];
-      try {
-        await posRepository.checkout(item.payload);
-        syncedCount++;
-        if (onProgress) onProgress(syncedCount, pendingBills.length);
-      } catch (err: any) {
-        console.error("Failed to sync offline bill:", item.id, err);
-        failedCount++;
-        remainingQueue.push({
-          ...item,
-          status: "failed",
-          error: err.message || "Failed to upload to server",
-        });
+    try {
+      for (let i = 0; i < pendingBills.length; i++) {
+        const item = pendingBills[i];
+        try {
+          await posRepository.checkout(item.payload);
+          syncedCount++;
+          if (onProgress) onProgress(syncedCount, pendingBills.length);
+        } catch (err: any) {
+          console.error("Failed to sync offline bill:", item.id, err);
+          failedCount++;
+          remainingQueue.push({
+            ...item,
+            status: "failed",
+            error: err.message || "Failed to upload to server",
+          });
+        }
       }
-    }
 
-    localStorage.setItem(OFFLINE_BILLS_KEY, JSON.stringify(remainingQueue));
-    return { syncedCount, failedCount };
+      localStorage.setItem(OFFLINE_BILLS_KEY, JSON.stringify(remainingQueue));
+      return { syncedCount, failedCount };
+    } finally {
+      isSyncInProgress = false;
+    }
   },
 };

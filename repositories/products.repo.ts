@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { uploadProductImageCompound } from "@/lib/supabase/storage";
 import { Product, Category, Unit, Supplier } from "@/types/database";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import {
@@ -44,12 +45,23 @@ export const productsRepository = {
     const isOnline = product.is_online !== undefined ? product.is_online : true;
     const onlinePrice = product.online_price !== undefined ? product.online_price : null;
 
+    // Automatically convert any base64 image data to Supabase Storage bucket WebP file
+    let cleanImageUrl = product.image_url;
+    if (cleanImageUrl && cleanImageUrl.includes("data:image/")) {
+      try {
+        cleanImageUrl = await uploadProductImageCompound(cleanImageUrl, product.sku || product.barcode || "prod");
+      } catch (uploadErr) {
+        console.warn("Storage upload notice during product create:", uploadErr);
+      }
+    }
+
     // Always embed online config in description as a guaranteed persistence fallback
     const originalDesc = product.description || "";
     const descWithOnline = attachOnlineConfigToDescription(originalDesc, isOnline, onlinePrice);
 
     const sanitizedProduct: any = {
       ...product,
+      image_url: cleanImageUrl,
       description: descWithOnline,
       ...(product.name ? { name: capitalizeFirstLetter(product.name.trim()) } : {}),
       ...(product.brand ? { brand: capitalizeFirstLetter(product.brand.trim()) } : {}),
@@ -98,8 +110,19 @@ export const productsRepository = {
       updatedDescription = attachOnlineConfigToDescription(baseDesc, effectiveOnline, onlinePrice);
     }
 
+    // Automatically convert any base64 image data to Supabase Storage bucket WebP file
+    let cleanImageUrl = product.image_url;
+    if (cleanImageUrl && cleanImageUrl.includes("data:image/")) {
+      try {
+        cleanImageUrl = await uploadProductImageCompound(cleanImageUrl, product.sku || product.barcode || id);
+      } catch (uploadErr) {
+        console.warn("Storage upload notice during product update:", uploadErr);
+      }
+    }
+
     const sanitizedProduct: any = {
       ...product,
+      ...(cleanImageUrl !== undefined ? { image_url: cleanImageUrl } : {}),
       ...(updatedDescription !== undefined ? { description: updatedDescription } : {}),
       ...(product.name ? { name: capitalizeFirstLetter(product.name.trim()) } : {}),
       ...(product.brand ? { brand: capitalizeFirstLetter(product.brand.trim()) } : {}),

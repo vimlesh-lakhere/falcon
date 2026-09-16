@@ -30,11 +30,11 @@ export const aiBarcodeLookup = {
     try {
       let query = supabase
         .from("products")
-        .select("*, categories(name)")
+        .select("*, category:categories(name)")
         .eq("barcode", cleanBarcode);
 
       if (storeId) {
-        query = query.eq("store_id", storeId);
+        query = query.eq("shop_id", storeId);
       }
 
       const { data: existing, error } = await query.maybeSingle();
@@ -44,7 +44,7 @@ export const aiBarcodeLookup = {
           found: true,
           productName: existing.name,
           brand: existing.brand || "",
-          categoryName: existing.categories?.name || "",
+          categoryName: (existing as any).category?.name || (existing as any).categories?.name || "",
           mrp: Number(existing.mrp) || Number(existing.selling_price) || 50,
           description: existing.description || "",
           existingProduct: existing,

@@ -179,16 +179,25 @@ ${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${today
     setPrintStatus("");
     setPrintError("");
 
-    if (cfg.connectionType === "bluetooth") {
+    const effectiveCfg: PrinterConfig = {
+      ...cfg,
+      shopName: activeShopName,
+      shopPhone: activeShopPhone,
+      shopAddress: activeShopAddress,
+      shopGst: activeShopGst,
+      showGstin: !!activeShopGst,
+    };
+
+    if (effectiveCfg.connectionType === "bluetooth") {
       setIsBluetoothPrinting(true);
       try {
         setPrintStatus("Preparing high-definition thermal receipt...");
         // Use high-definition canvas raster graphics for 100% Hindi/Unicode & QR rendering
         let bytes: Uint8Array;
-        if (cfg.printEngine === "graphics") {
-          bytes = await buildRasterGraphicsReceipt(sale, customer, cfg);
+        if (effectiveCfg.printEngine === "graphics") {
+          bytes = await buildRasterGraphicsReceipt(sale, customer, effectiveCfg);
         } else {
-          bytes = buildEscPosReceipt(sale, customer, cfg);
+          bytes = buildEscPosReceipt(sale, customer, effectiveCfg);
         }
 
         setPrintStatus("Sending data to Bluetooth Thermal Printer...");
@@ -502,7 +511,7 @@ ${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${today
             ))}
             {todayDue > 0 && (
               <div className="flex justify-between font-black text-amber-950 bg-amber-50 px-1.5 py-0.5 rounded mt-1 border border-amber-300">
-                <span>आज का उधार (Today's Due):</span>
+                <span>आज का उधार (Today&apos;s Due):</span>
                 <span>₹{todayDue.toFixed(2)}</span>
               </div>
             )}
@@ -564,6 +573,10 @@ ${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${today
         sale={sale}
         customer={customer}
         shopId={shopId}
+        shopName={activeShopName}
+        shopPhone={activeShopPhone}
+        shopAddress={activeShopAddress}
+        shopGst={activeShopGst}
       />
 
       {/* Done Button */}

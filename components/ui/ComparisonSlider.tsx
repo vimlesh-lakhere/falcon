@@ -114,6 +114,8 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
       <img
         src={afterSrc}
         alt={afterLabel}
+        loading="lazy"
+        decoding="async"
         className="absolute inset-0 w-full h-full object-contain"
         style={{ background: "#f8f9fa" }}
         draggable={false}
@@ -129,6 +131,8 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
         <img
           src={beforeSrc}
           alt={beforeLabel}
+          loading="lazy"
+          decoding="async"
           className="absolute inset-0 w-full h-full object-contain"
           style={{ background: "#f8f9fa" }}
           draggable={false}
