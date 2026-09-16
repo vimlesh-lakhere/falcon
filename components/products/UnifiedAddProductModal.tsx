@@ -22,6 +22,10 @@ import {
   Check,
   Link as LinkIcon,
   Image as ImageIcon,
+  Key,
+  ExternalLink,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -223,6 +227,69 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [isCatalogDropdownOpen, setIsCatalogDropdownOpen] = useState(false);
   const [rawFrontPhoto, setRawFrontPhoto] = useState<string>("");
   const [rawBackPhoto, setRawBackPhoto] = useState<string>("");
+
+  // Google Gemini Vision API Key state & modal
+  const [geminiApiKey, setGeminiApiKey] = useState<string>("");
+  const [hasServerGeminiKey, setHasServerGeminiKey] = useState<boolean>(false);
+  const [isKeyConfigModalOpen, setIsKeyConfigModalOpen] = useState<boolean>(false);
+  const [keyInputVal, setKeyInputVal] = useState<string>("");
+  const [isSavingKey, setIsSavingKey] = useState<boolean>(false);
+  const [keySaveError, setKeySaveError] = useState<string>("");
+  const [showKeyPassword, setShowKeyPassword] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedKey = localStorage.getItem("falcon_gemini_api_key") || "";
+      if (savedKey) {
+        setGeminiApiKey(savedKey);
+        setKeyInputVal(savedKey);
+      }
+    }
+    fetch("/api/ai/save-key")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.hasGeminiKey) {
+          setHasServerGeminiKey(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveGeminiKey = async (overrideKey?: string) => {
+    const keyToSave = (overrideKey !== undefined ? overrideKey : keyInputVal).trim();
+    if (!keyToSave) {
+      setKeySaveError("Please enter a valid Google Gemini API Key");
+      return;
+    }
+    setIsSavingKey(true);
+    setKeySaveError("");
+    try {
+      const res = await fetch("/api/ai/save-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geminiKey: keyToSave }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Failed to verify key");
+      }
+      setGeminiApiKey(keyToSave);
+      setHasServerGeminiKey(true);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("falcon_gemini_api_key", keyToSave);
+      }
+      setIsKeyConfigModalOpen(false);
+      setAiSuccessMsg("✓ Google Gemini AI Key connected and saved!");
+      // Automatically trigger scan now that key is configured
+      if (imageUrl || backImageUrl || rawFrontPhoto || rawBackPhoto) {
+        handleTriggerAiOcr(undefined, undefined, keyToSave);
+      }
+    } catch (e: any) {
+      setKeySaveError(e.message || "Failed to save key");
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
 
   const liveCatalogMatches = useMemo(() => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) return [];
@@ -528,23 +595,29 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   };
 
   // Trigger Vision AI / OCR Extraction on demand or when auto-scan is enabled
-  const handleTriggerAiOcr = async (customFront?: string, customBack?: string) => {
-    const frontToScan = customFront || imageUrl;
-    const backToScan = customBack || backImageUrl;
+  const handleTriggerAiOcr = async (customFront?: string, customBack?: string, overrideKey?: string) => {
+    const frontToScan = customFront || rawFrontPhoto || imageUrl;
+    const backToScan = customBack || rawBackPhoto || backImageUrl;
 
     if (!frontToScan && !backToScan) {
       alert("Please upload or click a product photo first.");
       return;
     }
 
+    const keyToUse =
+      overrideKey ||
+      geminiApiKey ||
+      (typeof window !== "undefined" ? localStorage.getItem("falcon_gemini_api_key") || "" : "");
+
+    // If neither client key nor server key is available, prompt for Google Gemini key
+    if (!keyToUse && !hasServerGeminiKey) {
+      setIsKeyConfigModalOpen(true);
+      return;
+    }
+
     try {
       setIsAnalyzing(true);
-      setAiSuccessMsg("");
-
-      const savedApiKey =
-        typeof window !== "undefined"
-          ? localStorage.getItem("falcon_gemini_api_key") || undefined
-          : undefined;
+      setAiSuccessMsg("🔍 AI Vision is scanning packaging, brand, title & MRP...");
 
       const savedRemoveBgKey =
         typeof window !== "undefined"
@@ -557,7 +630,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         body: JSON.stringify({
           frontImage: frontToScan || backToScan,
           backImage: backToScan && backToScan !== frontToScan ? backToScan : undefined,
-          apiKey: savedApiKey,
+          apiKey: keyToUse || undefined,
           removeBgApiKey: savedRemoveBgKey,
         }),
       });
@@ -568,14 +641,47 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         const extractedMrp = Number(aiData.mrp || 0) || 0;
         const suggestedCost =
           Number(aiData.suggested_purchase_price || 0) || (extractedMrp > 0 ? Math.round(extractedMrp * 0.72) : 0);
+        const suggestedRetail =
+          Number(aiData.suggested_retail_price || 0) || extractedMrp;
+        const suggestedWholesale =
+          Number(aiData.suggested_wholesale_price || 0) || (extractedMrp > 0 ? Math.round(extractedMrp * 0.86) : 0);
 
-        if (aiData.product_name) setName(capitalizeFirstLetter(aiData.product_name));
-        if (aiData.brand) setBrand(capitalizeFirstLetter(aiData.brand));
-        if (extractedMrp > 0) setSellingPrice(extractedMrp);
-        if (suggestedCost > 0) setPurchasePrice(suggestedCost);
-        if (aiData.suggested_wholesale_price > 0) setWholesalePrice(aiData.suggested_wholesale_price);
-        if (aiData.barcode) setBarcode(String(aiData.barcode));
-        if (aiData.short_description) setDescription(aiData.short_description);
+        if (aiData.product_name && aiData.product_name !== "Product") {
+          const formattedName = capitalizeFirstLetter(aiData.product_name);
+          setName(formattedName);
+
+          // Auto-Transliterate to Hindi if not provided
+          if (aiData.hindi_name) {
+            setNameHindi(aiData.hindi_name);
+          } else {
+            setIsTransliterating(true);
+            transliterateToHindi(formattedName)
+              .then((hi) => {
+                if (hi) setNameHindi(hi);
+              })
+              .catch(() => {})
+              .finally(() => setIsTransliterating(false));
+          }
+        }
+
+        if (aiData.brand) {
+          setBrand(capitalizeFirstLetter(aiData.brand));
+        }
+
+        if (extractedMrp > 0) {
+          setMrp(extractedMrp);
+          setSellingPrice(suggestedRetail);
+          setPurchasePrice(suggestedCost);
+          setWholesalePrice(suggestedWholesale);
+        }
+
+        if (aiData.barcode) {
+          setBarcode(String(aiData.barcode));
+        }
+
+        if (aiData.short_description) {
+          setDescription(aiData.short_description);
+        }
 
         // Match Category
         if (aiData.category_name && categories.length > 0) {
@@ -587,7 +693,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           if (match) setCategoryId(match.id);
         }
 
-        setAiSuccessMsg(`✓ Extracted: ${aiData.product_name || "Product"} ${extractedMrp > 0 ? `• MRP: ₹${extractedMrp}` : ""}`);
+        // Auto-generate SKU if empty
+        if (!sku && aiData.product_name) {
+          const clean = aiData.product_name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase();
+          setSku(`SKU-${clean}-${Math.floor(100 + Math.random() * 900)}`);
+        }
+
+        setAiSuccessMsg(
+          `✓ Auto-Filled: ${aiData.product_name || "Product"} ${extractedMrp > 0 ? `• MRP: ₹${extractedMrp}` : ""}`
+        );
+      } else if (json.requiresApiKey) {
+        setIsKeyConfigModalOpen(true);
+        setAiSuccessMsg("🔑 Please enter your Google Gemini API Key to scan packaging.");
       } else {
         setAiSuccessMsg(
           json.error
@@ -1500,18 +1617,41 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
                   {/* AI Scan Packaging & MRP (Only for new products) */}
                   {!editingProduct && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleTriggerAiOcr()}
-                      isLoading={isAnalyzing}
-                      className="w-full border-purple-300 text-purple-700 hover:bg-purple-50 font-bold text-xs shadow-xs transition-all"
-                      title="Read printed product packaging, MRP, barcode and title"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 mr-1 text-purple-600" />
-                      <span>🤖 Scan Packaging & MRP with AI</span>
-                    </Button>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 w-full">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleTriggerAiOcr()}
+                          isLoading={isAnalyzing}
+                          className="flex-1 border-purple-400 text-purple-800 hover:bg-purple-50 hover:border-purple-600 font-bold text-xs shadow-xs transition-all bg-white"
+                          title="Read printed product packaging, MRP, barcode and title"
+                        >
+                          <Sparkles className={`w-3.5 h-3.5 mr-1 text-purple-600 ${isAnalyzing ? "animate-spin" : ""}`} />
+                          <span>{isAnalyzing ? "Scanning Packaging with AI..." : "🤖 Scan Packaging & MRP with AI"}</span>
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => setIsKeyConfigModalOpen(true)}
+                          className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition-all shrink-0 cursor-pointer ${
+                            geminiApiKey || hasServerGeminiKey
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 animate-pulse"
+                          }`}
+                          title="Configure Free Google Gemini Vision API Key"
+                        >
+                          <Key className="w-3 h-3" />
+                          <span>{geminiApiKey || hasServerGeminiKey ? "AI Active" : "🔑 AI Key"}</span>
+                        </button>
+                      </div>
+                      {isAnalyzing && (
+                        <div className="text-[11px] text-purple-700 font-bold flex items-center gap-1.5 animate-pulse px-1">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          <span>AI Vision is reading title, brand, MRP & barcode...</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -2637,6 +2777,102 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 <span>Remove Current Photo</span>
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Google Gemini Vision API Key Setup Modal */}
+      {isKeyConfigModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-purple-200 animate-in fade-in zoom-in-95 duration-150 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-900">Google Gemini Vision Key</h3>
+                  <p className="text-[11px] text-gray-500">Auto-scan packaging, brand, title & MRP in 1-click</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsKeyConfigModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-purple-50/90 border border-purple-200/80 rounded-xl p-3 text-xs space-y-1.5 text-purple-950">
+              <div className="font-bold flex items-center gap-1.5 text-purple-900">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                <span>100% Free & Unlimited on Google AI Studio:</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-[11px] text-purple-800 font-medium">
+                <li>
+                  Open{" "}
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-purple-900 underline inline-flex items-center gap-0.5 hover:text-purple-600"
+                  >
+                    aistudio.google.com/app/apikey <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </li>
+                <li>Sign in with your Google Account & click <b>"Create API Key"</b></li>
+                <li>Copy and paste your key below (Starts with <code>AIzaSy...</code>)</li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-700">
+                Google Gemini API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showKeyPassword ? "text" : "password"}
+                  value={keyInputVal}
+                  onChange={(e) => {
+                    setKeyInputVal(e.target.value);
+                    setKeySaveError("");
+                  }}
+                  placeholder="AIzaSy..."
+                  className="w-full text-xs h-10 bg-gray-50 border border-gray-300 rounded-xl px-3 pr-10 font-mono text-gray-900 focus:bg-white focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKeyPassword(!showKeyPassword)}
+                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 cursor-pointer"
+                >
+                  {showKeyPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {keySaveError && (
+                <p className="text-[11px] text-rose-600 font-bold mt-1">⚠️ {keySaveError}</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsKeyConfigModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => handleSaveGeminiKey()}
+                isLoading={isSavingKey}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
+              >
+                Save & Auto-Scan
+              </Button>
+            </div>
           </div>
         </div>
       )}
