@@ -14,17 +14,28 @@ def main():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "rembg[cli]", "onnxruntime"])
         from rembg.cli import main as rembg_main
 
+    import socket
     port = int(os.environ.get("REMBG_PORT", "7000"))
-    host = os.environ.get("REMBG_HOST", "127.0.0.1")
+    host = os.environ.get("REMBG_HOST", "0.0.0.0")
     default_model = os.environ.get("REMBG_MODEL", "u2net")
 
-    print("=" * 65)
+    lan_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    print("=" * 68)
     print("  Falcon ERP - Rembg Local Background Removal Microservice")
-    print(f"  Server URL   : http://{host}:{port}")
-    print(f"  API Endpoint : http://{host}:{port}/api/remove")
+    print(f"  Laptop URL   : http://127.0.0.1:{port}")
+    print(f"  Mobile/Wi-Fi : http://{lan_ip}:{port}")
+    print(f"  API Endpoint : http://{lan_ip}:{port}/api/remove")
     print(f"  Default Model: {default_model} (Fast, Lightweight, High Precision)")
     print("  Cost         : 100% Free & Unlimited (Runs locally on your PC)")
-    print("=" * 65)
+    print("=" * 68)
 
     try:
         print(f"[Falcon Rembg] Pre-loading model '{default_model}' into memory...")
@@ -34,7 +45,7 @@ def main():
     except Exception as e:
         print(f"[Falcon Rembg] Pre-warm notice: {e}")
 
-    print(f"[Falcon Rembg] Starting server on http://{host}:{port}... (Press Ctrl+C to stop)")
+    print(f"[Falcon Rembg] Starting server on 0.0.0.0:{port}... (Press Ctrl+C to stop)")
 
     sys.argv = ["rembg", "s", "--host", host, "--port", str(port), "--no-ui"]
     rembg_main()

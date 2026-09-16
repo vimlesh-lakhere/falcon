@@ -626,7 +626,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       let imageToPolish = rawSource;
       let isCutoutSuccess = false;
 
-      // 0. Direct Local Rembg Check (Fastest when user is on localhost / local PC)
+      // 0. Direct Rembg AI Check (Supports Laptop 127.0.0.1, Wi-Fi LAN IP, or Custom Tunnel URL)
       try {
         const base64Clean = rawSource.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
         const binaryString = atob(base64Clean);
@@ -640,28 +640,43 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         localForm.append("file", imgBlob, "product.png");
         localForm.append("model", "u2net");
 
-        const localRes = await fetch("http://127.0.0.1:7000/api/remove", {
-          method: "POST",
-          body: localForm,
-          signal: AbortSignal.timeout(6000),
-        });
+        // Target candidates: Custom URL (localStorage) -> Same Wi-Fi Host IP -> Localhost
+        const savedRembgUrl = typeof window !== "undefined" ? localStorage.getItem("falcon_rembg_url") : null;
+        const currentHost = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
+        const candidateUrls: string[] = [];
+        if (savedRembgUrl) candidateUrls.push(savedRembgUrl.replace(/\/+$/, ""));
+        if (currentHost && currentHost !== "localhost" && currentHost !== "127.0.0.1" && !currentHost.includes(".")) {
+          candidateUrls.push(`http://${currentHost}:7000`);
+        }
+        candidateUrls.push("http://127.0.0.1:7000");
 
-        if (localRes.ok) {
-          const cutBlob = await localRes.blob();
-          if (cutBlob.size > 100) {
-            imageToPolish = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.readAsDataURL(cutBlob);
+        for (const endpoint of candidateUrls) {
+          try {
+            const localRes = await fetch(`${endpoint}/api/remove`, {
+              method: "POST",
+              body: localForm,
+              signal: AbortSignal.timeout(6000),
             });
-            isCutoutSuccess = true;
-          }
+
+            if (localRes.ok) {
+              const cutBlob = await localRes.blob();
+              if (cutBlob.size > 100) {
+                imageToPolish = await new Promise<string>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result as string);
+                  reader.readAsDataURL(cutBlob);
+                });
+                isCutoutSuccess = true;
+                break;
+              }
+            }
+          } catch {}
         }
       } catch {
-        // Direct local endpoint not reachable, proceed to server API
+        // Direct endpoint not reachable, cascade to server API
       }
 
-      // 1. Try server-side AI cutout API
+      // 1. Try Server-Side API (/api/ai/remove-background)
       if (!isCutoutSuccess) {
         try {
           const savedHfToken =
@@ -693,6 +708,42 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         }
       }
 
+      // 2. Mobile Browser On-Device Neural AI Fallback (@imgly/background-removal)
+      // Runs directly inside the phone's browser using WebAssembly / WebGL with 0 server dependency
+      if (!isCutoutSuccess && typeof window !== "undefined") {
+        try {
+          setAiSuccessMsg("✨ Running on-device mobile AI background remover...");
+          const base64Clean = rawSource.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+          const binaryString = atob(base64Clean);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const imgBlob = new Blob([bytes], { type: "image/png" });
+
+          const loadBrowserModule = new Function("url", "return import(url)");
+          const imglyModule: any = await loadBrowserModule(
+            "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm"
+          );
+          const removeBgFn = imglyModule.removeBackground || imglyModule.default;
+          if (typeof removeBgFn === "function") {
+            const transparentBlob = await removeBgFn(imgBlob, {
+              model: "isnet_fp16",
+            });
+            if (transparentBlob && transparentBlob.size > 100) {
+              imageToPolish = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.readAsDataURL(transparentBlob);
+              });
+              isCutoutSuccess = true;
+            }
+          }
+        } catch (mobileErr) {
+          console.warn("Mobile on-device AI notice:", mobileErr);
+        }
+      }
+
       // If background removal was NOT successful, NEVER bleach or mutilate the product!
       if (!isCutoutSuccess) {
         if (target === "front") {
@@ -700,7 +751,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         } else {
           setBackImageUrl(rawSource);
         }
-        setAiSuccessMsg("📷 Clean original photo preserved. (Run 'npm run rembg' on PC for instant AI cutout)");
+        setAiSuccessMsg("📷 Clean original photo preserved.");
         return;
       }
 
