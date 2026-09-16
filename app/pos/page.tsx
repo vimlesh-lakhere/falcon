@@ -95,6 +95,7 @@ interface CartItem {
   unit: UnitKey;
   unitName: string;
   unitMultiplier: number;
+  isPermanentPriceUpdate?: boolean;
 }
 
 interface HeldBill {
@@ -922,13 +923,95 @@ export default function PosBillingPage() {
     setCart((prevCart) => {
       if (index < 0 || index >= prevCart.length) return prevCart;
       const updated = [...prevCart];
+      const validPrice = Math.max(0, newPrice);
+      const isChanged = validPrice !== updated[index].originalPrice;
       updated[index] = {
         ...updated[index],
-        unitPrice: Math.max(0, newPrice),
-        isPriceOverridden: true,
+        unitPrice: validPrice,
+        isPriceOverridden: isChanged,
+        isPermanentPriceUpdate: isChanged ? updated[index].isPermanentPriceUpdate : false,
       };
       return updated;
     });
+  };
+
+  const togglePermanentPriceUpdate = (index: number, isPermanent: boolean) => {
+    setCart((prevCart) => {
+      if (index < 0 || index >= prevCart.length) return prevCart;
+      const updated = [...prevCart];
+      updated[index] = {
+        ...updated[index],
+        isPermanentPriceUpdate: isPermanent,
+      };
+      return updated;
+    });
+  };
+
+  const resetPriceOverride = (index: number) => {
+    setCart((prevCart) => {
+      if (index < 0 || index >= prevCart.length) return prevCart;
+      const updated = [...prevCart];
+      const item = updated[index];
+      const unitDef = STANDARD_UNITS[item.unit] || STANDARD_UNITS.piece;
+      const effective = getEffectiveItemPrice(item.product, item.quantity, item.unit, unitDef.multiplier);
+
+      updated[index] = {
+        ...item,
+        unitPrice: effective.unitPrice,
+        originalPrice: effective.originalPrice,
+        isPriceOverridden: false,
+        isPermanentPriceUpdate: false,
+      };
+      return updated;
+    });
+  };
+
+  const persistProductMasterPrice = async (index: number) => {
+    if (index < 0 || index >= cart.length) return;
+    const item = cart[index];
+    if (!item || !item.product?.id) return;
+
+    try {
+      let updatePayload: Partial<Product>;
+      if (item.unit === "piece") {
+        updatePayload = { selling_price: Math.max(0, item.unitPrice) };
+      } else if (item.unit === "dozen") {
+        const perPiece = Math.round((item.unitPrice / 12) * 100) / 100;
+        updatePayload = { selling_price: perPiece, wholesale_price: item.unitPrice };
+      } else {
+        const perPiece = Math.round((item.unitPrice / item.unitMultiplier) * 100) / 100;
+        updatePayload = { selling_price: perPiece };
+      }
+
+      await productsRepository.update(item.product.id, updatePayload);
+
+      setProducts((prev) =>
+        prev.map((p) => (p.id === item.product.id ? { ...p, ...updatePayload } : p))
+      );
+
+      setCart((prevCart) => {
+        const updated = [...prevCart];
+        if (updated[index]) {
+          updated[index] = {
+            ...updated[index],
+            product: { ...updated[index].product, ...updatePayload },
+            originalPrice: updated[index].unitPrice,
+            isPriceOverridden: false,
+            isPermanentPriceUpdate: false,
+          };
+        }
+        return updated;
+      });
+
+      offlinePosEngine.cacheCatalog(
+        products.map((p) => (p.id === item.product.id ? { ...p, ...updatePayload } : p))
+      );
+
+      setHeldBillToast(`✅ "${item.product.name}" का मास्टर प्राइस ₹${item.unitPrice}/${item.unitName} permanently save हो गया!`);
+      setTimeout(() => setHeldBillToast(""), 4500);
+    } catch (err: any) {
+      alert(`मास्टर प्राइस सेव नहीं हो सका: ${err.message || "Unknown error"}`);
+    }
   };
 
   const removeItem = (index: number) => {
@@ -1243,6 +1326,31 @@ export default function PosBillingPage() {
           } as any;
         }),
       };
+
+      // Persist any permanent product price updates chosen by user during billing
+      const itemsToUpdatePermanently = cart.filter(
+        (it) => it.isPriceOverridden && it.isPermanentPriceUpdate && products.some((p) => p.id === it.product.id)
+      );
+
+      if (itemsToUpdatePermanently.length > 0) {
+        for (const it of itemsToUpdatePermanently) {
+          try {
+            let updatePayload: Partial<Product>;
+            if (it.unit === "piece") {
+              updatePayload = { selling_price: Math.max(0, it.unitPrice) };
+            } else if (it.unit === "dozen") {
+              const perPiece = Math.round((it.unitPrice / 12) * 100) / 100;
+              updatePayload = { selling_price: perPiece, wholesale_price: it.unitPrice };
+            } else {
+              const perPiece = Math.round((it.unitPrice / it.unitMultiplier) * 100) / 100;
+              updatePayload = { selling_price: perPiece };
+            }
+            await productsRepository.update(it.product.id, updatePayload);
+          } catch (pErr) {
+            console.warn("Permanent price save notice during checkout:", pErr);
+          }
+        }
+      }
 
       setCompletedSale(enrichedSale);
       setIsCheckoutModalOpen(false);
@@ -2275,6 +2383,51 @@ export default function PosBillingPage() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Rate Changed Indicator & Permanent Update Tick Option */}
+                    {item.isPriceOverridden && products.some((p) => p.id === item.product.id) && (
+                      <div className="mt-2 p-2 bg-purple-50/90 border border-purple-200/90 rounded-lg text-[11px] animate-in fade-in duration-150 shadow-2xs">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <label className="flex items-center gap-1.5 cursor-pointer font-bold text-purple-950 hover:text-purple-800 select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!item.isPermanentPriceUpdate}
+                              onChange={(e) => togglePermanentPriceUpdate(index, e.target.checked)}
+                              className="w-3.5 h-3.5 rounded border-purple-300 text-purple-600 focus:ring-purple-500 accent-purple-600 cursor-pointer"
+                            />
+                            <span>Permanently update base price</span>
+                          </label>
+
+                          <div className="flex items-center gap-2">
+                            {item.isPermanentPriceUpdate && (
+                              <button
+                                type="button"
+                                onClick={() => persistProductMasterPrice(index)}
+                                className="text-[10px] font-black text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-2 py-0.5 rounded shadow-2xs transition-colors flex items-center gap-1 cursor-pointer active:scale-95"
+                                title="Save this new rate directly to the product catalog right now"
+                              >
+                                <span>💾 Save Now</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => resetPriceOverride(index)}
+                              className="text-[10.5px] text-gray-500 hover:text-rose-600 font-bold underline"
+                              title="Revert back to master product price"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-purple-700/90 mt-1 flex items-center gap-1">
+                          <span>
+                            {item.isPermanentPriceUpdate
+                              ? "✓ Will permanently update product catalog price on checkout (or click Save Now)"
+                              : "ℹ️ Price changed for this bill only. Tick above to make it permanent."}
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     {isOverStock && (
                       <div className="text-[10px] text-amber-700 font-bold flex items-center gap-1 bg-amber-100/60 px-2 py-0.5 rounded">
