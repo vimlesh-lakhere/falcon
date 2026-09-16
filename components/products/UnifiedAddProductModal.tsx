@@ -624,37 +624,87 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       setAiSuccessMsg("✨ Processing 1-click pure white studio photo...");
 
       let imageToPolish = rawSource;
+      let isCutoutSuccess = false;
 
-      // 1. Try server-side AI cutout API first
+      // 0. Direct Local Rembg Check (Fastest when user is on localhost / local PC)
       try {
-        const savedHfToken =
-          typeof window !== "undefined"
-            ? localStorage.getItem("falcon_hf_token") || localStorage.getItem("falcon_clipdrop_key") || undefined
-            : undefined;
-        const savedRbg =
-          typeof window !== "undefined"
-            ? localStorage.getItem("falcon_remove_bg_api_key") || undefined
-            : undefined;
+        const base64Clean = rawSource.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+        const binaryString = atob(base64Clean);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const imgBlob = new Blob([bytes], { type: "image/png" });
 
-        const bgRes = await fetch("/api/ai/remove-background", {
+        const localForm = new FormData();
+        localForm.append("file", imgBlob, "product.png");
+        localForm.append("model", "u2net");
+
+        const localRes = await fetch("http://127.0.0.1:7000/api/remove", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image: rawSource,
-            hfToken: savedHfToken,
-            removeBgApiKey: savedRbg,
-          }),
+          body: localForm,
+          signal: AbortSignal.timeout(6000),
         });
 
-        const bgJson = await bgRes.json().catch(() => ({}));
-        if (bgRes.ok && bgJson.success && bgJson.transparentImageUrl) {
-          imageToPolish = bgJson.transparentImageUrl;
+        if (localRes.ok) {
+          const cutBlob = await localRes.blob();
+          if (cutBlob.size > 100) {
+            imageToPolish = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.readAsDataURL(cutBlob);
+            });
+            isCutoutSuccess = true;
+          }
         }
-      } catch (bgErr) {
-        console.warn("Server AI background remover notice:", bgErr);
+      } catch {
+        // Direct local endpoint not reachable, proceed to server API
       }
 
-      // 2. Final Studio Polish: 100% Solid Pure White Canvas (#FFFFFF), no grey shadows, no reflections
+      // 1. Try server-side AI cutout API
+      if (!isCutoutSuccess) {
+        try {
+          const savedHfToken =
+            typeof window !== "undefined"
+              ? localStorage.getItem("falcon_hf_token") || localStorage.getItem("falcon_clipdrop_key") || undefined
+              : undefined;
+          const savedRbg =
+            typeof window !== "undefined"
+              ? localStorage.getItem("falcon_remove_bg_api_key") || undefined
+              : undefined;
+
+          const bgRes = await fetch("/api/ai/remove-background", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image: rawSource,
+              hfToken: savedHfToken,
+              removeBgApiKey: savedRbg,
+            }),
+          });
+
+          const bgJson = await bgRes.json().catch(() => ({}));
+          if (bgRes.ok && bgJson.success && bgJson.transparentImageUrl) {
+            imageToPolish = bgJson.transparentImageUrl;
+            isCutoutSuccess = true;
+          }
+        } catch (bgErr) {
+          console.warn("Server AI background remover notice:", bgErr);
+        }
+      }
+
+      // If background removal was NOT successful, NEVER bleach or mutilate the product!
+      if (!isCutoutSuccess) {
+        if (target === "front") {
+          setImageUrl(rawSource);
+        } else {
+          setBackImageUrl(rawSource);
+        }
+        setAiSuccessMsg("📷 Clean original photo preserved. (Run 'npm run rembg' on PC for instant AI cutout)");
+        return;
+      }
+
+      // 2. Final Studio Polish: 100% Solid Pure White Canvas (#FFFFFF) ONLY for clean transparent cutouts
       const polished = await aiImageEnhancer.studioPolish(imageToPolish, {
         targetSize: 1080,
         theme: "pure_white",
@@ -672,7 +722,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       setAiSuccessMsg("✨ 1-Click Pure White Studio: Background isolated & centered!");
     } catch (e) {
       console.error("Studio polish error:", e);
-      setAiSuccessMsg("⚠️ Studio polish notice: Applied safe photo enhancement.");
+      if (target === "front") setImageUrl(rawSource);
+      else setBackImageUrl(rawSource);
+      setAiSuccessMsg("📷 Original photo preserved.");
     } finally {
       setIsPolishing(false);
     }

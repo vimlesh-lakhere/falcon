@@ -479,15 +479,27 @@ export const localImageStudio = {
       }
     }
 
-    // Secondary fallback: On-device MediaPipe or smart edge matting
+    // Secondary fallback: On-device MediaPipe segmentation
     if (!isAlreadyCutout) {
       try {
         const aiCutout = await mediaPipeSegmenter.removeBackground(rawImg);
         if (aiCutout) {
-          workingCanvas = aiCutout;
+          const cutCtx = aiCutout.getContext("2d", { willReadFrequently: true });
+          if (cutCtx) {
+            const cutPx = cutCtx.getImageData(0, 0, aiCutout.width, aiCutout.height).data;
+            let transCount = 0;
+            for (let i = 3; i < cutPx.length; i += 16) {
+              if (cutPx[i] < 150) transCount++;
+            }
+            // Only accept if it actually isolated the background
+            if (transCount > (cutPx.length / 16) * 0.05) {
+              workingCanvas = aiCutout;
+              isAlreadyCutout = true;
+            }
+          }
         }
       } catch (e) {
-        console.warn("Segmentation notice, proceeding with matting:", e);
+        console.warn("Segmentation notice:", e);
       }
     }
 
@@ -507,7 +519,13 @@ export const localImageStudio = {
       drawW = drawH * aspect;
     }
 
-    const hasTransparentProduct = isAlreadyCutout || (workingCanvas !== baseCanvas);
+    const hasTransparentProduct = isAlreadyCutout;
+
+    // CRITICAL: If the image was NOT cleanly cut out by neural AI, DO NOT surround it with pure white box
+    // and do NOT bleach or hollow out the product body! Keep the clean, original photo with color enhancement.
+    if (!hasTransparentProduct) {
+      return polishedCanvas.toDataURL("image/jpeg", 0.95);
+    }
 
     const drawX = (targetSize - drawW) / 2;
     // Golden-ratio vertical positioning (aligned with studio floor/podium only if transparent)
