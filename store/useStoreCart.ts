@@ -92,12 +92,11 @@ export const useStoreCart = create<StoreCartState>()(
           if (existingIndex > -1) {
             const updatedCart = [...state.cart];
             updatedCart[existingIndex].quantity += quantity;
-            return { cart: updatedCart, isCartOpen: true };
+            return { cart: updatedCart };
           }
 
           return {
             cart: [...state.cart, { product, quantity, selectedVariant: variant }],
-            isCartOpen: true,
           };
         });
       },

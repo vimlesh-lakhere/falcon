@@ -290,7 +290,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
         <div className="overflow-x-auto scrollbar-none py-2 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto flex items-center gap-2 min-w-max pr-6">
             <Link
-              href="/store"
+              href="/store/products"
               className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 shrink-0 hover:bg-purple-200 transition-colors"
             >
               🔥 All Products
@@ -374,6 +374,13 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
               className="block p-2 rounded-lg hover:bg-purple-50 hover:text-purple-700"
             >
               🏠 Home
+            </Link>
+            <Link
+              href="/store/products"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="block p-2 rounded-lg hover:bg-purple-50 hover:text-purple-700 text-purple-700 font-bold"
+            >
+              🛍️ All Products Catalog (View All)
             </Link>
             <Link
               href="/store/offers"

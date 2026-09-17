@@ -96,8 +96,8 @@ export const StoreFooter: React.FC<StoreFooterProps> = ({
           <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400">Customer Links</h4>
           <ul className="space-y-1.5 text-xs text-slate-300">
             <li>
-              <Link href="/store" className="hover:text-white transition-colors">
-                All Products
+              <Link href="/store/products" className="hover:text-white transition-colors">
+                All Products Catalog
               </Link>
             </li>
             <li>

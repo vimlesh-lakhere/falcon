@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -19,7 +20,17 @@ import {
 import { useStoreCart } from "@/store/useStoreCart";
 import { getEffectiveItemPrice } from "@/lib/units-pricing";
 
-export default function StoreCartPage() {
+function CartLoadingSkeleton() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-12 space-y-6 animate-pulse">
+      <div className="h-8 w-48 bg-gray-200 rounded-xl mx-auto" />
+      <div className="h-28 w-full bg-white rounded-3xl border border-gray-100" />
+      <div className="h-28 w-full bg-white rounded-3xl border border-gray-100" />
+    </div>
+  );
+}
+
+function StoreCartContent() {
   const router = useRouter();
   const { cart, updateQuantity, removeFromCart, clearCart, getCartTotal } = useStoreCart();
 
@@ -244,3 +255,8 @@ export default function StoreCartPage() {
     </div>
   );
 }
+
+export default dynamic(() => Promise.resolve(StoreCartContent), {
+  ssr: false,
+  loading: () => <CartLoadingSkeleton />,
+});

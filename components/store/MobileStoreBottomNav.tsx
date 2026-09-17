@@ -84,19 +84,19 @@ export const MobileStoreBottomNav: React.FC = () => {
               <span className="text-[10px] mt-0.5">Home</span>
             </Link>
 
-            {/* Tab 2: Categories */}
+            {/* Tab 2: All Products Catalog */}
             <Link
-              href="/store/offers"
+              href="/store/products"
               className={`flex flex-col items-center justify-center py-1 transition-colors ${
-                pathname.includes("/store/offers") || pathname.includes("/store/category")
+                pathname.includes("/store/products") || pathname.includes("/store/category")
                   ? "text-purple-700 font-black"
                   : "text-gray-500 hover:text-gray-900 font-medium"
               }`}
             >
-              <div className={`p-1 rounded-xl transition-all ${pathname.includes("/store/offers") ? "bg-purple-100" : ""}`}>
+              <div className={`p-1 rounded-xl transition-all ${pathname.includes("/store/products") ? "bg-purple-100" : ""}`}>
                 <LayoutGrid className="w-5 h-5" />
               </div>
-              <span className="text-[10px] mt-0.5">Offers</span>
+              <span className="text-[10px] mt-0.5">Catalog</span>
             </Link>
 
             {/* Tab 3: Search */}

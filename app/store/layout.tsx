@@ -37,7 +37,12 @@ export default async function StoreLayout({
 
   try {
     const [{ data: cats }, { data: sh }] = await Promise.all([
-      supabase.from("categories").select("*").eq("shop_id", targetShopId).eq("is_active", true).limit(10),
+      supabase
+        .from("categories")
+        .select("*")
+        .eq("shop_id", targetShopId)
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
       supabase.from("shops").select("*").eq("id", targetShopId).maybeSingle(),
     ]);
 

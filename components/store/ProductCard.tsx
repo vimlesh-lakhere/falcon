@@ -18,16 +18,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   shopPhone = "919876543210",
 }) => {
   const { addToCart, updateQuantity, toggleWishlist, isInWishlist, cart } = useStoreCart();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const variants = React.useMemo(() => extractProductVariants(product), [product]);
   const [selectedVariant, setSelectedVariant] = React.useState<CleanVariant | null>(
     variants.length > 1 ? variants[0] : null
   );
 
-  const isFavorite = isInWishlist(product.id);
-  const cartItem = cart.find(
-    (it) => it.product.id === product.id && it.selectedVariant === selectedVariant?.size
-  );
+  const isFavorite = mounted ? isInWishlist(product.id) : false;
+  const cartItem = mounted
+    ? cart.find(
+        (it) => it.product.id === product.id && it.selectedVariant === selectedVariant?.size
+      )
+    : undefined;
 
   const onlineConfig = getProductOnlineConfig(product);
   const effectiveBasePrice = getProductEffectiveOnlinePrice(product);
