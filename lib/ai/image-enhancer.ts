@@ -527,8 +527,8 @@ export const aiImageEnhancer = {
 
   /**
    * Smart Perimeter Matting & Background Isolation Engine (<20ms, pure Canvas2D)
-   * Samples corners and borders of mobile photo, identifies tabletop/shadow/sheet background,
-   * and turns it into pure white (#FFFFFF) while strictly protecting the central product body.
+   * Eliminates store shelves, counters, and tables using multi-border gradient flood and boundary detection.
+   * Isolates products cleanly on 100% pure white (#FFFFFF) while strictly preserving product body and text.
    */
   smartWhiteMatting(img: HTMLImageElement | HTMLCanvasElement): HTMLCanvasElement {
     const w = "naturalWidth" in img ? img.naturalWidth || img.width : img.width;
@@ -556,84 +556,44 @@ export const aiImageEnhancer = {
       return canvas;
     }
 
-    // 1. Sample 4 corner zones to detect background color profile
-    const cornerW = Math.max(6, Math.floor(w * 0.12));
-    const cornerH = Math.max(6, Math.floor(h * 0.12));
-    const samples: [number, number, number][] = [];
-
-    const sampleCorner = (startX: number, endX: number, startY: number, endY: number) => {
-      for (let y = startY; y < endY; y += 3) {
-        for (let x = startX; x < endX; x += 3) {
-          const idx = (y * w + x) * 4;
-          samples.push([data[idx], data[idx + 1], data[idx + 2]]);
-        }
-      }
-    };
-
-    sampleCorner(0, cornerW, 0, cornerH);
-    sampleCorner(w - cornerW, w, 0, cornerH);
-    sampleCorner(0, cornerW, h - cornerH, h);
-    sampleCorner(w - cornerW, w, h - cornerH, h);
-
-    if (samples.length === 0) return canvas;
-
-    // Median background RGB
-    const sortedR = samples.map((s) => s[0]).sort((a, b) => a - b);
-    const sortedG = samples.map((s) => s[1]).sort((a, b) => a - b);
-    const sortedB = samples.map((s) => s[2]).sort((a, b) => a - b);
-    const mid = Math.floor(samples.length / 2);
-    const bgR = sortedR[mid];
-    const bgG = sortedG[mid];
-    const bgB = sortedB[mid];
-
-    // Compute average deviation around median
-    let diffSum = 0;
-    for (const [r, g, b] of samples) {
-      diffSum += Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
-    }
-    const avgDev = diffSum / samples.length;
-    // Adaptive tolerance: handles shadows and tabletop variations
-    const tolerance = Math.max(22, Math.min(65, avgDev * 1.6));
-
-    // 2. Flood-fill from outer borders
     const mask = new Uint8Array(w * h); // 1 = background to turn pure white
     const queue: number[] = [];
 
-    // Core product safe zone: center 42% width and 48% height
-    const coreXMin = Math.floor(w * 0.29);
-    const coreXMax = Math.floor(w * 0.71);
-    const coreYMin = Math.floor(h * 0.20);
-    const coreYMax = Math.floor(h * 0.80);
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
 
-    const testSeed = (idx: number) => {
-      const p = idx * 4;
-      const r = data[p];
-      const g = data[p + 1];
-      const b = data[p + 2];
-      const d = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
-      if (d <= tolerance * 1.3) {
-        mask[idx] = 1;
-        queue.push(idx);
-      }
-    };
+    // Core product safe zone: center 36% width and 44% height (never erode inner labels or caps)
+    const coreXMin = Math.floor(w * 0.32);
+    const coreXMax = Math.floor(w * 0.68);
+    const coreYMin = Math.floor(h * 0.26);
+    const coreYMax = Math.floor(h * 0.74);
 
+    // 1. Seed all 4 outer borders (top, bottom, left, right)
     for (let x = 0; x < w; x++) {
-      testSeed(x);
-      testSeed((h - 1) * w + x);
+      mask[x] = 1;
+      queue.push(x);
+      const bIdx = (h - 1) * w + x;
+      mask[bIdx] = 1;
+      queue.push(bIdx);
     }
     for (let y = 1; y < h - 1; y++) {
-      testSeed(y * w);
-      testSeed(y * w + w - 1);
+      const lIdx = y * w;
+      mask[lIdx] = 1;
+      queue.push(lIdx);
+      const rIdx = y * w + w - 1;
+      mask[rIdx] = 1;
+      queue.push(rIdx);
     }
 
+    // 2. Neighbor-to-neighbor adaptive gradient flood fill
     let head = 0;
     while (head < queue.length) {
       const curr = queue[head++];
-      const cx = curr % w;
-      const cy = Math.floor(curr / w);
+      const px = curr % w;
+      const py = Math.floor(curr / w);
 
-      // Never flood inside core product zone
-      if (cx >= coreXMin && cx <= coreXMax && cy >= coreYMin && cy <= coreYMax) {
+      // Stop flood from entering central core product area
+      if (px >= coreXMin && px <= coreXMax && py >= coreYMin && py <= coreYMax) {
         continue;
       }
 
@@ -643,10 +603,10 @@ export const aiImageEnhancer = {
       const cB = data[currP + 2];
 
       const neighbors = [
-        cy > 0 ? curr - w : -1,
-        cy < h - 1 ? curr + w : -1,
-        cx > 0 ? curr - 1 : -1,
-        cx < w - 1 ? curr + 1 : -1,
+        py > 0 ? curr - w : -1,
+        py < h - 1 ? curr + w : -1,
+        px > 0 ? curr - 1 : -1,
+        px < w - 1 ? curr + 1 : -1,
       ];
 
       for (const n of neighbors) {
@@ -663,12 +623,9 @@ export const aiImageEnhancer = {
           const nG = data[nP + 1];
           const nB = data[nP + 2];
 
-          // Stop at high gradient boundaries (product contour)
-          const edge = Math.abs(nR - cR) + Math.abs(nG - cG) + Math.abs(nB - cB);
-          if (edge > 28) continue;
-
-          const d = Math.sqrt((nR - bgR) ** 2 + (nG - bgG) ** 2 + (nB - bgB) ** 2);
-          if (d <= tolerance * 1.15) {
+          // Stop at high gradient boundaries (product contours)
+          const diff = Math.abs(nR - cR) + Math.abs(nG - cG) + Math.abs(nB - cB);
+          if (diff < 32) {
             mask[n] = 1;
             queue.push(n);
           }
@@ -676,9 +633,91 @@ export const aiImageEnhancer = {
       }
     }
 
-    // 3. Morphological hole restoration to safeguard product body
-    for (let cy = Math.max(1, coreYMin - 15); cy < Math.min(h - 1, coreYMax + 15); cy++) {
-      for (let cx = Math.max(1, coreXMin - 15); cx < Math.min(w - 1, coreXMax + 15); cx++) {
+    // 3. Vertical ray detection to eliminate any remaining shelf clutter above product or table below
+    const rayOffsets = [-50, -30, -15, 0, 15, 30, 50];
+    const topCands: number[] = [];
+    const bottomCands: number[] = [];
+
+    for (const off of rayOffsets) {
+      const rx = Math.max(8, Math.min(w - 9, cx + off));
+      for (let y = cy; y >= 15; y--) {
+        const idx = (y * w + rx) * 4;
+        const above = ((y - 1) * w + rx) * 4;
+        const edge =
+          Math.abs(data[idx] - data[above]) +
+          Math.abs(data[idx + 1] - data[above + 1]) +
+          Math.abs(data[idx + 2] - data[above + 2]);
+        if (edge > 36 && y < cy - 50) {
+          topCands.push(y);
+          break;
+        }
+      }
+      for (let y = cy; y < h - 15; y++) {
+        const idx = (y * w + rx) * 4;
+        const below = ((y + 1) * w + rx) * 4;
+        const edge =
+          Math.abs(data[idx] - data[below]) +
+          Math.abs(data[idx + 1] - data[below + 1]) +
+          Math.abs(data[idx + 2] - data[below + 2]);
+        if (edge > 36 && y > cy + 50) {
+          bottomCands.push(y);
+          break;
+        }
+      }
+    }
+
+    const detectedTop = topCands.length > 0 ? Math.min(...topCands) : -1;
+    const detectedBottom = bottomCands.length > 0 ? Math.max(...bottomCands) : -1;
+
+    // Direct clean: if shelf clutter above detectedTop was missed by flood, mark it
+    if (detectedTop > 10 && detectedTop < cy - 60) {
+      for (let y = 0; y < detectedTop - 3; y++) {
+        for (let x = 0; x < w; x++) {
+          mask[y * w + x] = 1;
+        }
+      }
+    }
+    // Direct clean: if desk/table below detectedBottom was missed by flood, mark it
+    if (detectedBottom > cy + 60 && detectedBottom < h - 10) {
+      for (let y = detectedBottom + 3; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          mask[y * w + x] = 1;
+        }
+      }
+    }
+
+    // 4. Inward row sweep for lateral background outside the product
+    const sweepTop = detectedTop > 10 ? detectedTop : Math.floor(h * 0.08);
+    const sweepBottom = detectedBottom > cy ? detectedBottom : Math.floor(h * 0.92);
+
+    for (let y = sweepTop; y <= sweepBottom; y++) {
+      // Left to right
+      for (let x = 0; x < cx - 20; x++) {
+        const idx = (y * w + x) * 4;
+        const next = (y * w + x + 1) * 4;
+        const edge =
+          Math.abs(data[idx] - data[next]) +
+          Math.abs(data[idx + 1] - data[next + 1]) +
+          Math.abs(data[idx + 2] - data[next + 2]);
+        mask[y * w + x] = 1;
+        if (edge > 28 && x > 10) break;
+      }
+      // Right to left
+      for (let x = w - 1; x > cx + 20; x--) {
+        const idx = (y * w + x) * 4;
+        const prev = (y * w + x - 1) * 4;
+        const edge =
+          Math.abs(data[idx] - data[prev]) +
+          Math.abs(data[idx + 1] - data[prev + 1]) +
+          Math.abs(data[idx + 2] - data[prev + 2]);
+        mask[y * w + x] = 1;
+        if (edge > 28 && x < w - 11) break;
+      }
+    }
+
+    // 5. Morphological hole restoration: protect product internal text/logos
+    for (let cy = Math.max(1, coreYMin - 20); cy < Math.min(h - 1, coreYMax + 20); cy++) {
+      for (let cx = Math.max(1, coreXMin - 20); cx < Math.min(w - 1, coreXMax + 20); cx++) {
         const idx = cy * w + cx;
         if (mask[idx] === 1) {
           const leftProd = mask[idx - 1] === 0 || mask[idx - 2] === 0;
@@ -692,46 +731,29 @@ export const aiImageEnhancer = {
       }
     }
 
-    // 4. Apply pure white (#FFFFFF) and transparent alpha to background
-    // Also smooth vignette the outer 8% margins
-    const marginX = Math.floor(w * 0.08);
-    const marginY = Math.floor(h * 0.08);
-
+    // 6. Apply pure white (#FFFFFF) and transparent alpha to background with soft edge feathering
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const idx = y * w + x;
         const p = idx * 4;
 
         if (mask[idx] === 1) {
-          // Connected background: turn pure white and transparent
           data[p] = 255;
           data[p + 1] = 255;
           data[p + 2] = 255;
-          data[p + 3] = 0;
+          data[p + 3] = 0; // Transparent on working canvas
         } else {
-          // Check if adjacent to background for soft anti-aliased edge
-          const isNearBg =
+          // Anti-aliased outer edge smoothing
+          const isEdge =
             (x > 0 && mask[idx - 1] === 1) ||
             (x < w - 1 && mask[idx + 1] === 1) ||
             (y > 0 && mask[idx - w] === 1) ||
             (y < h - 1 && mask[idx + w] === 1);
 
-          if (isNearBg) {
-            data[p] = Math.round(data[p] * 0.85 + 255 * 0.15);
-            data[p + 1] = Math.round(data[p + 1] * 0.85 + 255 * 0.15);
-            data[p + 2] = Math.round(data[p + 2] * 0.85 + 255 * 0.15);
-          } else if (
-            (x < marginX || x >= w - marginX || y < marginY || y >= h - marginY) &&
-            !(x >= coreXMin && x <= coreXMax && y >= coreYMin && y <= coreYMax)
-          ) {
-            const distFromEdge = Math.min(x, w - 1 - x, y, h - 1 - y);
-            const edgeFade = Math.max(0, Math.min(1, distFromEdge / Math.min(marginX, marginY)));
-            if (edgeFade < 0.6) {
-              const whiteRatio = 1 - edgeFade;
-              data[p] = Math.round(data[p] * (1 - whiteRatio) + 255 * whiteRatio);
-              data[p + 1] = Math.round(data[p + 1] * (1 - whiteRatio) + 255 * whiteRatio);
-              data[p + 2] = Math.round(data[p + 2] * (1 - whiteRatio) + 255 * whiteRatio);
-            }
+          if (isEdge) {
+            data[p] = Math.round(data[p] * 0.88 + 255 * 0.12);
+            data[p + 1] = Math.round(data[p + 1] * 0.88 + 255 * 0.12);
+            data[p + 2] = Math.round(data[p + 2] * 0.88 + 255 * 0.12);
           }
         }
       }
@@ -797,6 +819,23 @@ export const aiImageEnhancer = {
       }
       const drawX = (targetSize - drawW) / 2;
       const drawY = (targetSize - drawH) / 2;
+
+      // Subtle Studio Ground Contact Shadow (realistic grounding)
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(
+        targetSize / 2,
+        drawY + drawH + 2,
+        drawW * 0.42,
+        8,
+        0,
+        0,
+        2 * Math.PI
+      );
+      ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+      ctx.filter = "blur(6px)";
+      ctx.fill();
+      ctx.restore();
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
