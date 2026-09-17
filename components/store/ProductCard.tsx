@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
-import { Heart, MessageCircle, Plus, Check } from "lucide-react";
+import { Heart, MessageCircle, Plus, Minus, Check } from "lucide-react";
 import { Product } from "@/types/database";
 import { useStoreCart } from "@/store/useStoreCart";
 import { extractProductVariants, CleanVariant } from "@/lib/product-variants";
@@ -17,7 +17,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   product,
   shopPhone = "919876543210",
 }) => {
-  const { addToCart, toggleWishlist, isInWishlist, cart } = useStoreCart();
+  const { addToCart, updateQuantity, toggleWishlist, isInWishlist, cart } = useStoreCart();
 
   const variants = React.useMemo(() => extractProductVariants(product), [product]);
   const [selectedVariant, setSelectedVariant] = React.useState<CleanVariant | null>(
@@ -128,12 +128,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       </div>
 
       {/* Product Image Area */}
-      <Link href={`/store/product/${product.id}`} className="block relative bg-gray-50 aspect-square overflow-hidden">
+      <Link href={`/store/product/${product.id}`} className="block relative bg-white aspect-square overflow-hidden border-b border-gray-50">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={displayImage}
           alt={product.name}
-          className="w-full h-full object-contain p-3 group-hover:scale-105 transition-all duration-300"
+          className="w-full h-full object-contain p-2.5 group-hover:scale-105 transition-all duration-300"
           loading="lazy"
           decoding="async"
         />
@@ -156,8 +156,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <div>
           {/* Brand & Category */}
           <div className="flex items-center justify-between text-[10px] text-gray-500 font-semibold mb-0.5">
-            <span className="text-purple-700 uppercase tracking-wider">{product.brand || "Authentic"}</span>
-            <span>{product.category?.name || "General"}</span>
+            <span className="text-purple-700 uppercase tracking-wider font-bold">{product.brand || "Authentic"}</span>
+            <span className="truncate max-w-[90px]">{product.category?.name || "General"}</span>
           </div>
 
           {/* Title */}
@@ -235,29 +235,48 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           )}
 
           <div className="grid grid-cols-2 gap-1.5">
-            {/* 1-Tap Add to Cart */}
-            <button
-              type="button"
-              disabled={isOutOfStock}
-              onClick={handleAddToCart}
-              className={`w-full flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 ${
-                cartItem
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100"
-                  : "bg-purple-600 hover:bg-purple-700 text-white"
-              } disabled:opacity-50 disabled:pointer-events-none`}
-            >
-              {cartItem ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>({cartItem.quantity}) Added</span>
-                </>
-              ) : (
-                <>
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add</span>
-                </>
-              )}
-            </button>
+            {/* Interactive 1-Tap Cart Button or Direct Stepper */}
+            {cartItem ? (
+              <div className="w-full flex items-center justify-between bg-purple-50 border border-purple-300 rounded-xl p-0.5 text-purple-900 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    updateQuantity(product.id, cartItem.quantity - 1);
+                  }}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-white hover:bg-purple-100 text-purple-800 font-black shadow-xs transition-transform active:scale-90"
+                  title="Reduce quantity"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <span className="text-xs font-black px-1 tabular-nums">
+                  {cartItem.quantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    updateQuantity(product.id, cartItem.quantity + 1);
+                  }}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-black shadow-xs transition-transform active:scale-90"
+                  title="Increase quantity"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={isOutOfStock}
+                onClick={handleAddToCart}
+                className="w-full flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white transition-all shadow-xs active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
+            )}
 
             {/* Quick WhatsApp Order */}
             <button

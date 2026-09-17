@@ -41,7 +41,7 @@ export const CartDrawer: React.FC = () => {
         onClick={() => setIsCartOpen(false)}
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10">
         <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col">
           {/* Header */}
           <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-purple-900 text-white">
@@ -54,7 +54,7 @@ export const CartDrawer: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsCartOpen(false)}
-              className="p-1 rounded-lg text-purple-200 hover:text-white hover:bg-purple-800 transition-colors"
+              className="p-1.5 rounded-lg text-purple-200 hover:text-white hover:bg-purple-800 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -142,25 +142,27 @@ export const CartDrawer: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Quantity Modifier */}
+                      {/* Quantity Modifier with Touch-Friendly Steppers */}
                       <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
+                        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5 shadow-2xs">
                           <button
                             type="button"
                             onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                            className="w-6 h-6 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-md"
+                            className="w-7 h-7 flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-purple-100 rounded-md transition-colors"
+                            title="Reduce quantity"
                           >
-                            <Minus className="w-3 h-3" />
+                            <Minus className="w-3.5 h-3.5" />
                           </button>
-                          <span className="text-xs font-bold px-2 text-gray-900">
+                          <span className="text-xs font-black px-2 text-gray-900 min-w-[20px] text-center">
                             {item.quantity}
                           </span>
                           <button
                             type="button"
                             onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                            className="w-6 h-6 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-md"
+                            className="w-7 h-7 flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-purple-100 rounded-md transition-colors"
+                            title="Increase quantity"
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
@@ -171,7 +173,7 @@ export const CartDrawer: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => removeFromCart(item.product.id)}
-                            className="text-gray-400 hover:text-red-600 p-1 rounded-md transition-colors"
+                            className="text-gray-400 hover:text-red-600 p-1.5 rounded-md transition-colors"
                             title="Remove item"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -185,9 +187,9 @@ export const CartDrawer: React.FC = () => {
             )}
           </div>
 
-          {/* Footer & Checkout CTA */}
+          {/* Footer & Checkout CTA with iOS Safe Area Padding */}
           {cart.length > 0 && (
-            <div className="p-4 border-t border-gray-100 bg-gray-50 space-y-3">
+            <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-gray-100 bg-gray-50 space-y-3">
               {totalSavings > 0 && (
                 <div className="flex items-center justify-between text-xs text-emerald-700 font-bold bg-emerald-100/70 px-3 py-1.5 rounded-xl">
                   <span>🎉 Your Total Savings:</span>

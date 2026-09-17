@@ -225,6 +225,22 @@ export default function StoreCartPage() {
           </div>
         </div>
       </div>
+
+      {/* Mobile Sticky Checkout Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200/90 shadow-[0_-4px_25px_rgba(0,0,0,0.12)] px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex items-center justify-between gap-4">
+        <div>
+          <div className="text-[11px] text-gray-500 font-semibold leading-none">Total Amount</div>
+          <div className="text-lg font-black text-purple-700 leading-tight">₹{subtotal}</div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => router.push("/store/checkout")}
+          className="flex-1 max-w-xs py-3 px-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+        >
+          <span>Checkout &rarr;</span>
+        </button>
+      </div>
     </div>
   );
 }

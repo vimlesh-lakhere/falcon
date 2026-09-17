@@ -5,6 +5,8 @@ import { CartDrawer } from "@/components/store/CartDrawer";
 import { createClient } from "@/lib/supabase/client";
 import { cookies, headers } from "next/headers";
 
+import { MobileStoreBottomNav } from "@/components/store/MobileStoreBottomNav";
+
 export const metadata = {
   title: "Online Store & Catalog | Falcon 360",
   description: "Shop quality products with convenient local delivery and direct WhatsApp ordering.",
@@ -55,13 +57,16 @@ export default async function StoreLayout({
       <StoreHeader categories={categories} shopName={shopName} shopPhone={shopPhone} />
 
       {/* Main Store Viewport */}
-      <main className="flex-1 pb-16">{children}</main>
+      <main className="flex-1 pb-24 sm:pb-16">{children}</main>
 
       {/* Customer Footer */}
       <StoreFooter shopName={shopName} shopPhone={shopPhone} shopAddress={shopAddress} />
 
       {/* Slide-over Cart Drawer */}
       <CartDrawer />
+
+      {/* Mobile Fixed Bottom Navigation */}
+      <MobileStoreBottomNav />
     </div>
   );
 }

@@ -50,6 +50,7 @@ export default function StoreCheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "upi">("upi");
   const [upiReference, setUpiReference] = useState("");
   const [hasCopiedUpi, setHasCopiedUpi] = useState(false);
+  const [showMobileQr, setShowMobileQr] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [foundExistingCustomer, setFoundExistingCustomer] = useState(false);
@@ -187,7 +188,7 @@ export default function StoreCheckoutPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 pb-28 lg:pb-8 space-y-6">
       {/* Back Link */}
       <Link
         href="/store/cart"
@@ -469,7 +470,7 @@ export default function StoreCheckoutPage() {
 
             {/* UPI Dynamic QR Code & 1-Tap Mobile Actions */}
             {paymentMethod === "upi" && (
-              <div className="mt-4 bg-gray-950 text-white rounded-3xl p-5 sm:p-6 space-y-5 border border-gray-800 shadow-xl animate-in fade-in slide-in-from-top-2">
+              <div className="mt-4 bg-gray-950 text-white rounded-3xl p-5 sm:p-6 space-y-4 border border-gray-800 shadow-xl animate-in fade-in slide-in-from-top-2">
                 {/* PNB & PhonePe Header */}
                 <div className="flex items-center justify-between border-b border-gray-800 pb-3">
                   <div className="flex items-center gap-2.5">
@@ -488,70 +489,10 @@ export default function StoreCheckoutPage() {
                   </span>
                 </div>
 
-                {/* QR Code + Scan Instruction */}
-                <div className="flex flex-col sm:flex-row items-center gap-6 justify-center text-center sm:text-left">
-                  {/* Dynamic Auto-Fill QR Code */}
-                  <div className="bg-white p-3 rounded-2xl shadow-lg shrink-0 relative group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={qrCodeUrl}
-                      alt="UPI Payment QR Code"
-                      width={240}
-                      height={240}
-                      className="w-56 h-56 sm:w-60 sm:h-60 rounded-xl object-contain mx-auto"
-                    />
-                    <div className="mt-1.5 text-center">
-                      <span className="text-[9px] font-black text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                        ₹{subtotal} AUTO-FILLED
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* QR Details and Copy UPI */}
-                  <div className="space-y-3 max-w-xs">
-                    <div>
-                      <h4 className="text-xs font-black text-white uppercase tracking-wider text-purple-300">
-                        Scan with Any UPI App
-                      </h4>
-                      <p className="text-[11px] text-gray-400 mt-1 leading-snug">
-                        QR scan karte hi aapke <strong>PhonePe, GPay, Paytm</strong> app me{" "}
-                        <span className="text-amber-300 font-bold">₹{subtotal}</span> amount apne aap bhar jayega.
-                      </p>
-                    </div>
-
-                    {/* Copy UPI ID */}
-                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl space-y-1">
-                      <div className="text-[10px] text-gray-400 font-semibold">Store UPI ID:</div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs font-bold text-white tracking-wide">
-                          {STORE_UPI_ID}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={copyUpiId}
-                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                        >
-                          {hasCopiedUpi ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-300" />
-                              <span>Copied</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              <span>Copy</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Mobile 1-Tap Direct UPI App Launch Buttons */}
-                <div className="pt-2 border-t border-gray-800 space-y-2">
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">
-                    📱 Ordering on Mobile? Tap App to Pay Directly:
+                {/* 1. Mobile 1-Tap Direct UPI App Launch Buttons (Top on mobile) */}
+                <div className="space-y-2">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center sm:text-left">
+                    ⚡ 1-Tap Direct Payment on Mobile:
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <a
@@ -585,6 +526,74 @@ export default function StoreCheckoutPage() {
                   </div>
                 </div>
 
+                {/* 2. Copy UPI ID */}
+                <div className="p-3 bg-gray-900 border border-gray-800 rounded-2xl flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] text-gray-400 font-semibold">UPI ID:</div>
+                    <span className="font-mono text-xs font-bold text-white tracking-wide">
+                      {STORE_UPI_ID}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyUpiId}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                  >
+                    {hasCopiedUpi ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-300" />
+                        <span>Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy ID</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* 3. Collapsible QR Code Toggle for Mobile (Always visible on Desktop) */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileQr(!showMobileQr)}
+                    className="sm:hidden w-full py-2 px-3 rounded-xl bg-gray-900 hover:bg-gray-850 border border-gray-800 text-[11px] font-bold text-purple-300 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <QrCode className="w-3.5 h-3.5 text-purple-400" />
+                    <span>{showMobileQr ? "Hide QR Code ▲" : "Paying from another phone? Show QR Code ▼"}</span>
+                  </button>
+
+                  <div className={`mt-3 flex flex-col sm:flex-row items-center gap-5 justify-center text-center sm:text-left ${showMobileQr ? "flex" : "hidden sm:flex"}`}>
+                    {/* Auto-Fill QR Code */}
+                    <div className="bg-white p-3 rounded-2xl shadow-lg shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={qrCodeUrl}
+                        alt="UPI Payment QR Code"
+                        width={200}
+                        height={200}
+                        className="w-48 h-48 sm:w-52 sm:h-52 rounded-xl object-contain mx-auto"
+                      />
+                      <div className="mt-1 text-center">
+                        <span className="text-[9px] font-black text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          ₹{subtotal} AUTO-FILLED
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 max-w-xs">
+                      <h4 className="text-xs font-black text-white uppercase tracking-wider text-purple-300">
+                        Scan from Any UPI App
+                      </h4>
+                      <p className="text-[11px] text-gray-400 leading-snug">
+                        Dusre phone se scan karte hi <strong>PhonePe, GPay, Paytm</strong> me{" "}
+                        <span className="text-amber-300 font-bold">₹{subtotal}</span> auto-fill ho jayega.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Optional UPI UTR / Reference ID Field */}
                 <div className="pt-2 border-t border-gray-800 space-y-1.5">
                   <label className="text-[11px] font-semibold text-gray-400 flex items-center justify-between">
@@ -597,7 +606,7 @@ export default function StoreCheckoutPage() {
                     placeholder="e.g. 423871928392"
                     value={upiReference}
                     onChange={(e) => setUpiReference(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-600 font-mono focus:outline-none focus:border-purple-500"
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
@@ -675,6 +684,28 @@ export default function StoreCheckoutPage() {
           <p className="text-[10px] text-center text-gray-400">
             By placing this order, you confirm local doorstep dispatch to your village/town.
           </p>
+        </div>
+
+        {/* Mobile Sticky Floating Order Confirmation CTA */}
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200/90 shadow-[0_-4px_25px_rgba(0,0,0,0.15)] px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[10px] text-gray-500 font-semibold leading-none">Total to Pay</div>
+            <div className="text-base font-black text-purple-700 leading-tight">₹{subtotal}</div>
+          </div>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex-1 max-w-xs py-3 px-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-50"
+          >
+            {submitting ? (
+              <span>Placing Order...</span>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirm Order (₹{subtotal})</span>
+              </>
+            )}
+          </button>
         </div>
       </form>
 

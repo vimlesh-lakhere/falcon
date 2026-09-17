@@ -54,6 +54,7 @@ const BANNERS: BannerSlide[] = [
 
 export const HeroBannerCarousel: React.FC = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -62,10 +63,33 @@ export const HeroBannerCarousel: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchStartX - touchEndX;
+
+    if (diff > 45) {
+      // Swiped left -> next
+      setCurrentSlide((prev) => (prev + 1) % BANNERS.length);
+    } else if (diff < -45) {
+      // Swiped right -> prev
+      setCurrentSlide((prev) => (prev - 1 + BANNERS.length) % BANNERS.length);
+    }
+    setTouchStartX(null);
+  };
+
   const slide = BANNERS[currentSlide];
 
   return (
-    <div className="relative rounded-3xl overflow-hidden shadow-xl">
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      className="relative rounded-3xl overflow-hidden shadow-xl select-none"
+    >
       <div
         className={`bg-gradient-to-r ${slide.bgGradient} text-white p-6 sm:p-10 transition-all duration-700 min-h-[260px] sm:min-h-[300px] flex flex-col justify-between relative`}
       >

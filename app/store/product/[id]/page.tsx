@@ -531,7 +531,8 @@ export default function ProductDetailPage() {
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Desktop Table View */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50 border-b border-gray-100 text-gray-500 font-bold text-[11px]">
                     <tr>
@@ -615,6 +616,69 @@ export default function ProductDetailPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Thumb-Friendly Cards View */}
+              <div className="sm:hidden p-3 space-y-2 bg-gray-50/50">
+                {variants.map((v) => {
+                  const isSelected = selectedVariant?.id === v.id;
+                  const vSavings = v.mrp > v.price ? v.mrp - v.price : 0;
+                  const vDiscount = v.mrp > v.price ? Math.round(((v.mrp - v.price) / v.mrp) * 100) : 0;
+                  const isVarOut = (v.stock ?? 10) <= 0;
+
+                  return (
+                    <div
+                      key={v.id}
+                      onClick={() => setSelectedVariant(v)}
+                      className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-2.5 cursor-pointer ${
+                        isSelected
+                          ? "border-purple-600 bg-purple-50/90 shadow-2xs"
+                          : "border-gray-200 bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                            isSelected ? "bg-purple-600 ring-2 ring-purple-300" : "bg-gray-300"
+                          }`}
+                        />
+                        <div>
+                          <div className="text-xs font-black text-gray-900 leading-tight">
+                            {v.size}
+                          </div>
+                          <div className="flex items-baseline gap-1.5 mt-0.5">
+                            <span className="text-sm font-black text-purple-700">₹{v.price}</span>
+                            {v.mrp > v.price && (
+                              <span className="text-[11px] text-gray-400 line-through">₹{v.mrp}</span>
+                            )}
+                            {vSavings > 0 && (
+                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-1 py-0.2 rounded">
+                                Save ₹{vSavings}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isVarOut}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedVariant(v);
+                          handleAddToCartWithVariant(1);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
+                          isSelected
+                            ? "bg-purple-600 text-white shadow-2xs"
+                            : "bg-gray-100 text-gray-800 hover:bg-purple-100"
+                        }`}
+                      >
+                        {isVarOut ? "Sold Out" : isSelected ? "✓ Selected" : "Select"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -642,6 +706,39 @@ export default function ProductDetailPage() {
           </div>
         </section>
       )}
+
+      {/* Mobile Sticky Bottom Buy Action Bar */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-gray-200/90 shadow-[0_-4px_25px_rgba(0,0,0,0.12)] px-4 py-2.5 pb-[calc(0.6rem+env(safe-area-inset-bottom))] flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-base font-black text-gray-900 leading-tight">₹{price}</span>
+            {mrp > price && <span className="text-xs text-gray-400 line-through">₹{mrp}</span>}
+          </div>
+          <div className="text-[10px] text-emerald-700 font-bold leading-tight truncate">
+            {savings > 0 ? `Save ₹${savings} (${discountPercent}% OFF)` : "Free Local Dispatch"}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={isOutOfStock}
+            onClick={() => handleAddToCartWithVariant(quantity)}
+            className="px-3.5 py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-950 font-bold text-xs active:scale-95 transition-transform disabled:opacity-50"
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            disabled={isOutOfStock}
+            onClick={handleBuyNow}
+            className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-md shadow-purple-600/30 flex items-center gap-1 active:scale-95 transition-transform disabled:opacity-50"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-300" />
+            <span>Buy Now</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

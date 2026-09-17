@@ -41,10 +41,16 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const { cart, wishlist, setIsCartOpen, getCartTotal, customerUser, loginCustomer, logoutCustomer } = useStoreCart();
 
   useEffect(() => {
     setMounted(true);
+
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 30);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
 
     // Auto-detect Supabase Auth session (e.g. Google Sign-In)
     try {
@@ -65,6 +71,8 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
     } catch {
       // Non-blocking
     }
+
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const { itemCount, subtotal } = getCartTotal();
@@ -77,9 +85,13 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-2xs">
-      {/* Top Announcement Bar for Town/Village Delivery */}
-      <div className="bg-gradient-to-r from-purple-700 via-indigo-700 to-brand-700 text-white text-[11px] font-semibold py-1.5 px-4 text-center flex items-center justify-between">
+    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-2xs transition-all duration-200">
+      {/* Top Announcement Bar for Town/Village Delivery (Collapses on mobile on scroll) */}
+      <div
+        className={`bg-gradient-to-r from-purple-700 via-indigo-700 to-brand-700 text-white text-[11px] font-semibold py-1.5 px-4 text-center items-center justify-between transition-all duration-300 ${
+          isScrolled ? "hidden sm:flex" : "flex"
+        }`}
+      >
         <div className="hidden sm:block">
           📍 Fast Delivery in Local Town & Surrounding Villages • Pay on Delivery (Cash/UPI)
         </div>
@@ -104,20 +116,20 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
       </div>
 
       {/* Main Header Bar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+      <div className={`max-w-7xl mx-auto px-4 sm:px-6 transition-all duration-200 ${isScrolled ? "py-2 sm:py-3" : "py-2.5 sm:py-3"}`}>
         <div className="flex items-center justify-between gap-4">
           {/* Logo & Store Name */}
           <Link href="/store" className="flex items-center gap-2.5 shrink-0 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
-              <Store className="w-5 h-5" />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
+              <Store className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-black text-base sm:text-lg tracking-tight text-gray-900 leading-none">
+                <span className="font-black text-sm sm:text-lg tracking-tight text-gray-900 leading-none">
                   {shopName}
                 </span>
               </div>
-              <p className="text-[10px] font-semibold text-purple-700 uppercase tracking-wider">
+              <p className="text-[9px] sm:text-[10px] font-semibold text-purple-700 uppercase tracking-wider">
                 Beauty • Cosmetics • Daily Needs
               </p>
             </div>
@@ -273,32 +285,36 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
         </form>
       </div>
 
-      {/* Category Pills Strip */}
-      <div className="border-t border-gray-100 bg-gray-50/70 overflow-x-auto scrollbar-none py-2 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto flex items-center gap-2 min-w-max">
-          <Link
-            href="/store"
-            className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 shrink-0 hover:bg-purple-200 transition-colors"
-          >
-            🔥 All Products
-          </Link>
-          <Link
-            href="/store/offers"
-            className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0 hover:bg-amber-200 transition-colors flex items-center gap-1"
-          >
-            <Tag className="w-3 h-3 text-amber-700" />
-            Today&apos;s Offers
-          </Link>
-          {categories.map((cat) => (
+      {/* Category Pills Strip with mobile scroll fade cue */}
+      <div className="relative border-t border-gray-100 bg-gray-50/70">
+        <div className="overflow-x-auto scrollbar-none py-2 px-4 sm:px-6">
+          <div className="max-w-7xl mx-auto flex items-center gap-2 min-w-max pr-6">
             <Link
-              key={cat.id}
-              href={`/store/category/${cat.id}`}
-              className="px-3 py-1 rounded-full text-xs font-semibold bg-white text-gray-700 border border-gray-200 hover:border-purple-300 hover:text-purple-700 shrink-0 transition-colors"
+              href="/store"
+              className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 shrink-0 hover:bg-purple-200 transition-colors"
             >
-              {cat.name}
+              🔥 All Products
             </Link>
-          ))}
+            <Link
+              href="/store/offers"
+              className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0 hover:bg-amber-200 transition-colors flex items-center gap-1"
+            >
+              <Tag className="w-3 h-3 text-amber-700" />
+              Today&apos;s Offers
+            </Link>
+            {categories.map((cat) => (
+              <Link
+                key={cat.id}
+                href={`/store/category/${cat.id}`}
+                className="px-3 py-1 rounded-full text-xs font-semibold bg-white text-gray-700 border border-gray-200 hover:border-purple-300 hover:text-purple-700 shrink-0 transition-colors"
+              >
+                {cat.name}
+              </Link>
+            ))}
+          </div>
         </div>
+        {/* Subtle Right Fade Gradient to signal horizontal scroll */}
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-gray-50 via-gray-50/80 to-transparent sm:hidden" />
       </div>
 
       {/* Mobile Drawer Menu */}
