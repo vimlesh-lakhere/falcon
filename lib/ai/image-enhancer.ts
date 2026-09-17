@@ -70,8 +70,9 @@ export const aiImageEnhancer = {
     // 3. Load image and isolate center product bottle
     const rawImg = await this.loadImage(processedImgSrc);
 
-    // 4. Auto-Crop to Content Bounding Box (or smart center isolate if still opaque)
-    const croppedProductCanvas = this.cropToBoundingBox(rawImg);
+    // 4. Auto-Crop to Content Bounding Box with Smart White Matting
+    const mattedCanvas = this.smartWhiteMatting(rawImg);
+    const croppedProductCanvas = this.cropToBoundingBox(mattedCanvas as any);
 
     // 5. Apply Surface Clean-up, Color Restoration, & Blemish Polish on Product
     const polishedProductCanvas = this.polishProductSurface(croppedProductCanvas, {
@@ -525,6 +526,222 @@ export const aiImageEnhancer = {
   },
 
   /**
+   * Smart Perimeter Matting & Background Isolation Engine (<20ms, pure Canvas2D)
+   * Samples corners and borders of mobile photo, identifies tabletop/shadow/sheet background,
+   * and turns it into pure white (#FFFFFF) while strictly protecting the central product body.
+   */
+  smartWhiteMatting(img: HTMLImageElement | HTMLCanvasElement): HTMLCanvasElement {
+    const w = "naturalWidth" in img ? img.naturalWidth || img.width : img.width;
+    const h = "naturalHeight" in img ? img.naturalHeight || img.height : img.height;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return canvas;
+
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    // Check if image already has transparency
+    let hasTransparency = false;
+    for (let i = 3; i < data.length; i += 20) {
+      if (data[i] < 220) {
+        hasTransparency = true;
+        break;
+      }
+    }
+    if (hasTransparency) {
+      return canvas;
+    }
+
+    // 1. Sample 4 corner zones to detect background color profile
+    const cornerW = Math.max(6, Math.floor(w * 0.12));
+    const cornerH = Math.max(6, Math.floor(h * 0.12));
+    const samples: [number, number, number][] = [];
+
+    const sampleCorner = (startX: number, endX: number, startY: number, endY: number) => {
+      for (let y = startY; y < endY; y += 3) {
+        for (let x = startX; x < endX; x += 3) {
+          const idx = (y * w + x) * 4;
+          samples.push([data[idx], data[idx + 1], data[idx + 2]]);
+        }
+      }
+    };
+
+    sampleCorner(0, cornerW, 0, cornerH);
+    sampleCorner(w - cornerW, w, 0, cornerH);
+    sampleCorner(0, cornerW, h - cornerH, h);
+    sampleCorner(w - cornerW, w, h - cornerH, h);
+
+    if (samples.length === 0) return canvas;
+
+    // Median background RGB
+    const sortedR = samples.map((s) => s[0]).sort((a, b) => a - b);
+    const sortedG = samples.map((s) => s[1]).sort((a, b) => a - b);
+    const sortedB = samples.map((s) => s[2]).sort((a, b) => a - b);
+    const mid = Math.floor(samples.length / 2);
+    const bgR = sortedR[mid];
+    const bgG = sortedG[mid];
+    const bgB = sortedB[mid];
+
+    // Compute average deviation around median
+    let diffSum = 0;
+    for (const [r, g, b] of samples) {
+      diffSum += Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
+    }
+    const avgDev = diffSum / samples.length;
+    // Adaptive tolerance: handles shadows and tabletop variations
+    const tolerance = Math.max(22, Math.min(65, avgDev * 1.6));
+
+    // 2. Flood-fill from outer borders
+    const mask = new Uint8Array(w * h); // 1 = background to turn pure white
+    const queue: number[] = [];
+
+    // Core product safe zone: center 42% width and 48% height
+    const coreXMin = Math.floor(w * 0.29);
+    const coreXMax = Math.floor(w * 0.71);
+    const coreYMin = Math.floor(h * 0.20);
+    const coreYMax = Math.floor(h * 0.80);
+
+    const testSeed = (idx: number) => {
+      const p = idx * 4;
+      const r = data[p];
+      const g = data[p + 1];
+      const b = data[p + 2];
+      const d = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
+      if (d <= tolerance * 1.3) {
+        mask[idx] = 1;
+        queue.push(idx);
+      }
+    };
+
+    for (let x = 0; x < w; x++) {
+      testSeed(x);
+      testSeed((h - 1) * w + x);
+    }
+    for (let y = 1; y < h - 1; y++) {
+      testSeed(y * w);
+      testSeed(y * w + w - 1);
+    }
+
+    let head = 0;
+    while (head < queue.length) {
+      const curr = queue[head++];
+      const cx = curr % w;
+      const cy = Math.floor(curr / w);
+
+      // Never flood inside core product zone
+      if (cx >= coreXMin && cx <= coreXMax && cy >= coreYMin && cy <= coreYMax) {
+        continue;
+      }
+
+      const currP = curr * 4;
+      const cR = data[currP];
+      const cG = data[currP + 1];
+      const cB = data[currP + 2];
+
+      const neighbors = [
+        cy > 0 ? curr - w : -1,
+        cy < h - 1 ? curr + w : -1,
+        cx > 0 ? curr - 1 : -1,
+        cx < w - 1 ? curr + 1 : -1,
+      ];
+
+      for (const n of neighbors) {
+        if (n !== -1 && mask[n] === 0) {
+          const nx = n % w;
+          const ny = Math.floor(n / w);
+
+          if (nx >= coreXMin && nx <= coreXMax && ny >= coreYMin && ny <= coreYMax) {
+            continue;
+          }
+
+          const nP = n * 4;
+          const nR = data[nP];
+          const nG = data[nP + 1];
+          const nB = data[nP + 2];
+
+          // Stop at high gradient boundaries (product contour)
+          const edge = Math.abs(nR - cR) + Math.abs(nG - cG) + Math.abs(nB - cB);
+          if (edge > 28) continue;
+
+          const d = Math.sqrt((nR - bgR) ** 2 + (nG - bgG) ** 2 + (nB - bgB) ** 2);
+          if (d <= tolerance * 1.15) {
+            mask[n] = 1;
+            queue.push(n);
+          }
+        }
+      }
+    }
+
+    // 3. Morphological hole restoration to safeguard product body
+    for (let cy = Math.max(1, coreYMin - 15); cy < Math.min(h - 1, coreYMax + 15); cy++) {
+      for (let cx = Math.max(1, coreXMin - 15); cx < Math.min(w - 1, coreXMax + 15); cx++) {
+        const idx = cy * w + cx;
+        if (mask[idx] === 1) {
+          const leftProd = mask[idx - 1] === 0 || mask[idx - 2] === 0;
+          const rightProd = mask[idx + 1] === 0 || mask[idx + 2] === 0;
+          const topProd = mask[idx - w] === 0 || mask[idx - w * 2] === 0;
+          const bottomProd = mask[idx + w] === 0 || mask[idx + w * 2] === 0;
+          if ((leftProd && rightProd) || (topProd && bottomProd)) {
+            mask[idx] = 0;
+          }
+        }
+      }
+    }
+
+    // 4. Apply pure white (#FFFFFF) and transparent alpha to background
+    // Also smooth vignette the outer 8% margins
+    const marginX = Math.floor(w * 0.08);
+    const marginY = Math.floor(h * 0.08);
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x;
+        const p = idx * 4;
+
+        if (mask[idx] === 1) {
+          // Connected background: turn pure white and transparent
+          data[p] = 255;
+          data[p + 1] = 255;
+          data[p + 2] = 255;
+          data[p + 3] = 0;
+        } else {
+          // Check if adjacent to background for soft anti-aliased edge
+          const isNearBg =
+            (x > 0 && mask[idx - 1] === 1) ||
+            (x < w - 1 && mask[idx + 1] === 1) ||
+            (y > 0 && mask[idx - w] === 1) ||
+            (y < h - 1 && mask[idx + w] === 1);
+
+          if (isNearBg) {
+            data[p] = Math.round(data[p] * 0.85 + 255 * 0.15);
+            data[p + 1] = Math.round(data[p + 1] * 0.85 + 255 * 0.15);
+            data[p + 2] = Math.round(data[p + 2] * 0.85 + 255 * 0.15);
+          } else if (
+            (x < marginX || x >= w - marginX || y < marginY || y >= h - marginY) &&
+            !(x >= coreXMin && x <= coreXMax && y >= coreYMin && y <= coreYMax)
+          ) {
+            const distFromEdge = Math.min(x, w - 1 - x, y, h - 1 - y);
+            const edgeFade = Math.max(0, Math.min(1, distFromEdge / Math.min(marginX, marginY)));
+            if (edgeFade < 0.6) {
+              const whiteRatio = 1 - edgeFade;
+              data[p] = Math.round(data[p] * (1 - whiteRatio) + 255 * whiteRatio);
+              data[p + 1] = Math.round(data[p + 1] * (1 - whiteRatio) + 255 * whiteRatio);
+              data[p + 2] = Math.round(data[p + 2] * (1 - whiteRatio) + 255 * whiteRatio);
+            }
+          }
+        }
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
+  },
+
+  /**
    * Ultra-Fast Pure White E-Commerce Stager (<25ms, Zero Lag on Mobile)
    * Centers the product on a 1080x1080 pure white canvas (#FFFFFF)
    * Enhances lighting, vibrancy, and sharpness without running any heavy WASM models in browser.
@@ -548,16 +765,28 @@ export const aiImageEnhancer = {
       ctx.fillStyle = "#FFFFFF";
       ctx.fillRect(0, 0, targetSize, targetSize);
 
-      // 2. Auto-crop to content bounding box
-      const croppedCanvas = this.cropToBoundingBox(rawImg);
+      // 2. If not already a transparent cutout, run intelligent Smart White Matting
+      let workingCanvas: HTMLCanvasElement;
+      if (!isTransparentCutout) {
+        workingCanvas = this.smartWhiteMatting(rawImg);
+      } else {
+        workingCanvas = document.createElement("canvas");
+        workingCanvas.width = rawImg.naturalWidth || rawImg.width;
+        workingCanvas.height = rawImg.naturalHeight || rawImg.height;
+        const wCtx = workingCanvas.getContext("2d");
+        if (wCtx) wCtx.drawImage(rawImg, 0, 0);
+      }
 
-      // 3. Polish product colors: slight contrast and brightness boost
+      // 3. Auto-crop to content bounding box
+      const croppedCanvas = this.cropToBoundingBox(workingCanvas as any);
+
+      // 4. Polish product colors: slight contrast and brightness boost
       const polishedCanvas = this.polishProductSurface(croppedCanvas, {
         cleanBlemishes: false,
         addGloss: false,
       });
 
-      // 4. Center on 1080x1080 (78% scale for optimal packshot presence)
+      // 5. Center on 1080x1080 (78% scale for optimal packshot presence)
       const aspect = polishedCanvas.width / polishedCanvas.height;
       let drawW = targetSize * 0.78;
       let drawH = targetSize * 0.78;

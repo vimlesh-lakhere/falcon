@@ -792,8 +792,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         });
 
         const bgJson = await bgRes.json().catch(() => ({}));
-        if (bgRes.ok && bgJson.success && bgJson.transparentImageUrl) {
-          imageToPolish = bgJson.transparentImageUrl;
+        if (bgRes.ok && bgJson.success && (bgJson.transparentImageUrl || bgJson.posWhiteImageUrl)) {
+          imageToPolish = bgJson.transparentImageUrl || bgJson.posWhiteImageUrl;
           isCutoutSuccess = true;
         }
       } catch (bgErr) {
@@ -808,11 +808,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       } else {
         setBackImageUrl(polished);
       }
-      setAiSuccessMsg(
-        isCutoutSuccess
-          ? "✨ 1-Click Pure White Studio: Background isolated & centered!"
-          : "✨ Pure White Canvas: Centered & lighting enhanced!"
-      );
+      setAiSuccessMsg("✨ Pure White Studio: Background isolated on pure white (#FFFFFF)!");
     } catch (e) {
       console.error("Studio polish error:", e);
       if (target === "front") setImageUrl(rawSource);

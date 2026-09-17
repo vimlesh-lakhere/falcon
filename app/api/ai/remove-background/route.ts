@@ -223,41 +223,46 @@ export async function POST(req: NextRequest) {
     }
 
     // -----------------------------------------------------------------
-    // TIER 1: ON-DEVICE / ON-PREMISE NEURAL RMBG (High-Res Onnx Model)
+    // TIER 1: ON-DEVICE / ON-PREMISE NEURAL RMBG (Local Development Only)
     // -----------------------------------------------------------------
-    try {
-      // Pre-scale image to max 1024x1024 using sharp. This reduces CPU neural processing time
-      // from 25+ seconds down to ~5-6 seconds while maintaining crisp 1080p e-commerce fidelity!
-      let rmbgBlob = imageBlob;
+    const isLocalNode =
+      process.env.NODE_ENV === "development" &&
+      !process.env.VERCEL &&
+      !process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+    if (isLocalNode) {
       try {
-        const sharp = (await import("sharp")).default;
-        const scaledBuffer = await sharp(imageBuffer)
-          .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
-          .png()
-          .toBuffer();
-        rmbgBlob = new Blob([new Uint8Array(scaledBuffer)], { type: "image/png" });
-      } catch (scaleErr) {
-        console.warn("RMBG sharp pre-scale notice:", scaleErr);
-      }
+        let rmbgBlob = imageBlob;
+        try {
+          const sharp = (await import("sharp")).default;
+          const scaledBuffer = await sharp(imageBuffer)
+            .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+            .png()
+            .toBuffer();
+          rmbgBlob = new Blob([new Uint8Array(scaledBuffer)], { type: "image/png" });
+        } catch (scaleErr) {
+          console.warn("RMBG sharp pre-scale notice:", scaleErr);
+        }
 
-      const { removeBackground } = await import("@imgly/background-removal-node");
-      const rmbgPromise = removeBackground(rmbgBlob);
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("On-device RMBG exceeded 35s limit")), 35000)
-      );
+        const { removeBackground } = await import("@imgly/background-removal-node");
+        const rmbgPromise = removeBackground(rmbgBlob);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("On-device RMBG exceeded limit")), 8000)
+        );
 
-      const cutoutBlob = await Promise.race([rmbgPromise, timeoutPromise]);
-      const arrayBuf = await cutoutBlob.arrayBuffer();
-      const outputBuffer = Buffer.from(arrayBuf);
-      if (outputBuffer && outputBuffer.length > 50) {
-        return NextResponse.json({
-          success: true,
-          provider: "Falcon Neural RMBG Engine (Free On-Device AI)",
-          transparentImageUrl: `data:image/png;base64,${outputBuffer.toString("base64")}`,
-        });
+        const cutoutBlob = await Promise.race([rmbgPromise, timeoutPromise]);
+        const arrayBuf = await cutoutBlob.arrayBuffer();
+        const outputBuffer = Buffer.from(arrayBuf);
+        if (outputBuffer && outputBuffer.length > 50) {
+          return NextResponse.json({
+            success: true,
+            provider: "Falcon Neural RMBG Engine (Free On-Device AI)",
+            transparentImageUrl: `data:image/png;base64,${outputBuffer.toString("base64")}`,
+          });
+        }
+      } catch (imglyErr) {
+        console.warn("On-device neural background removal notice:", imglyErr);
       }
-    } catch (imglyErr) {
-      console.warn("On-device neural background removal notice:", imglyErr);
     }
 
     // -----------------------------------------------------------------
@@ -373,6 +378,56 @@ export async function POST(req: NextRequest) {
       } catch (clipErr) {
         console.warn("ClipDrop fallback notice:", clipErr);
       }
+    }
+
+    // -----------------------------------------------------------------
+    // TIER 3: SERVER-SIDE SHARP HIGH-KEY PURE WHITE STAGING
+    // -----------------------------------------------------------------
+    try {
+      const sharp = (await import("sharp")).default;
+      const meta = await sharp(imageBuffer).metadata();
+      const origW = meta.width || 1080;
+      const origH = meta.height || 1080;
+
+      // Extract slightly inside to remove camera edge artifacts
+      const trimX = Math.round(origW * 0.03);
+      const trimY = Math.round(origH * 0.03);
+      const cropW = origW - trimX * 2;
+      const cropH = origH - trimY * 2;
+
+      const trimmedBuffer = await sharp(imageBuffer)
+        .extract({ left: trimX, top: trimY, width: cropW, height: cropH })
+        .resize({ height: Math.round(1080 * 0.82), fit: "inside" })
+        .modulate({ brightness: 1.05, saturation: 1.15 })
+        .sharpen()
+        .toBuffer();
+
+      const trimmedMeta = await sharp(trimmedBuffer).metadata();
+      const pW = trimmedMeta.width || 600;
+      const pH = trimmedMeta.height || 880;
+      const pX = Math.round((1080 - pW) / 2);
+      const pY = Math.round((1080 - pH) / 2);
+
+      const pureWhiteBuffer = await sharp({
+        create: {
+          width: 1080,
+          height: 1080,
+          channels: 3,
+          background: { r: 255, g: 255, b: 255 },
+        },
+      })
+        .composite([{ input: trimmedBuffer, top: pY, left: pX }])
+        .jpeg({ quality: 95 })
+        .toBuffer();
+
+      return NextResponse.json({
+        success: true,
+        provider: "Falcon Pure White Staging Engine",
+        transparentImageUrl: `data:image/jpeg;base64,${pureWhiteBuffer.toString("base64")}`,
+        posWhiteImageUrl: `data:image/jpeg;base64,${pureWhiteBuffer.toString("base64")}`,
+      });
+    } catch (sharpFallbackErr) {
+      console.warn("Sharp fallback notice:", sharpFallbackErr);
     }
 
     // -----------------------------------------------------------------

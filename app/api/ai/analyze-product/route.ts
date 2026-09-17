@@ -246,16 +246,65 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
     };
 
     // -------------------------------------------------------------
-    // Option B: GOOGLE GEMINI VISION (Production Gemini 1.5 / 2.0 Flash)
+    // Option B: GOOGLE GEMINI VISION (Dynamic Discovery + Resilient Fallbacks)
     // -------------------------------------------------------------
     if (activeApiKey && !activeApiKey.startsWith("sk-")) {
-      const geminiModels = [
-        "gemini-1.5-flash",
+      // Default priority list of confirmed models across v1 and v1beta
+      let geminiModels = [
         "gemini-2.0-flash",
+        "gemini-flash-latest",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-pro-latest",
         "gemini-1.5-pro",
       ];
 
+      // 1. Dynamic Discovery: Query what models this specific API key actually has access to
+      try {
+        const listRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${activeApiKey}`,
+          { signal: AbortSignal.timeout(3000) }
+        );
+        if (listRes.ok) {
+          const listJson = await listRes.json();
+          if (Array.isArray(listJson.models)) {
+            const valid = listJson.models
+              .filter(
+                (m: any) =>
+                  Array.isArray(m.supportedGenerationMethods) &&
+                  m.supportedGenerationMethods.includes("generateContent")
+              )
+              .map((m: any) => m.name.replace(/^models\//, ""));
+
+            if (valid.length > 0) {
+              const flashModels = valid.filter((m: string) => m.includes("flash"));
+              const otherModels = valid.filter((m: string) => !m.includes("flash"));
+              geminiModels = Array.from(new Set([...flashModels, ...otherModels, ...geminiModels]));
+            }
+          }
+        } else {
+          const errJson = await listRes.json().catch(() => ({}));
+          const errMsg = errJson?.error?.message || "";
+          if (errMsg.includes("API key not valid") || errMsg.includes("API_KEY_INVALID")) {
+            return NextResponse.json(
+              {
+                success: false,
+                requiresApiKey: false,
+                error: "Google Gemini API key is invalid. Please copy a fresh API key from Google AI Studio (aistudio.google.com).",
+                detectedBarcode: detectedBarcode || null,
+              },
+              { status: 400 }
+            );
+          }
+        }
+      } catch (discErr) {
+        console.warn("Dynamic Gemini model discovery notice:", discErr);
+      }
+
       let lastGeminiErr = "";
+      const errorSummaries: string[] = [];
 
       for (const modelName of geminiModels) {
         try {
@@ -314,17 +363,37 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
             },
           });
         } catch (geminiErr: any) {
-          lastGeminiErr = geminiErr?.message || String(geminiErr);
-          console.warn(`Gemini Vision (${modelName}) failed:`, lastGeminiErr);
+          const msg = geminiErr?.message || String(geminiErr);
+          lastGeminiErr = msg;
+          errorSummaries.push(`${modelName}: ${msg.slice(0, 100)}`);
+          console.warn(`Gemini Vision (${modelName}) failed:`, msg);
+
+          // If error indicates invalid API key, stop loop immediately
+          if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID")) {
+            return NextResponse.json(
+              {
+                success: false,
+                requiresApiKey: false,
+                error: "Google Gemini API key is invalid. Please copy a fresh API key from Google AI Studio (aistudio.google.com).",
+                detectedBarcode: detectedBarcode || null,
+              },
+              { status: 400 }
+            );
+          }
         }
       }
 
-      // If user supplied an active key and it failed, return genuine error without triggering re-prompt loop
+      // If user supplied an active key and all models failed
+      const quotaOrAuthErr = errorSummaries.find(
+        (e) => e.includes("quota") || e.includes("PERMISSION_DENIED") || e.includes("billing")
+      );
+      const reportedError = quotaOrAuthErr || lastGeminiErr;
+
       return NextResponse.json(
         {
           success: false,
           requiresApiKey: false,
-          error: `Google Gemini AI Scan notice: ${lastGeminiErr.includes("API key not valid") ? "API key is invalid. Please double check the key from Google AI Studio." : lastGeminiErr.slice(0, 180)}`,
+          error: `Google Gemini AI Scan notice: ${reportedError.slice(0, 180)}`,
           detectedBarcode: detectedBarcode || null,
         },
         { status: 400 }
