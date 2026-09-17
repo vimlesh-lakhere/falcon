@@ -14,7 +14,8 @@ export interface SharpCropResult {
 export async function cropProductWithSharp(
   base64OrBuffer: string | Buffer,
   boundingBox?: [number, number, number, number] | number[],
-  clientRemoveBgKey?: string
+  clientRemoveBgKey?: string,
+  clientHfToken?: string
 ): Promise<SharpCropResult | null> {
   try {
     let inputBuffer: Buffer;
@@ -27,13 +28,37 @@ export async function cropProductWithSharp(
 
     let transparentBuffer: Buffer | null = null;
 
-    // TIER 0: Remove.bg Commercial Studio API (Gold Standard - 50 Free Cuts/Month)
+    // TIER 0: Rembg Microservice (Local / LAN)
+    const rembgUrl = process.env.REMBG_SERVICE_URL || process.env.NEXT_PUBLIC_REMBG_SERVICE_URL;
+    if (rembgUrl) {
+      try {
+        const formData = new FormData();
+        const blob = new Blob([new Uint8Array(inputBuffer)], { type: "image/png" });
+        formData.append("file", blob, "product.png");
+        formData.append("model", process.env.REMBG_MODEL || "u2net");
+
+        const rembgRes = await fetch(`${rembgUrl.replace(/\/+$/, "")}/api/remove`, {
+          method: "POST",
+          body: formData,
+          signal: AbortSignal.timeout(4000),
+        });
+
+        if (rembgRes.ok) {
+          const rBuf = Buffer.from(await rembgRes.arrayBuffer());
+          if (rBuf && rBuf.length > 100) {
+            transparentBuffer = rBuf;
+          }
+        }
+      } catch {}
+    }
+
+    // TIER 1: Remove.bg Commercial Studio API
     const removeBgKey =
       clientRemoveBgKey ||
       process.env.REMOVE_BG_API_KEY ||
       process.env.NEXT_PUBLIC_REMOVE_BG_API_KEY;
 
-    if (removeBgKey && !removeBgKey.startsWith("AIza") && !removeBgKey.startsWith("hf_")) {
+    if (!transparentBuffer && removeBgKey && !removeBgKey.startsWith("AIza") && !removeBgKey.startsWith("hf_")) {
       try {
         const formData = new FormData();
         const blob = new Blob([new Uint8Array(inputBuffer)], { type: "image/jpeg" });
@@ -45,7 +70,7 @@ export async function cropProductWithSharp(
           method: "POST",
           headers: { "X-Api-Key": removeBgKey.trim() },
           body: formData,
-          signal: AbortSignal.timeout(6000), // Strict 6s timeout so it never hangs
+          signal: AbortSignal.timeout(6000),
         });
 
         if (rbgRes.ok) {
@@ -60,7 +85,40 @@ export async function cropProductWithSharp(
       }
     }
 
-    // TIER 1: On-Device Falcon Neural RMBG Engine (Pre-scaled to 800px for ultra-fast ~5s inference)
+    // TIER 2: Hugging Face Cloud RMBG-1.4 / RMBG-2.0
+    const token = clientHfToken || process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY;
+    if (!transparentBuffer && token) {
+      try {
+        const scaledBuffer = await sharp(inputBuffer)
+          .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+          .png()
+          .toBuffer();
+
+        const hfRes = await fetch(
+          "https://router.huggingface.co/hf-inference/models/briaai/RMBG-1.4",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/octet-stream",
+              Authorization: `Bearer ${token.trim()}`,
+            },
+            body: scaledBuffer,
+            signal: AbortSignal.timeout(8000),
+          }
+        );
+
+        if (hfRes.ok) {
+          const hfBuf = Buffer.from(await hfRes.arrayBuffer());
+          if (hfBuf && hfBuf.length > 100) {
+            transparentBuffer = hfBuf;
+          }
+        }
+      } catch (hfErr) {
+        console.warn("HuggingFace RMBG in cropper notice:", hfErr);
+      }
+    }
+
+    // TIER 3: Local Node Neural RMBG Engine (if onnx runtime is available in environment)
     if (!transparentBuffer) {
       try {
         const scaledBuffer = await sharp(inputBuffer)
@@ -72,7 +130,7 @@ export async function cropProductWithSharp(
         const { removeBackground } = await import("@imgly/background-removal-node");
         const rmbgPromise = removeBackground(scaledBlob);
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("On-device RMBG in cropper exceeded 18s limit")), 18000)
+          setTimeout(() => reject(new Error("On-device RMBG in cropper exceeded 15s limit")), 15000)
         );
 
         const cutoutBlob = await Promise.race([rmbgPromise, timeoutPromise]);
@@ -82,7 +140,7 @@ export async function cropProductWithSharp(
           transparentBuffer = resBuf;
         }
       } catch (rmbgErr) {
-        console.warn("On-device neural RMBG in cropper notice:", rmbgErr);
+        // Expected on serverless environments where native binary is excluded
       }
     }
 

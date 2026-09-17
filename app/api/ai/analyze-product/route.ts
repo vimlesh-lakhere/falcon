@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
       provider,
       apiKey: clientApiKey,
       removeBgApiKey: clientRemoveBgKey,
+      hfToken: clientHfToken,
     } = body;
 
     if (!frontImage && !backImage) {
@@ -99,12 +100,14 @@ export async function POST(req: NextRequest) {
       console.warn("ZXing barcode scan notice:", e);
     }
 
-    const activeApiKey =
+    const activeApiKey = (
       clientApiKey ||
       process.env.GEMINI_API_KEY ||
       process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY ||
-      process.env.OPENAI_API_KEY;
+      process.env.OPENAI_API_KEY ||
+      ""
+    ).trim();
 
     const promptText = `
 You are an expert Indian Retail ERP & E-commerce Product Catalog Specialist.
@@ -212,6 +215,36 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
       }
     }
 
+    // Helper to format image for Gemini (supports base64 and remote URLs)
+    const formatImageForGemini = async (imgSrc: string) => {
+      if (imgSrc.startsWith("http://") || imgSrc.startsWith("https://")) {
+        const fetchRes = await fetch(imgSrc);
+        const arrayBuf = await fetchRes.arrayBuffer();
+        const mime = fetchRes.headers.get("content-type") || "image/jpeg";
+        return {
+          inlineData: {
+            data: Buffer.from(arrayBuf).toString("base64"),
+            mimeType: mime,
+          },
+        };
+      }
+      const match = imgSrc.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (match) {
+        return {
+          inlineData: {
+            data: match[2],
+            mimeType: match[1],
+          },
+        };
+      }
+      return {
+        inlineData: {
+          data: imgSrc.replace(/^data:[^;]+;base64,/, ""),
+          mimeType: "image/jpeg",
+        },
+      };
+    };
+
     // -------------------------------------------------------------
     // Option B: GOOGLE GEMINI VISION (Production Gemini 1.5 / 2.0 Flash)
     // -------------------------------------------------------------
@@ -222,32 +255,16 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
         "gemini-1.5-pro",
       ];
 
+      let lastGeminiErr = "";
+
       for (const modelName of geminiModels) {
         try {
           const genAI = new GoogleGenerativeAI(activeApiKey);
           const model = genAI.getGenerativeModel({ model: modelName });
 
-          const parseBase64Part = (dataUrl: string) => {
-            const match = dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-            if (match) {
-              return {
-                inlineData: {
-                  data: match[2],
-                  mimeType: match[1],
-                },
-              };
-            }
-            return {
-              inlineData: {
-                data: dataUrl.replace(/^data:[^;]+;base64,/, ""),
-                mimeType: "image/jpeg",
-              },
-            };
-          };
-
-          const imageParts = [parseBase64Part(primaryImage)];
+          const imageParts = [await formatImageForGemini(primaryImage)];
           if (secondaryImage) {
-            imageParts.push(parseBase64Part(secondaryImage));
+            imageParts.push(await formatImageForGemini(secondaryImage));
           }
 
           const result = await model.generateContent([promptText, ...imageParts]);
@@ -268,7 +285,7 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
             parsedData.barcode = detectedBarcode;
           }
 
-          // Optional Sharp Cropping if bounding box returned
+          // Optional Sharp Cropping & 1080p Pure White Stage
           let croppedImageUrl: string | null = null;
           let posWhiteImageUrl: string | null = null;
           try {
@@ -276,7 +293,8 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
             const cropRes = await cropProductWithSharp(
               primaryImage,
               parsedData.product_bounding_box,
-              clientRemoveBgKey
+              clientRemoveBgKey,
+              clientHfToken || process.env.HF_TOKEN
             );
             if (cropRes) {
               croppedImageUrl = cropRes.croppedDataUrl;
@@ -296,9 +314,21 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
             },
           });
         } catch (geminiErr: any) {
-          console.warn(`Gemini Vision (${modelName}) failed:`, geminiErr?.message || geminiErr);
+          lastGeminiErr = geminiErr?.message || String(geminiErr);
+          console.warn(`Gemini Vision (${modelName}) failed:`, lastGeminiErr);
         }
       }
+
+      // If user supplied an active key and it failed, return genuine error without triggering re-prompt loop
+      return NextResponse.json(
+        {
+          success: false,
+          requiresApiKey: false,
+          error: `Google Gemini AI Scan notice: ${lastGeminiErr.includes("API key not valid") ? "API key is invalid. Please double check the key from Google AI Studio." : lastGeminiErr.slice(0, 180)}`,
+          detectedBarcode: detectedBarcode || null,
+        },
+        { status: 400 }
+      );
     }
 
     // -------------------------------------------------------------

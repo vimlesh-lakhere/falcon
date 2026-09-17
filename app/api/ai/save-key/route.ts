@@ -21,8 +21,13 @@ export async function POST(req: NextRequest) {
     if (trimmedGemini) {
       try {
         const genAI = new GoogleGenerativeAI(trimmedGemini);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        await model.generateContent("Test connection");
+        try {
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+          await model.generateContent("ping");
+        } catch {
+          const model2 = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+          await model2.generateContent("ping");
+        }
       } catch (geminiTestErr: any) {
         console.warn("Gemini key verification warning:", geminiTestErr.message);
         // If it's an explicit invalid key error, notify client

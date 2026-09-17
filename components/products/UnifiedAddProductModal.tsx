@@ -116,7 +116,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [aiSuccessMsg, setAiSuccessMsg] = useState("");
   const [isCameraCaptureOpen, setIsCameraCaptureOpen] = useState(false);
   const [isPhotoActionSheetOpen, setIsPhotoActionSheetOpen] = useState(false);
-  const [autoScanWithAi, setAutoScanWithAi] = useState(false);
+  const [autoScanWithAi, setAutoScanWithAi] = useState(true);
   const [autoStudioPolish, setAutoStudioPolish] = useState(true);
   const [isPolishing, setIsPolishing] = useState(false);
 
@@ -264,20 +264,25 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     setIsSavingKey(true);
     setKeySaveError("");
     try {
+      // 1. Always save in browser localStorage so mobile device keeps it permanently
+      if (typeof window !== "undefined") {
+        localStorage.setItem("falcon_gemini_api_key", keyToSave);
+      }
+      setGeminiApiKey(keyToSave);
+
+      // 2. Notify server to activate runtime process.env
       const res = await fetch("/api/ai/save-key", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ geminiKey: keyToSave }),
       });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || "Failed to verify key");
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success) {
+        setHasServerGeminiKey(true);
+      } else if (json.error && (json.error.includes("invalid") || json.error.includes("API_KEY_INVALID"))) {
+        throw new Error(json.error);
       }
-      setGeminiApiKey(keyToSave);
-      setHasServerGeminiKey(true);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("falcon_gemini_api_key", keyToSave);
-      }
+
       setIsKeyConfigModalOpen(false);
       setAiSuccessMsg("✓ Google Gemini AI Key connected and saved!");
       // Automatically trigger scan now that key is configured
@@ -596,18 +601,19 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
 
   // Trigger Vision AI / OCR Extraction on demand or when auto-scan is enabled
   const handleTriggerAiOcr = async (customFront?: string, customBack?: string, overrideKey?: string) => {
-    const frontToScan = customFront || rawFrontPhoto || imageUrl;
-    const backToScan = customBack || rawBackPhoto || backImageUrl;
+    const rawFront = customFront || rawFrontPhoto || imageUrl;
+    const rawBack = customBack || rawBackPhoto || backImageUrl;
 
-    if (!frontToScan && !backToScan) {
+    if (!rawFront && !rawBack) {
       alert("Please upload or click a product photo first.");
       return;
     }
 
-    const keyToUse =
+    const keyToUse = (
       overrideKey ||
       geminiApiKey ||
-      (typeof window !== "undefined" ? localStorage.getItem("falcon_gemini_api_key") || "" : "");
+      (typeof window !== "undefined" ? localStorage.getItem("falcon_gemini_api_key") || "" : "")
+    ).trim();
 
     // If neither client key nor server key is available, prompt for Google Gemini key
     if (!keyToUse && !hasServerGeminiKey) {
@@ -619,9 +625,17 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       setIsAnalyzing(true);
       setAiSuccessMsg("🔍 AI Vision is scanning packaging, brand, title & MRP...");
 
+      // Fast-compress images on client so payload is <300KB (never exceeds Vercel 4.5MB limit)
+      const frontToScan = rawFront ? await aiImageEnhancer.fastCompress(rawFront, 1080, 0.85) : "";
+      const backToScan = rawBack ? await aiImageEnhancer.fastCompress(rawBack, 1080, 0.85) : "";
+
       const savedRemoveBgKey =
         typeof window !== "undefined"
           ? localStorage.getItem("falcon_remove_bg_api_key") || undefined
+          : undefined;
+      const savedHfToken =
+        typeof window !== "undefined"
+          ? localStorage.getItem("falcon_hf_token") || undefined
           : undefined;
 
       const res = await fetch("/api/ai/analyze-product", {
@@ -632,6 +646,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           backImage: backToScan && backToScan !== frontToScan ? backToScan : undefined,
           apiKey: keyToUse || undefined,
           removeBgApiKey: savedRemoveBgKey,
+          hfToken: savedHfToken,
         }),
       });
 
@@ -645,6 +660,15 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
           Number(aiData.suggested_retail_price || 0) || extractedMrp;
         const suggestedWholesale =
           Number(aiData.suggested_wholesale_price || 0) || (extractedMrp > 0 ? Math.round(extractedMrp * 0.86) : 0);
+
+        // Auto-apply pure white background image from server if returned
+        if (aiData.pos_white_url) {
+          if (activeImageTab === "front" || !rawBack) {
+            setImageUrl(aiData.pos_white_url);
+          } else {
+            setBackImageUrl(aiData.pos_white_url);
+          }
+        }
 
         if (aiData.product_name && aiData.product_name !== "Product") {
           const formattedName = capitalizeFirstLetter(aiData.product_name);
@@ -700,7 +724,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         }
 
         setAiSuccessMsg(
-          `✓ Auto-Filled: ${aiData.product_name || "Product"} ${extractedMrp > 0 ? `• MRP: ₹${extractedMrp}` : ""}`
+          `✓ Auto-Filled: ${aiData.product_name || "Product"} ${extractedMrp > 0 ? `• MRP: ₹${extractedMrp}` : ""} (Pure White Applied ✨)`
         );
       } else if (json.requiresApiKey) {
         setIsKeyConfigModalOpen(true);
@@ -743,151 +767,52 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       let imageToPolish = rawSource;
       let isCutoutSuccess = false;
 
-      // 0. Direct Rembg AI Check (Supports Laptop 127.0.0.1, Wi-Fi LAN IP, or Custom Tunnel URL)
-      try {
-        const base64Clean = rawSource.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
-        const binaryString = atob(base64Clean);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        const imgBlob = new Blob([bytes], { type: "image/png" });
-
-        const localForm = new FormData();
-        localForm.append("file", imgBlob, "product.png");
-        localForm.append("model", "u2net");
-
-        // Target candidates: Custom URL (localStorage) -> Same Wi-Fi Host IP -> Localhost
-        const savedRembgUrl = typeof window !== "undefined" ? localStorage.getItem("falcon_rembg_url") : null;
-        const currentHost = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
-        const candidateUrls: string[] = [];
-        if (savedRembgUrl) candidateUrls.push(savedRembgUrl.replace(/\/+$/, ""));
-        if (currentHost && currentHost !== "localhost" && currentHost !== "127.0.0.1" && !currentHost.includes(".")) {
-          candidateUrls.push(`http://${currentHost}:7000`);
-        }
-        candidateUrls.push("http://127.0.0.1:7000");
-
-        for (const endpoint of candidateUrls) {
-          try {
-            const localRes = await fetch(`${endpoint}/api/remove`, {
-              method: "POST",
-              body: localForm,
-              signal: AbortSignal.timeout(6000),
-            });
-
-            if (localRes.ok) {
-              const cutBlob = await localRes.blob();
-              if (cutBlob.size > 100) {
-                imageToPolish = await new Promise<string>((resolve) => {
-                  const reader = new FileReader();
-                  reader.onload = () => resolve(reader.result as string);
-                  reader.readAsDataURL(cutBlob);
-                });
-                isCutoutSuccess = true;
-                break;
-              }
-            }
-          } catch {}
-        }
-      } catch {
-        // Direct endpoint not reachable, cascade to server API
-      }
-
       // 1. Try Server-Side API (/api/ai/remove-background)
-      if (!isCutoutSuccess) {
-        try {
-          const savedHfToken =
-            typeof window !== "undefined"
-              ? localStorage.getItem("falcon_hf_token") || localStorage.getItem("falcon_clipdrop_key") || undefined
-              : undefined;
-          const savedRbg =
-            typeof window !== "undefined"
-              ? localStorage.getItem("falcon_remove_bg_api_key") || undefined
-              : undefined;
+      try {
+        const savedHfToken =
+          typeof window !== "undefined"
+            ? localStorage.getItem("falcon_hf_token") || localStorage.getItem("falcon_clipdrop_key") || undefined
+            : undefined;
+        const savedRbg =
+          typeof window !== "undefined"
+            ? localStorage.getItem("falcon_remove_bg_api_key") || undefined
+            : undefined;
 
-          const bgRes = await fetch("/api/ai/remove-background", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              image: rawSource,
-              hfToken: savedHfToken,
-              removeBgApiKey: savedRbg,
-            }),
-          });
+        // Ensure payload is fast-compressed <300KB
+        const compressed = await aiImageEnhancer.fastCompress(rawSource, 1080, 0.85);
 
-          const bgJson = await bgRes.json().catch(() => ({}));
-          if (bgRes.ok && bgJson.success && bgJson.transparentImageUrl) {
-            imageToPolish = bgJson.transparentImageUrl;
-            isCutoutSuccess = true;
-          }
-        } catch (bgErr) {
-          console.warn("Server AI background remover notice:", bgErr);
+        const bgRes = await fetch("/api/ai/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image: compressed,
+            hfToken: savedHfToken,
+            removeBgApiKey: savedRbg,
+          }),
+        });
+
+        const bgJson = await bgRes.json().catch(() => ({}));
+        if (bgRes.ok && bgJson.success && bgJson.transparentImageUrl) {
+          imageToPolish = bgJson.transparentImageUrl;
+          isCutoutSuccess = true;
         }
+      } catch (bgErr) {
+        console.warn("Server AI background remover notice:", bgErr);
       }
 
-      // 2. Mobile Browser On-Device Neural AI Fallback (@imgly/background-removal)
-      // Runs directly inside the phone's browser using WebAssembly / WebGL with 0 server dependency
-      if (!isCutoutSuccess && typeof window !== "undefined") {
-        try {
-          setAiSuccessMsg("✨ Running on-device mobile AI background remover...");
-          const base64Clean = rawSource.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
-          const binaryString = atob(base64Clean);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          const imgBlob = new Blob([bytes], { type: "image/png" });
-
-          const loadBrowserModule = new Function("url", "return import(url)");
-          const imglyModule: any = await loadBrowserModule(
-            "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm"
-          );
-          const removeBgFn = imglyModule.removeBackground || imglyModule.default;
-          if (typeof removeBgFn === "function") {
-            const transparentBlob = await removeBgFn(imgBlob, {
-              model: "isnet_fp16",
-            });
-            if (transparentBlob && transparentBlob.size > 100) {
-              imageToPolish = await new Promise<string>((resolve) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result as string);
-                reader.readAsDataURL(transparentBlob);
-              });
-              isCutoutSuccess = true;
-            }
-          }
-        } catch (mobileErr) {
-          console.warn("Mobile on-device AI notice:", mobileErr);
-        }
-      }
-
-      // If background removal was NOT successful, NEVER bleach or mutilate the product!
-      if (!isCutoutSuccess) {
-        if (target === "front") {
-          setImageUrl(rawSource);
-        } else {
-          setBackImageUrl(rawSource);
-        }
-        setAiSuccessMsg("📷 Clean original photo preserved.");
-        return;
-      }
-
-      // 2. Final Studio Polish: 100% Solid Pure White Canvas (#FFFFFF) ONLY for clean transparent cutouts
-      const polished = await aiImageEnhancer.studioPolish(imageToPolish, {
-        targetSize: 1080,
-        theme: "pure_white",
-        addGloss: false,        // Clean packaging without artificial glare
-        addGroundShadow: false, // Strict pure white without grey ground shadows
-        addReflection: false,   // No floor reflections
-        sharpnessBoost: true,   // Crisp barcode and product label
-      });
+      // 2. Fast 2D Canvas Pure White Staging (<20ms, zero lag, NO heavy neural model in mobile browser)
+      const polished = await aiImageEnhancer.fastWhiteStage(imageToPolish, isCutoutSuccess);
 
       if (target === "front") {
         setImageUrl(polished);
       } else {
         setBackImageUrl(polished);
       }
-      setAiSuccessMsg("✨ 1-Click Pure White Studio: Background isolated & centered!");
+      setAiSuccessMsg(
+        isCutoutSuccess
+          ? "✨ 1-Click Pure White Studio: Background isolated & centered!"
+          : "✨ Pure White Canvas: Centered & lighting enhanced!"
+      );
     } catch (e) {
       console.error("Studio polish error:", e);
       if (target === "front") setImageUrl(rawSource);
