@@ -43,6 +43,8 @@ class AddProductViewModel extends ChangeNotifier {
   String? selectedSupplierId;
   bool isOnline = true;
   bool sellAsFullPack = false;
+  bool isWholesaleEnabled = false;
+  bool enterPriceAsPack = true;
 
   // ───────────────────────────────────────────────────────────────────────────
   // DUAL PHOTO STATE (FRONT & BACK)
@@ -799,6 +801,16 @@ class AddProductViewModel extends ChangeNotifier {
     if (found.unitId != null) {
       selectedUnitId = found.unitId;
     }
+    if (found.wholesalePrice != null && found.wholesalePrice! > 0) {
+      isWholesaleEnabled = true;
+      wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
+      wholesaleMinQtyController.text = (found.wholesaleMinQty ?? 12).toString();
+    } else {
+      isWholesaleEnabled = false;
+      wholesalePriceController.clear();
+      wholesaleMinQtyController.text = '12';
+    }
+
     final factor = currentConversionFactor;
     if (factor > 1 && !sellAsFullPack) {
       // Database currentStock is stored in base pieces (e.g. 240 pcs).
@@ -808,6 +820,49 @@ class AddProductViewModel extends ChangeNotifier {
     } else {
       stockController.text = found.currentStock.toString();
     }
+  }
+
+  void setWholesaleEnabled(bool val) {
+    isWholesaleEnabled = val;
+    if (val) {
+      if (wholesaleMinQtyController.text.trim().isEmpty || wholesaleMinQtyController.text == '12') {
+        wholesaleMinQtyController.text = currentConversionFactor > 1
+            ? currentConversionFactor.round().toString()
+            : '12';
+      }
+      if (wholesalePriceController.text.trim().isEmpty && sellingPriceController.text.trim().isNotEmpty) {
+        wholesalePriceController.text = sellingPriceController.text.trim();
+      }
+    } else {
+      wholesalePriceController.clear();
+    }
+    notifyListeners();
+  }
+
+  void setPriceEntryMode(bool asPack) {
+    enterPriceAsPack = asPack;
+    notifyListeners();
+  }
+
+  double get perPieceCost {
+    final cost = double.tryParse(purchasePriceController.text) ?? 0.0;
+    if (isMultiUnit && enterPriceAsPack) {
+      return currentConversionFactor > 0 ? cost / currentConversionFactor : cost;
+    }
+    return cost;
+  }
+
+  double get perPieceSelling {
+    final sell = double.tryParse(sellingPriceController.text) ?? 0.0;
+    if (isMultiUnit && enterPriceAsPack) {
+      return currentConversionFactor > 0 ? sell / currentConversionFactor : sell;
+    }
+    return sell;
+  }
+
+  double get packMrp {
+    final pieceMrp = double.tryParse(mrpController.text) ?? 0.0;
+    return isMultiUnit ? pieceMrp * currentConversionFactor : pieceMrp;
   }
 
   void generateAutoBarcode() {
@@ -914,19 +969,63 @@ class AddProductViewModel extends ChangeNotifier {
         );
       }
 
-      final purchasePrice = double.tryParse(purchasePriceController.text) ?? 0.0;
-      final mrp = double.tryParse(mrpController.text);
-      final wholesalePrice = double.tryParse(wholesalePriceController.text);
-      final wholesaleMinQty = int.tryParse(wholesaleMinQtyController.text) ?? 12;
+      final enteredPurchasePrice = double.tryParse(purchasePriceController.text) ?? 0.0;
+      final enteredMrp = double.tryParse(mrpController.text);
+      final enteredSellingPrice = double.tryParse(sellingPriceController.text) ?? 0.0;
       final stock = calculatedBaseStock;
       final minStock = int.tryParse(minStockController.text) ?? 5;
       final description = descriptionController.text.trim().isNotEmpty
           ? descriptionController.text.trim()
           : null;
 
+      double finalPurchasePrice = enteredPurchasePrice;
+      double? finalMrp = enteredMrp;
+      double finalSellingPrice = enteredSellingPrice;
+      double? finalWholesalePrice = isWholesaleEnabled ? double.tryParse(wholesalePriceController.text) : null;
+      int? finalWholesaleMinQty = isWholesaleEnabled ? (int.tryParse(wholesaleMinQtyController.text) ?? 12) : null;
+      String finalName = name;
+
+      if (isMultiUnit) {
+        if (!sellAsFullPack) {
+          // ── Case 1: Khulla Loose Piece Selling ──
+          if (enterPriceAsPack) {
+            finalPurchasePrice = currentConversionFactor > 0 ? enteredPurchasePrice / currentConversionFactor : enteredPurchasePrice;
+
+            if (enteredMrp != null && enteredMrp > 0) {
+              finalSellingPrice = enteredMrp;
+              finalMrp = enteredMrp;
+            } else {
+              finalSellingPrice = currentConversionFactor > 0 ? enteredSellingPrice / currentConversionFactor : enteredSellingPrice;
+            }
+
+            // Pack selling price becomes the wholesale rate!
+            if (finalWholesalePrice == null || finalWholesalePrice <= 0) {
+              finalWholesalePrice = enteredSellingPrice;
+              finalWholesaleMinQty = currentConversionFactor.round();
+            }
+          }
+        } else {
+          // ── Case 2: Sealed Pack Selling ──
+          if (enterPriceAsPack) {
+            finalPurchasePrice = enteredPurchasePrice;
+            finalSellingPrice = enteredSellingPrice;
+            if (enteredMrp != null && enteredMrp > 0) {
+              finalMrp = enteredMrp * currentConversionFactor;
+            }
+          }
+          final unitLabel = selectedUnit?.name ?? 'Pack';
+          if (!finalName.toLowerCase().contains(unitLabel.toLowerCase()) &&
+              !finalName.toLowerCase().contains('pack') &&
+              !finalName.toLowerCase().contains('box') &&
+              !finalName.toLowerCase().contains('lad')) {
+            finalName = '$finalName ($unitLabel)';
+          }
+        }
+      }
+
       final newProduct = ProductModel(
         shopId: AppConstants.defaultShopId,
-        name: name,
+        name: finalName,
         nameHindi: nameHindiController.text.trim().isEmpty ? null : nameHindiController.text.trim(),
         barcode: barcodeController.text.trim().isEmpty ? null : barcodeController.text.trim(),
         sku: skuController.text.trim().isEmpty ? null : skuController.text.trim(),
@@ -934,18 +1033,18 @@ class AddProductViewModel extends ChangeNotifier {
         categoryId: selectedCategoryId,
         unitId: selectedUnitId,
         supplierId: selectedSupplierId,
-        purchasePrice: purchasePrice,
-        mrp: mrp,
-        sellingPrice: sellingPrice,
-        wholesalePrice: wholesalePrice,
-        wholesaleMinQty: wholesaleMinQty,
+        purchasePrice: finalPurchasePrice,
+        mrp: finalMrp,
+        sellingPrice: finalSellingPrice,
+        wholesalePrice: finalWholesalePrice,
+        wholesaleMinQty: finalWholesaleMinQty,
         currentStock: stock,
         minimumStock: minStock,
         imageUrl: uploadedFrontUrl,
         backImageUrl: uploadedBackUrl,
         description: description,
         isOnline: isOnline,
-        onlinePrice: sellingPrice,
+        onlinePrice: finalSellingPrice,
         isActive: true,
       );
 
@@ -1004,6 +1103,8 @@ class AddProductViewModel extends ChangeNotifier {
     wholesalePriceController.clear();
     wholesaleMinQtyController.text = '12';
     sellAsFullPack = false;
+    isWholesaleEnabled = false;
+    enterPriceAsPack = true;
     descriptionController.clear();
     stockController.text = '10';
     minStockController.text = '5';

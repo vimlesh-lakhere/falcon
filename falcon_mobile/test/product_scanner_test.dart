@@ -99,5 +99,32 @@ void main() {
       expect(vm.barcodeController.text.startsWith('890'), isTrue);
       expect(vm.skuController.text.startsWith('NES-'), isTrue);
     });
+
+    test('Pack to Piece price conversion calculates accurately', () {
+      final vm = AddProductViewModel();
+      vm.units = [
+        UnitModel(id: 'u1', shopId: 's1', name: 'Lad (12 pcs)', conversionFactor: 12),
+      ];
+      vm.setSelectedUnitId('u1');
+
+      // Emami cream example: ₹96 per lad of 12, selling price ₹100 per lad, MRP ₹10 per piece
+      vm.purchasePriceController.text = '96';
+      vm.sellingPriceController.text = '100';
+      vm.mrpController.text = '10';
+
+      // 1. Pack entry mode
+      vm.setPriceEntryMode(true);
+      expect(vm.currentConversionFactor, 12.0);
+      expect(vm.perPieceCost, 8.0); // 96 / 12 = 8.0
+      expect(vm.perPieceSelling, closeTo(8.33, 0.01)); // 100 / 12 = 8.33
+      expect(vm.packMrp, 120.0); // 10 * 12 = 120.0
+
+      // 2. Wholesale toggle
+      expect(vm.isWholesaleEnabled, isFalse);
+      vm.setWholesaleEnabled(true);
+      expect(vm.isWholesaleEnabled, isTrue);
+      expect(vm.wholesaleMinQtyController.text, '12');
+      expect(vm.wholesalePriceController.text, '100');
+    });
   });
 }

@@ -112,11 +112,15 @@ class AddProductScreen extends StatelessWidget {
                       _buildBasicInfoCard(vm),
                       const SizedBox(height: 14),
 
-                      // 4. Pricing & Margin Shortcuts
+                      // 4. Unit & Packaging
+                      _buildUnitAndPackagingCard(vm),
+                      const SizedBox(height: 14),
+
+                      // 5. Pricing & Margin Shortcuts
                       _buildPricingCard(vm),
                       const SizedBox(height: 14),
 
-                      // 5. Stock & Category
+                      // 6. Stock & Category
                       _buildStockAndCategoryCard(vm),
                     ],
                   ),
@@ -1049,6 +1053,105 @@ class AddProductScreen extends StatelessWidget {
   // ───────────────────────────────────────────────────────────────────────────
   // PRICING CARD WITH 1-TAP MARGIN PILLS
   // ───────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // 4. UNIT & PACKAGING CARD
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildUnitAndPackagingCard(AddProductViewModel vm) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.straighten, size: 18, color: AppTheme.primaryLight),
+              const SizedBox(width: 8),
+              const Text(
+                'Unit & Packaging',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+              ),
+              const Spacer(),
+              if (vm.isMultiUnit)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '1 ${vm.selectedUnit?.name.split(" ").first ?? "Unit"} = ${vm.currentConversionFactor.round()} Pcs',
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: vm.selectedUnitId,
+            decoration: const InputDecoration(
+              labelText: 'Unit of Measure *',
+              prefixIcon: Icon(Icons.shopping_bag_outlined, size: 20, color: AppTheme.textMuted),
+            ),
+            items: vm.units.map((u) {
+              return DropdownMenuItem<String>(
+                value: u.id,
+                child: Text(u.name, overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            onChanged: (val) => vm.setSelectedUnitId(val),
+          ),
+          if (vm.isMultiUnit) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'How is this product sold?',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Text('Sell as Pieces (Khulla)'),
+                    selected: !vm.sellAsFullPack,
+                    selectedColor: AppTheme.primary.withValues(alpha: 0.2),
+                    labelStyle: TextStyle(
+                      fontSize: 11,
+                      fontWeight: !vm.sellAsFullPack ? FontWeight.bold : FontWeight.normal,
+                      color: !vm.sellAsFullPack ? AppTheme.primaryLight : AppTheme.textMuted,
+                    ),
+                    onSelected: (_) => vm.setSellAsFullPack(false),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Text('Sell Full Pack (Sealed)'),
+                    selected: vm.sellAsFullPack,
+                    selectedColor: AppTheme.primary.withValues(alpha: 0.2),
+                    labelStyle: TextStyle(
+                      fontSize: 11,
+                      fontWeight: vm.sellAsFullPack ? FontWeight.bold : FontWeight.normal,
+                      color: vm.sellAsFullPack ? AppTheme.primaryLight : AppTheme.textMuted,
+                    ),
+                    onSelected: (_) => vm.setSellAsFullPack(true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 5. PRICING & PROFIT MARGINS CARD
+  // ───────────────────────────────────────────────────────────────────────────
   Widget _buildPricingCard(AddProductViewModel vm) {
     final margin = vm.profitMargin;
     final profitRs = vm.profitRupees;
@@ -1093,6 +1196,60 @@ class AddProductScreen extends StatelessWidget {
                 ),
             ],
           ),
+          if (vm.isMultiUnit) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.cardBorder),
+              ),
+              child: Row(
+                children: [
+                  const Text('Price Entry: ', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () => vm.setPriceEntryMode(true),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: vm.enterPriceAsPack ? AppTheme.primary.withValues(alpha: 0.2) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Full ${vm.selectedUnit?.name.split(" ").first ?? "Pack"}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: vm.enterPriceAsPack ? FontWeight.bold : FontWeight.normal,
+                          color: vm.enterPriceAsPack ? AppTheme.primaryLight : AppTheme.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () => vm.setPriceEntryMode(false),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: !vm.enterPriceAsPack ? AppTheme.primary.withValues(alpha: 0.2) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Per Piece',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: !vm.enterPriceAsPack ? FontWeight.bold : FontWeight.normal,
+                          color: !vm.enterPriceAsPack ? AppTheme.primaryLight : AppTheme.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
 
           // Quick Margin Shortcut Chips
@@ -1123,10 +1280,14 @@ class AddProductScreen extends StatelessWidget {
                 child: TextField(
                   controller: vm.mrpController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'MRP (₹)',
+                  decoration: InputDecoration(
+                    labelText: vm.isMultiUnit && vm.enterPriceAsPack ? 'Piece MRP (₹)' : 'MRP (₹)',
                     hintText: '0',
                     prefixText: '₹ ',
+                    helperText: vm.isMultiUnit && vm.enterPriceAsPack
+                        ? 'Full ${vm.selectedUnit?.name.split(" ").first ?? "Pack"}: ₹${vm.packMrp.toStringAsFixed(0)}'
+                        : null,
+                    helperStyle: const TextStyle(fontSize: 10, color: AppTheme.primaryLight),
                   ),
                   onChanged: (_) => vm.refreshPricingState(),
                 ),
@@ -1136,10 +1297,16 @@ class AddProductScreen extends StatelessWidget {
                 child: TextField(
                   controller: vm.sellingPriceController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Selling Price (₹) *',
+                  decoration: InputDecoration(
+                    labelText: vm.isMultiUnit && vm.enterPriceAsPack
+                        ? '${vm.selectedUnit?.name.split(" ").first ?? "Pack"} Selling (₹) *'
+                        : 'Selling Price (₹) *',
                     hintText: '0',
                     prefixText: '₹ ',
+                    helperText: vm.isMultiUnit && vm.enterPriceAsPack
+                        ? '₹${vm.perPieceSelling.toStringAsFixed(2)} / pc'
+                        : null,
+                    helperStyle: const TextStyle(fontSize: 10, color: AppTheme.primaryLight),
                   ),
                   onChanged: (_) => vm.refreshPricingState(),
                 ),
@@ -1147,48 +1314,73 @@ class AddProductScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          // Purchase Price
+
+          // Purchase Price (Cost)
           TextField(
             controller: vm.purchasePriceController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Purchase Price (Cost)',
+            decoration: InputDecoration(
+              labelText: vm.isMultiUnit && vm.enterPriceAsPack
+                  ? '${vm.selectedUnit?.name.split(" ").first ?? "Pack"} Cost / Khareed (₹)'
+                  : 'Purchase Price (Cost) (₹)',
               hintText: '0',
               prefixText: '₹ ',
+              helperText: vm.isMultiUnit && vm.enterPriceAsPack
+                  ? '₹${vm.perPieceCost.toStringAsFixed(2)} / pc cost'
+                  : null,
+              helperStyle: const TextStyle(fontSize: 10, color: AppTheme.primaryLight),
             ),
             onChanged: (_) => vm.refreshPricingState(),
           ),
           const SizedBox(height: 12),
-          // Wholesale Price & Wholesale Min Qty
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: TextField(
-                  controller: vm.wholesalePriceController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Wholesale Price',
-                    hintText: '0',
-                    prefixText: '₹ ',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: vm.wholesaleMinQtyController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Wholesale Min Qty *',
-                    hintText: '12',
-                    suffixText: 'pcs',
-                  ),
-                ),
-              ),
-            ],
+
+          // Wholesale Switch & Fields
+          const Divider(height: 1),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Wholesale Pricing', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              vm.isWholesaleEnabled
+                  ? 'Active: Special bulk rate configured'
+                  : 'Enable special rate for bulk / full pack buyers',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+            value: vm.isWholesaleEnabled,
+            activeThumbColor: AppTheme.primary,
+            onChanged: (val) => vm.setWholesaleEnabled(val),
           ),
+          if (vm.isWholesaleEnabled) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: vm.wholesalePriceController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Wholesale Price',
+                      hintText: '0',
+                      prefixText: '₹ ',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: vm.wholesaleMinQtyController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Min Qty *',
+                      hintText: '12',
+                      suffixText: 'pcs',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1222,7 +1414,7 @@ class AddProductScreen extends StatelessWidget {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // STOCK & CATEGORY CARD
+  // 6. STOCK & CATEGORY CARD
   // ───────────────────────────────────────────────────────────────────────────
   Widget _buildStockAndCategoryCard(AddProductViewModel vm) {
     return Container(
@@ -1236,7 +1428,7 @@ class AddProductScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Inventory & Categorization',
+            'Inventory & Stock',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 12),
@@ -1256,111 +1448,55 @@ class AddProductScreen extends StatelessWidget {
             onChanged: (val) => vm.setSelectedCategoryId(val),
           ),
           const SizedBox(height: 12),
-          // Unit & Stock
+          // Stock & Min Stock
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                flex: 3,
-                child: DropdownButtonFormField<String>(
-                  initialValue: vm.selectedUnitId,
-                  decoration: const InputDecoration(labelText: 'Unit'),
-                  items: vm.units.map((u) {
-                    return DropdownMenuItem<String>(
-                      value: u.id,
-                      child: Text(u.name, overflow: TextOverflow.ellipsis),
-                    );
-                  }).toList(),
-                  onChanged: (val) => vm.setSelectedUnitId(val),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
                 child: TextField(
                   controller: vm.stockController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: vm.isMultiUnit
-                        ? (vm.sellAsFullPack ? 'Pack Qty' : 'Box/Lad Qty')
+                        ? (vm.sellAsFullPack ? 'Pack Qty' : '${vm.selectedUnit?.name.split(" ").first ?? "Box"} Qty')
                         : 'Initial Stock',
                     hintText: '10',
                   ),
                   onChanged: (_) => vm.refreshStockCalculation(),
                 ),
               ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: vm.minStockController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Low Stock Alert',
+                    hintText: '5',
+                  ),
+                ),
+              ),
             ],
           ),
           if (vm.isMultiUnit) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.all(12),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.cardBorder),
+                color: AppTheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  const Text(
-                    'Packaging & Selling Mode',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const Text('Sell as Pieces (Khulla)'),
-                          selected: !vm.sellAsFullPack,
-                          selectedColor: AppTheme.primary.withValues(alpha: 0.2),
-                          labelStyle: TextStyle(
-                            fontSize: 11,
-                            fontWeight: !vm.sellAsFullPack ? FontWeight.bold : FontWeight.normal,
-                            color: !vm.sellAsFullPack ? AppTheme.primaryLight : AppTheme.textMuted,
-                          ),
-                          onSelected: (_) => vm.setSellAsFullPack(false),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const Text('Sell Full Pack (Sealed)'),
-                          selected: vm.sellAsFullPack,
-                          selectedColor: AppTheme.primary.withValues(alpha: 0.2),
-                          labelStyle: TextStyle(
-                            fontSize: 11,
-                            fontWeight: vm.sellAsFullPack ? FontWeight.bold : FontWeight.normal,
-                            color: vm.sellAsFullPack ? AppTheme.primaryLight : AppTheme.textMuted,
-                          ),
-                          onSelected: (_) => vm.setSellAsFullPack(true),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.inventory_2, size: 16, color: AppTheme.primaryLight),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            !vm.sellAsFullPack
-                                ? '📦 ${(int.tryParse(vm.stockController.text.trim()) ?? 0)} ${vm.selectedUnit?.name ?? 'Boxes'} × ${vm.currentConversionFactor.round()} = ${vm.calculatedBaseStock} Total Pieces in Inventory'
-                                : '📦 ${(int.tryParse(vm.stockController.text.trim()) ?? 0)} Sealed Packs in Inventory (Sold as complete pack)',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryLight),
-                          ),
-                        ),
-                      ],
+                  const Icon(Icons.inventory_2, size: 16, color: AppTheme.primaryLight),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      !vm.sellAsFullPack
+                          ? '📦 ${(int.tryParse(vm.stockController.text.trim()) ?? 0)} ${vm.selectedUnit?.name ?? 'Boxes'} × ${vm.currentConversionFactor.round()} = ${vm.calculatedBaseStock} Total Pieces in Inventory'
+                          : '📦 ${(int.tryParse(vm.stockController.text.trim()) ?? 0)} Sealed Packs in Inventory (Sold as complete pack)',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryLight),
                     ),
                   ),
                 ],
