@@ -121,6 +121,21 @@ export const quickDemandNotesService = {
     return this.getAll(shopId);
   },
 
+  transferParty(
+    shopId: string,
+    id: string,
+    newGroupName: string,
+    supplierId?: string | null,
+    supplierPhone?: string | null
+  ): QuickDemandNote[] {
+    demandNotesRepository.update(shopId, id, {
+      group_name: newGroupName.trim(),
+      supplier_id: supplierId ?? null,
+      supplier_phone: supplierPhone ?? null,
+    });
+    return this.getAll(shopId);
+  },
+
   clearDone(shopId: string): QuickDemandNote[] {
     demandNotesRepository.clearFulfilled(shopId);
     return this.getAll(shopId);

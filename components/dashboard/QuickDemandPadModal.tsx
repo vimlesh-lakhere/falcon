@@ -21,6 +21,8 @@ import {
   Send,
   Cloud,
   ArrowRight,
+  ArrowRightLeft,
+  Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import {
@@ -28,6 +30,7 @@ import {
   QuickDemandNote,
 } from "@/lib/quick-demand-notes";
 import { demandNotesRepository } from "@/repositories/demand-notes.repo";
+import { suppliersRepository } from "@/repositories/suppliers.repo";
 import {
   parseSingleDemandNote,
   parseBulkDemandText,
@@ -61,23 +64,42 @@ export const QuickDemandPadModal: React.FC<QuickDemandPadModalProps> = ({
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "ordered" | "fulfilled">("pending");
   const [isUrgentManual, setIsUrgentManual] = useState(false);
 
+  const [localSuppliers, setLocalSuppliers] = useState<Supplier[]>(suppliers);
+
+  useEffect(() => {
+    setLocalSuppliers(suppliers);
+  }, [suppliers]);
+
+  // Transfer item state
+  const [transferModalItem, setTransferModalItem] = useState<QuickDemandNote | null>(null);
+  const [targetTransferParty, setTargetTransferParty] = useState<string>("General");
+  const [customTransferParty, setCustomTransferParty] = useState("");
+  const [isCustomTransferParty, setIsCustomTransferParty] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  // New Party modal state
+  const [showAddPartyModal, setShowAddPartyModal] = useState(false);
+  const [newPartyName, setNewPartyName] = useState("");
+  const [newPartyPhone, setNewPartyPhone] = useState("");
+  const [isCreatingParty, setIsCreatingParty] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Supplier Names list
   const supplierNames = useMemo(() => {
-    return suppliers.map((s) => s.name);
-  }, [suppliers]);
+    return localSuppliers.map((s) => s.name);
+  }, [localSuppliers]);
 
   // Combined Party list (General + Suppliers + existing custom groups)
   const partyList = useMemo(() => {
     const set = new Set<string>();
     set.add("General");
-    suppliers.forEach((s) => set.add(s.name));
+    localSuppliers.forEach((s) => set.add(s.name));
     notes.forEach((n) => {
       if (n.groupName) set.add(n.groupName);
     });
     return Array.from(set);
-  }, [suppliers, notes]);
+  }, [localSuppliers, notes]);
 
   // Live NLP parsing of user input text
   const liveParsed = useMemo(() => {
@@ -212,6 +234,99 @@ export const QuickDemandPadModal: React.FC<QuickDemandPadModalProps> = ({
     if (confirm("Clear all completed/fulfilled items from list?")) {
       quickDemandNotesService.clearDone(shopId);
       reloadNotes();
+    }
+  };
+
+  // Add & Persist New Party
+  const handleCreateParty = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newPartyName.trim()) return;
+
+    try {
+      setIsCreatingParty(true);
+      if (shopId) {
+        const created = await suppliersRepository.create({
+          shop_id: shopId,
+          name: newPartyName.trim(),
+          phone: newPartyPhone.trim() || null,
+        });
+
+        if (created) {
+          setLocalSuppliers((prev) => {
+            const exists = prev.some(
+              (s) => s.id === created.id || s.name.toLowerCase() === created.name.toLowerCase()
+            );
+            return exists ? prev : [...prev, created];
+          });
+          setSelectedParty(created.name);
+        } else {
+          setSelectedParty(newPartyName.trim());
+        }
+      } else {
+        setSelectedParty(newPartyName.trim());
+      }
+
+      setNewPartyName("");
+      setNewPartyPhone("");
+      setShowAddPartyModal(false);
+      setIsCustomParty(false);
+    } catch (err) {
+      console.warn("Party creation exception:", err);
+      setSelectedParty(newPartyName.trim());
+      setShowAddPartyModal(false);
+      setIsCustomParty(false);
+    } finally {
+      setIsCreatingParty(false);
+    }
+  };
+
+  // Open Transfer Modal
+  const handleOpenTransfer = (item: QuickDemandNote) => {
+    setTransferModalItem(item);
+    setTargetTransferParty(item.groupName);
+    setCustomTransferParty("");
+    setIsCustomTransferParty(false);
+  };
+
+  // Confirm Transfer
+  const handleConfirmTransfer = async () => {
+    if (!transferModalItem || !shopId) return;
+
+    const finalGroup = isCustomTransferParty
+      ? customTransferParty.trim()
+      : targetTransferParty.trim();
+
+    if (!finalGroup) {
+      alert("Please select or enter a party name.");
+      return;
+    }
+
+    if (finalGroup.toLowerCase() === transferModalItem.groupName.toLowerCase()) {
+      setTransferModalItem(null);
+      return;
+    }
+
+    try {
+      setIsTransferring(true);
+      const matchedSupplier = localSuppliers.find(
+        (s) => s.name.toLowerCase() === finalGroup.toLowerCase()
+      );
+
+      quickDemandNotesService.transferParty(
+        shopId,
+        transferModalItem.id,
+        finalGroup,
+        matchedSupplier?.id || null,
+        matchedSupplier?.phone || null
+      );
+
+      reloadNotes();
+      setTransferModalItem(null);
+    } catch (err) {
+      console.error("Transfer error:", err);
+      alert("Failed to transfer item. Please try again.");
+    } finally {
+      setIsTransferring(false);
     }
   };
 
@@ -360,7 +475,7 @@ ${itemsFormatted}
               </button>
 
               {/* Top Registered Suppliers */}
-              {suppliers.slice(0, 5).map((sup) => (
+              {localSuppliers.slice(0, 6).map((sup) => (
                 <button
                   key={sup.id}
                   type="button"
@@ -379,12 +494,12 @@ ${itemsFormatted}
               ))}
 
               {/* Other party dropdown if more exist */}
-              {partyList.length > 6 && (
+              {partyList.length > 7 && (
                 <select
                   value={isCustomParty ? "__CUSTOM__" : selectedParty}
                   onChange={(e) => {
                     if (e.target.value === "__NEW__") {
-                      setIsCustomParty(true);
+                      setShowAddPartyModal(true);
                     } else {
                       setIsCustomParty(false);
                       setSelectedParty(e.target.value);
@@ -393,7 +508,7 @@ ${itemsFormatted}
                   className="bg-white text-xs font-semibold text-gray-800 border border-purple-200 rounded-xl px-2 py-1"
                 >
                   <option value="" disabled>More Parties...</option>
-                  {partyList.filter((p) => p !== "General" && !suppliers.slice(0, 5).some((s) => s.name === p)).map((p) => (
+                  {partyList.filter((p) => p !== "General" && !localSuppliers.slice(0, 6).some((s) => s.name === p)).map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                   <option value="__NEW__">➕ Add Other Party...</option>
@@ -403,12 +518,8 @@ ${itemsFormatted}
               {/* Custom Party Button */}
               <button
                 type="button"
-                onClick={() => setIsCustomParty(true)}
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                  isCustomParty
-                    ? "bg-purple-700 text-white"
-                    : "bg-white text-purple-700 hover:bg-purple-100 border border-purple-300 border-dashed"
-                }`}
+                onClick={() => setShowAddPartyModal(true)}
+                className="px-2.5 py-1 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer bg-white text-purple-700 hover:bg-purple-100 border border-purple-300 border-dashed"
               >
                 ➕ New Party
               </button>
@@ -772,7 +883,17 @@ ${itemsFormatted}
                             </div>
 
                             {/* Right: Status Pill & Actions */}
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* Transfer Item to Party */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenTransfer(item)}
+                                className="p-1.5 text-gray-400 hover:text-purple-700 hover:bg-purple-100 rounded-lg transition-colors cursor-pointer"
+                                title="Transfer to another party (पार्टी बदलें)"
+                              >
+                                <ArrowRightLeft className="w-3.5 h-3.5" />
+                              </button>
+
                               {/* 3-State Status Toggle */}
                               <button
                                 type="button"
@@ -868,9 +989,15 @@ ${itemsFormatted}
                             </span>
                           )}
 
-                          <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-0.2 rounded-md border border-gray-200">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTransfer(item)}
+                            className="text-[10px] font-bold bg-gray-100 text-gray-700 hover:bg-purple-100 hover:text-purple-900 px-2 py-0.2 rounded-md border border-gray-200 flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Click to transfer party (पार्टी बदलें)"
+                          >
                             🏢 {item.groupName}
-                          </span>
+                            <ArrowRightLeft className="w-2.5 h-2.5 text-gray-400" />
+                          </button>
 
                           {item.priority === "urgent" && !isFulfilled && (
                             <span className="text-[10px] font-black bg-red-100 text-red-700 px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
@@ -881,7 +1008,16 @@ ${itemsFormatted}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTransfer(item)}
+                        className="p-1.5 text-gray-400 hover:text-purple-700 hover:bg-purple-100 rounded-lg transition-colors cursor-pointer"
+                        title="Transfer to another party (पार्टी बदलें)"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleCycleStatus(item.id, item.status)}
@@ -939,6 +1075,220 @@ ${itemsFormatted}
             </Button>
           </div>
         </div>
+
+        {/* =================================================================== */}
+        {/* TRANSFER ITEM MODAL                                                 */}
+        {/* =================================================================== */}
+        {transferModalItem && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                    <ArrowRightLeft className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-gray-900">Transfer Item to Party</h3>
+                    <p className="text-[11px] text-gray-500">पार्टी बदलें / Reassign Supplier</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTransferModalItem(null)}
+                  className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="bg-purple-50/80 p-3.5 rounded-2xl border border-purple-200/80 space-y-1.5">
+                <div className="text-[10px] text-purple-700 font-black uppercase tracking-wider">Item Details</div>
+                <div className="text-sm font-black text-purple-950 flex items-center justify-between">
+                  <span>{transferModalItem.itemName}</span>
+                  {transferModalItem.quantity && (
+                    <span className="bg-purple-200/80 text-purple-900 text-xs px-2 py-0.5 rounded-md font-bold">
+                      {transferModalItem.quantity}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-600 flex items-center gap-1.5 pt-0.5">
+                  <span>Current Party:</span>
+                  <span className="font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    🏢 {transferModalItem.groupName}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-700 block">
+                  Select Destination Party (नई पार्टी चुनें):
+                </label>
+
+                {/* Quick select party chips */}
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-gray-50 rounded-xl border border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetTransferParty("General");
+                      setIsCustomTransferParty(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      targetTransferParty === "General" && !isCustomTransferParty
+                        ? "bg-purple-700 text-white shadow-xs"
+                        : "bg-white text-gray-700 hover:bg-purple-50 border border-gray-200"
+                    }`}
+                  >
+                    🌐 General
+                  </button>
+                  {localSuppliers.map((sup) => (
+                    <button
+                      key={sup.id}
+                      type="button"
+                      onClick={() => {
+                        setTargetTransferParty(sup.name);
+                        setIsCustomTransferParty(false);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        targetTransferParty === sup.name && !isCustomTransferParty
+                          ? "bg-purple-700 text-white shadow-xs"
+                          : "bg-white text-gray-700 hover:bg-purple-50 border border-gray-200"
+                      }`}
+                    >
+                      🏢 {sup.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomTransferParty(true)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isCustomTransferParty
+                        ? "bg-purple-700 text-white shadow-xs"
+                        : "bg-white text-purple-700 border border-purple-300 border-dashed hover:bg-purple-50"
+                    }`}
+                  >
+                    ➕ Other / New Party
+                  </button>
+                </div>
+
+                {/* Custom transfer party input */}
+                {isCustomTransferParty && (
+                  <div className="pt-2 animate-in fade-in">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={customTransferParty}
+                      onChange={(e) => setCustomTransferParty(e.target.value)}
+                      placeholder="Enter new party or supplier name..."
+                      className="w-full text-xs font-bold text-purple-900 bg-white border border-purple-400 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTransferModalItem(null)}
+                  disabled={isTransferring}
+                  className="rounded-xl cursor-pointer text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleConfirmTransfer}
+                  disabled={isTransferring || (isCustomTransferParty && !customTransferParty.trim())}
+                  className="bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-xl px-5 cursor-pointer shadow-md text-xs"
+                >
+                  {isTransferring ? "Transferring..." : "Transfer Now (ट्रांसफर करें)"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =================================================================== */}
+        {/* ADD NEW PARTY MODAL                                                 */}
+        {/* =================================================================== */}
+        {showAddPartyModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-gray-900">Add New Party / Supplier</h3>
+                    <p className="text-[11px] text-gray-500">नया सप्लायर / डिस्ट्रीब्यूटर जोड़ें</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddPartyModal(false)}
+                  className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateParty} className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">
+                    Party / Supplier Name (पार्टी का नाम) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    autoFocus
+                    required
+                    value={newPartyName}
+                    onChange={(e) => setNewPartyName(e.target.value)}
+                    placeholder="e.g. Ramesh Trading, HUL Distributor, Patanjali Agency"
+                    className="w-full text-xs font-bold text-gray-900 bg-white border border-purple-300 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">
+                    WhatsApp / Phone Number (ऑप्शनल - WhatsApp PO के लिए)
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="tel"
+                      value={newPartyPhone}
+                      onChange={(e) => setNewPartyPhone(e.target.value)}
+                      placeholder="e.g. 9876543210"
+                      className="w-full pl-9 pr-3 py-2 text-xs font-semibold text-gray-900 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddPartyModal(false)}
+                    disabled={isCreatingParty}
+                    className="rounded-xl cursor-pointer text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isCreatingParty || !newPartyName.trim()}
+                    className="bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-xl px-5 cursor-pointer shadow-md text-xs"
+                  >
+                    {isCreatingParty ? "Adding..." : "➕ Add & Select Party"}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -20,7 +20,7 @@ export function MobileBottomNav({ onOpenMenu }: MobileBottomNavProps) {
   const pathname = usePathname();
 
   const navItems = [
-    { name: "Home", href: "/", icon: LayoutDashboard },
+    { name: "Home", href: "/dashboard", icon: LayoutDashboard },
     { name: "Products", href: "/products", icon: Package },
     { name: "POS", href: "/pos", icon: ShoppingCart, isPos: true },
     { name: "Sales", href: "/sales", icon: Receipt },
@@ -30,8 +30,8 @@ export function MobileBottomNav({ onOpenMenu }: MobileBottomNavProps) {
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 shadow-2xl px-2 py-1.5 flex items-center justify-around">
       {navItems.map((item) => {
         const isActive =
-          item.href === "/"
-            ? pathname === "/"
+          item.href === "/dashboard"
+            ? pathname === "/dashboard" || pathname === "/"
             : pathname.startsWith(item.href);
         const Icon = item.icon;
 

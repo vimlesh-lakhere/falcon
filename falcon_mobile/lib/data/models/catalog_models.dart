@@ -1,0 +1,68 @@
+class CategoryModel {
+  final String id;
+  final String shopId;
+  final String name;
+  final String? imageUrl;
+  final bool isActive;
+
+  CategoryModel({
+    required this.id,
+    required this.shopId,
+    required this.name,
+    this.imageUrl,
+    this.isActive = true,
+  });
+
+  factory CategoryModel.fromJson(Map<String, dynamic> json) {
+    return CategoryModel(
+      id: json['id'] as String,
+      shopId: json['shop_id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      imageUrl: json['image_url'] as String?,
+      isActive: json['is_active'] as bool? ?? true,
+    );
+  }
+}
+
+class UnitModel {
+  final String id;
+  final String shopId;
+  final String name;
+
+  UnitModel({
+    required this.id,
+    required this.shopId,
+    required this.name,
+  });
+
+  factory UnitModel.fromJson(Map<String, dynamic> json) {
+    return UnitModel(
+      id: json['id'] as String,
+      shopId: json['shop_id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+    );
+  }
+}
+
+class SupplierModel {
+  final String id;
+  final String shopId;
+  final String name;
+  final String? phone;
+
+  SupplierModel({
+    required this.id,
+    required this.shopId,
+    required this.name,
+    this.phone,
+  });
+
+  factory SupplierModel.fromJson(Map<String, dynamic> json) {
+    return SupplierModel(
+      id: json['id'] as String,
+      shopId: json['shop_id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      phone: json['phone'] as String?,
+    );
+  }
+}
