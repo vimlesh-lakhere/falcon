@@ -18,9 +18,12 @@ class AppConstants {
   // Google Gemini AI Configuration
   static const String prefKeyGeminiApiKey = 'falcon_gemini_api_key';
   static const List<String> geminiFallbackModels = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
     'gemini-1.5-flash',
+    'gemini-2.0-flash',
+    'gemini-flash-latest',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro',
+    'gemini-2.0-flash-exp',
   ];
 
   // OpenFoodFacts Indian FMCG barcode lookup endpoint

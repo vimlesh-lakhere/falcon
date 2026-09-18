@@ -35,6 +35,18 @@ class ScannedProductInfo {
   });
 }
 
+class GeminiKeyTestResult {
+  final bool isValid;
+  final String message;
+  final List<String> availableModels;
+
+  const GeminiKeyTestResult({
+    required this.isValid,
+    required this.message,
+    this.availableModels = const [],
+  });
+}
+
 class ProductScannerService {
   static final TextRecognizer _textRecognizer =
       TextRecognizer(script: TextRecognitionScript.latin);
@@ -43,11 +55,24 @@ class ProductScannerService {
   // 1. GEMINI KEY STORAGE & VALIDATION
   // ───────────────────────────────────────────────────────────────────────────
 
+  /// Sanitize Gemini API Key by removing whitespace, quotes, and invisible characters
+  static String cleanGeminiKey(String raw) {
+    var k = raw.trim();
+    if ((k.startsWith('"') && k.endsWith('"')) ||
+        (k.startsWith("'") && k.endsWith("'"))) {
+      k = k.substring(1, k.length - 1).trim();
+    }
+    // Remove invisible unicode characters, zero-width spaces, and all whitespaces
+    k = k.replaceAll(RegExp(r'[\s\u00A0\u200B-\u200D\uFEFF]'), '');
+    return k;
+  }
+
   /// Retrieve saved Google Gemini API Key from SharedPreferences
   static Future<String> getSavedGeminiKey() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(AppConstants.prefKeyGeminiApiKey)?.trim() ?? '';
+      final raw = prefs.getString(AppConstants.prefKeyGeminiApiKey) ?? '';
+      return cleanGeminiKey(raw);
     } catch (_) {
       return '';
     }
@@ -56,51 +81,128 @@ class ProductScannerService {
   /// Save Google Gemini API Key to SharedPreferences
   static Future<void> saveGeminiKey(String key) async {
     try {
+      final clean = cleanGeminiKey(key);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(AppConstants.prefKeyGeminiApiKey, key.trim());
+      await prefs.setString(AppConstants.prefKeyGeminiApiKey, clean);
     } catch (_) {}
   }
 
-  /// Ping Google Gemini API to test if the provided key is valid
-  static Future<bool> testGeminiKey(String key) async {
-    final cleanKey = key.trim();
-    if (cleanKey.isEmpty) return false;
+  /// Comprehensive test of Google Gemini API Key with detailed error feedback
+  static Future<GeminiKeyTestResult> testGeminiKeyDetailed(String key) async {
+    final cleanKey = cleanGeminiKey(key);
+    if (cleanKey.isEmpty) {
+      return const GeminiKeyTestResult(
+        isValid: false,
+        message: 'API Key is empty. Please paste your key from Google AI Studio.',
+      );
+    }
 
+    // Step 1: Query Google's official models listing endpoint (fast, authoritative, tests the key itself)
+    try {
+      final modelsUrl = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models?key=$cleanKey',
+      );
+      final response = await http.get(modelsUrl).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        final rawModels = body['models'] as List?;
+        final validModels = <String>[];
+        if (rawModels != null) {
+          for (final m in rawModels) {
+            final methods = m['supportedGenerationMethods'] as List?;
+            if (methods != null && methods.contains('generateContent')) {
+              final name = (m['name'] as String? ?? '').replaceFirst('models/', '');
+              if (name.isNotEmpty) validModels.add(name);
+            }
+          }
+        }
+
+        // Key is 100% valid! Auto-save to SharedPreferences
+        await saveGeminiKey(cleanKey);
+
+        return GeminiKeyTestResult(
+          isValid: true,
+          message: '✓ Gemini Key is active & verified! (${validModels.length} models accessible)',
+          availableModels: validModels,
+        );
+      } else if (response.statusCode == 400 || response.statusCode == 403) {
+        try {
+          final errJson = jsonDecode(response.body);
+          final errMsg = errJson['error']?['message']?.toString() ?? '';
+          if (errMsg.contains('API key not valid') || errMsg.contains('API_KEY_INVALID')) {
+            return const GeminiKeyTestResult(
+              isValid: false,
+              message: 'Invalid API key. Please copy a fresh key from aistudio.google.com',
+            );
+          } else if (errMsg.contains('API key expired')) {
+            return const GeminiKeyTestResult(
+              isValid: false,
+              message: 'API key has expired. Please generate a new key.',
+            );
+          } else if (errMsg.isNotEmpty) {
+            return GeminiKeyTestResult(isValid: false, message: 'Google error: $errMsg');
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('[ProductScannerService] Models list check notice: $e');
+    }
+
+    // Step 2: Fallback direct ping test using primary model
     for (final model in AppConstants.geminiFallbackModels) {
       try {
-        final url = Uri.parse(
+        final pingUrl = Uri.parse(
           'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$cleanKey',
         );
         final response = await http
             .post(
-              url,
+              pingUrl,
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({
                 'contents': [
                   {
                     'parts': [
-                      {'text': 'ping'}
+                      {'text': 'hi'}
                     ]
                   }
                 ]
               }),
             )
-            .timeout(const Duration(seconds: 5));
+            .timeout(const Duration(seconds: 10));
 
         if (response.statusCode == 200) {
-          return true;
+          await saveGeminiKey(cleanKey);
+          return GeminiKeyTestResult(
+            isValid: true,
+            message: '✓ Key is active & connected to $model!',
+            availableModels: [model],
+          );
         } else if (response.statusCode == 400 || response.statusCode == 403) {
-          final err = jsonDecode(response.body);
-          final msg = err['error']?['message'] ?? '';
-          if (msg.contains('API key not valid') || msg.contains('API_KEY_INVALID')) {
-            return false;
-          }
+          try {
+            final err = jsonDecode(response.body);
+            final msg = err['error']?['message']?.toString() ?? '';
+            if (msg.contains('API key not valid') || msg.contains('API_KEY_INVALID')) {
+              return const GeminiKeyTestResult(
+                isValid: false,
+                message: 'Invalid API key. Please copy a fresh key from aistudio.google.com',
+              );
+            }
+          } catch (_) {}
         }
-      } catch (_) {
-        // Try next model fallback
-      }
+      } catch (_) {}
     }
-    return false;
+
+    return const GeminiKeyTestResult(
+      isValid: false,
+      message: 'Could not connect to Google Gemini API. Please check internet connection or key.',
+    );
+  }
+
+  /// Backward-compatible boolean check
+  static Future<bool> testGeminiKey(String key) async {
+    final res = await testGeminiKeyDetailed(key);
+    return res.isValid;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -113,9 +215,10 @@ class ProductScannerService {
     Uint8List? backBytes,
     String? overrideKey,
   }) async {
-    final apiKey = (overrideKey != null && overrideKey.trim().isNotEmpty)
+    final rawKey = (overrideKey != null && overrideKey.trim().isNotEmpty)
         ? overrideKey.trim()
         : await getSavedGeminiKey();
+    final apiKey = cleanGeminiKey(rawKey);
 
     if (apiKey.isEmpty) {
       debugPrint('[ProductScannerService] No Gemini API Key configured.');
@@ -164,10 +267,10 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
 '''
     });
 
-    // Front image
+    // Front image (Google Generative Language REST expects inlineData with camelCase)
     parts.add({
-      'inline_data': {
-        'mime_type': 'image/jpeg',
+      'inlineData': {
+        'mimeType': 'image/jpeg',
         'data': frontBase64,
       }
     });
@@ -175,8 +278,8 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
     // Optional back image
     if (backBase64 != null) {
       parts.add({
-        'inline_data': {
-          'mime_type': 'image/jpeg',
+        'inlineData': {
+          'mimeType': 'image/jpeg',
           'data': backBase64,
         }
       });
@@ -203,7 +306,7 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
                 },
               }),
             )
-            .timeout(const Duration(seconds: 15));
+            .timeout(const Duration(seconds: 25));
 
         if (response.statusCode == 200) {
           final resJson = jsonDecode(response.body);

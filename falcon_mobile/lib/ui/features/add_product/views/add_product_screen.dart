@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -1265,26 +1265,48 @@ class AddProductScreen extends StatelessWidget {
                         onPressed: isTesting
                             ? null
                             : () async {
-                                final k = geminiController.text.trim();
-                                if (k.isEmpty) {
-                                  Fluttertoast.showToast(msg: 'Enter a key first');
+                                final rawKey = geminiController.text;
+                                final clean = ProductScannerService.cleanGeminiKey(rawKey);
+                                if (clean.isEmpty) {
+                                  Fluttertoast.showToast(msg: 'Enter or paste a key first');
                                   return;
                                 }
                                 setState(() => isTesting = true);
-                                final ok = await ProductScannerService.testGeminiKey(k);
+                                final result = await ProductScannerService.testGeminiKeyDetailed(clean);
                                 setState(() => isTesting = false);
-                                if (ok) {
+                                if (result.isValid) {
+                                  geminiController.text = clean;
                                   Fluttertoast.showToast(
-                                    msg: '✓ Gemini Key is valid and active!',
+                                    msg: result.message,
                                     backgroundColor: const Color(0xFF10B981),
+                                    toastLength: Toast.LENGTH_LONG,
                                   );
                                 } else {
                                   Fluttertoast.showToast(
-                                    msg: 'Key verification failed. Please check Google AI Studio key.',
+                                    msg: result.message,
                                     backgroundColor: Colors.red,
+                                    toastLength: Toast.LENGTH_LONG,
                                   );
                                 }
                               },
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        ),
+                        icon: const Icon(Icons.content_paste, size: 14),
+                        label: const Text('Paste Key', style: TextStyle(fontSize: 11)),
+                        onPressed: () async {
+                          final data = await Clipboard.getData(Clipboard.kTextPlain);
+                          if (data?.text != null && data!.text!.trim().isNotEmpty) {
+                            final clean = ProductScannerService.cleanGeminiKey(data.text!);
+                            geminiController.text = clean;
+                            Fluttertoast.showToast(msg: 'Pasted key from clipboard');
+                          } else {
+                            Fluttertoast.showToast(msg: 'Clipboard is empty');
+                          }
+                        },
                       ),
                     ],
                   ),
@@ -1320,7 +1342,8 @@ class AddProductScreen extends StatelessWidget {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                 onPressed: () async {
-                  await ProductScannerService.saveGeminiKey(geminiController.text);
+                  final clean = ProductScannerService.cleanGeminiKey(geminiController.text);
+                  await ProductScannerService.saveGeminiKey(clean);
                   await WhiteBackgroundService.setRembgHost(hostController.text);
                   if (ctx.mounted) Navigator.pop(ctx);
                   Fluttertoast.showToast(
