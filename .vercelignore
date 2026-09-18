@@ -1,0 +1,19 @@
+# Mobile app Flutter source code (never needed for Next.js web build)
+falcon_mobile/
+*.apk
+*.aab
+
+# Local backups and database dumps
+backups/
+database/
+
+# Documentation and markdown manuals
+docs/
+scratch/
+FALCON_SYSTEM_ARCHITECTURE_AND_FEATURE_MANUAL.md
+
+# Scripts and local tools
+scripts/
+
+# Misc
+*.tsbuildinfo
