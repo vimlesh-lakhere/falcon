@@ -4,6 +4,8 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../../core/app_theme.dart';
+import '../../../../data/models/product_model.dart';
+import '../../../../data/models/catalog_models.dart';
 import '../../../../data/services/product_scanner_service.dart';
 import '../../../../data/services/white_background_service.dart';
 import '../view_models/add_product_view_model.dart';
@@ -365,7 +367,7 @@ class AddProductScreen extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                     Text(
-                      'Stock: ${existing.currentStock} units | MRP: ₹${existing.mrp?.toStringAsFixed(0) ?? "N/A"} | Price: ₹${existing.sellingPrice.toStringAsFixed(0)}',
+                      'Stock: ${_formatExistingStock(existing, vm)} | MRP: ₹${existing.mrp?.toStringAsFixed(0) ?? "N/A"} | Price: ₹${existing.sellingPrice.toStringAsFixed(0)}',
                       style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                     ),
                   ],
@@ -390,7 +392,10 @@ class AddProductScreen extends StatelessWidget {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   icon: const Icon(Icons.add_shopping_cart, size: 16),
-                  label: const Text('Quick +10 Stock', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  label: Text(
+                    vm.isMultiUnit && !vm.sellAsFullPack ? 'Quick +10 Boxes' : 'Quick +10 Stock',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
                   onPressed: () => vm.quickUpdateExistingStock(10),
                 ),
               ),
@@ -437,6 +442,20 @@ class AddProductScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatExistingStock(ProductModel existing, AddProductViewModel vm) {
+    if (existing.unitId != null) {
+      final unit = vm.units.firstWhere(
+        (u) => u.id == existing.unitId,
+        orElse: () => UnitModel(id: '', shopId: '', name: ''),
+      );
+      if (unit.conversionFactor > 1) {
+        final boxes = (existing.currentStock / unit.conversionFactor).round();
+        return '${existing.currentStock} pcs ($boxes ${unit.name})';
+      }
+    }
+    return '${existing.currentStock} units';
   }
 
   // ───────────────────────────────────────────────────────────────────────────

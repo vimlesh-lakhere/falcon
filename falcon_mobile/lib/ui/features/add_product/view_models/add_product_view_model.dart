@@ -189,9 +189,9 @@ class AddProductViewModel extends ChangeNotifier {
         } else {
           wholesaleMinQtyController.text = '12';
         }
-        stockController.text = (found.currentStock + 1).toString();
         if (found.categoryId != null) selectedCategoryId = found.categoryId;
         if (found.unitId != null) selectedUnitId = found.unitId;
+        populateStockForExistingProduct(found);
         if (found.description != null) {
           descriptionController.text = found.description!
               .replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '')
@@ -293,9 +293,9 @@ class AddProductViewModel extends ChangeNotifier {
     } else {
       wholesaleMinQtyController.text = '12';
     }
-    stockController.text = (found.currentStock + 1).toString();
     if (found.categoryId != null) selectedCategoryId = found.categoryId;
     if (found.unitId != null) selectedUnitId = found.unitId;
+    populateStockForExistingProduct(found);
     if (found.barcode != null && found.barcode!.isNotEmpty) {
       barcodeController.text = found.barcode!;
     }
@@ -375,7 +375,11 @@ class AddProductViewModel extends ChangeNotifier {
     try {
       final pid = existingProductFound!.id!;
       final currentStock = existingProductFound!.currentStock;
-      ProductModel updated = await _supabaseService.quickAddStock(pid, currentStock, addQuantity);
+      int quantityToAdd = addQuantity;
+      if (isMultiUnit && !sellAsFullPack) {
+        quantityToAdd = (addQuantity * currentConversionFactor).round();
+      }
+      ProductModel updated = await _supabaseService.quickAddStock(pid, currentStock, quantityToAdd);
 
       // If user took a new photo, update the image too
       if (frontImageBytes != null) {
@@ -789,6 +793,21 @@ class AddProductViewModel extends ChangeNotifier {
       return (rawStock * currentConversionFactor).round();
     }
     return rawStock;
+  }
+
+  void populateStockForExistingProduct(ProductModel found) {
+    if (found.unitId != null) {
+      selectedUnitId = found.unitId;
+    }
+    final factor = currentConversionFactor;
+    if (factor > 1 && !sellAsFullPack) {
+      // Database currentStock is stored in base pieces (e.g. 240 pcs).
+      // Calculate unit pack/box count for the UI input field (e.g. 240 / 24 = 10 boxes).
+      final boxCount = (found.currentStock / factor).round();
+      stockController.text = boxCount.toString();
+    } else {
+      stockController.text = found.currentStock.toString();
+    }
   }
 
   void generateAutoBarcode() {
