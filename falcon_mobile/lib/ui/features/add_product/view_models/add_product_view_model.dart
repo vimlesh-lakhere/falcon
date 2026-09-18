@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -73,6 +74,11 @@ class AddProductViewModel extends ChangeNotifier {
   bool isVariantMode = false;
   ProductModel? variantParentProduct;
   bool isReplacingExistingImage = false;
+
+  // Live Name Search & Auto-Suggestions
+  List<ProductModel> matchingNameProducts = [];
+  bool isSearchingName = false;
+  Timer? _nameSearchDebounce;
 
   // Catalog Lists
   List<CategoryModel> categories = [];
@@ -178,7 +184,11 @@ class AddProductViewModel extends ChangeNotifier {
         stockController.text = (found.currentStock + 1).toString();
         if (found.categoryId != null) selectedCategoryId = found.categoryId;
         if (found.unitId != null) selectedUnitId = found.unitId;
-        if (found.description != null) descriptionController.text = found.description!;
+        if (found.description != null) {
+          descriptionController.text = found.description!
+              .replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '')
+              .trim();
+        }
 
         HapticFeedback.mediumImpact();
         Fluttertoast.showToast(
@@ -221,6 +231,86 @@ class AddProductViewModel extends ChangeNotifier {
   // ───────────────────────────────────────────────────────────────────────────
   // 2. EXISTING PRODUCT & VARIANT MANAGEMENT
   // ───────────────────────────────────────────────────────────────────────────
+
+  /// Live Name Search for existing products (Auto-Suggest as user types)
+  void onNameQueryChanged(String query) {
+    _nameSearchDebounce?.cancel();
+    final clean = query.trim();
+    if (clean.length < 2) {
+      matchingNameProducts = [];
+      isSearchingName = false;
+      notifyListeners();
+      return;
+    }
+
+    _nameSearchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      isSearchingName = true;
+      notifyListeners();
+
+      final results = await _supabaseService.searchProductsByName(clean);
+      matchingNameProducts = results.where((p) => p.id != existingProductFound?.id).toList();
+      isSearchingName = false;
+      notifyListeners();
+    });
+  }
+
+  /// Select an existing product from live suggestions to auto-fill details
+  void selectExistingProduct(ProductModel found) {
+    existingProductFound = found;
+    isVariantMode = false;
+    variantParentProduct = null;
+    matchingNameProducts = [];
+
+    nameController.text = found.name;
+    if (found.nameHindi != null && found.nameHindi!.isNotEmpty) {
+      nameHindiController.text = found.nameHindi!;
+    }
+    if (found.brand != null && found.brand!.isNotEmpty) {
+      brandController.text = found.brand!;
+    }
+    if (found.purchasePrice > 0) {
+      purchasePriceController.text = found.purchasePrice.toStringAsFixed(0);
+    }
+    if (found.mrp != null && found.mrp! > 0) {
+      mrpController.text = found.mrp!.toStringAsFixed(0);
+    }
+    if (found.sellingPrice > 0) {
+      sellingPriceController.text = found.sellingPrice.toStringAsFixed(0);
+    }
+    if (found.wholesalePrice != null && found.wholesalePrice! > 0) {
+      wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
+    }
+    stockController.text = (found.currentStock + 1).toString();
+    if (found.categoryId != null) selectedCategoryId = found.categoryId;
+    if (found.unitId != null) selectedUnitId = found.unitId;
+    if (found.barcode != null && found.barcode!.isNotEmpty) {
+      barcodeController.text = found.barcode!;
+    }
+    if (found.sku != null && found.sku!.isNotEmpty) {
+      skuController.text = found.sku!;
+    }
+    if (found.description != null && found.description!.isNotEmpty) {
+      descriptionController.text = found.description!
+          .replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '')
+          .trim();
+    }
+
+    try {
+      HapticFeedback.mediumImpact().catchError((_) {});
+      Fluttertoast.showToast(
+        msg: 'Loaded: ${found.name} (Stock: ${found.currentStock})',
+        backgroundColor: const Color(0xFF38BDF8),
+        textColor: Colors.white,
+      );
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Clear name suggestions dropdown
+  void clearNameSuggestions() {
+    matchingNameProducts = [];
+    notifyListeners();
+  }
 
   /// Enter Variant Creation Mode for the existing product
   void enterVariantMode(String variantAttribute) {

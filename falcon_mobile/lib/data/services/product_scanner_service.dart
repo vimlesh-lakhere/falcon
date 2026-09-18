@@ -91,6 +91,65 @@ class ProductScannerService {
     } catch (_) {}
   }
 
+  static const String _prefKeyGeminiModels = 'falcon_gemini_models';
+
+  /// Save discovered models from Google AI Studio
+  static Future<void> saveAvailableModels(List<String> models) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_prefKeyGeminiModels, models);
+    } catch (_) {}
+  }
+
+  /// Get discovered models or live query Google's ModelService.ListModels endpoint
+  static Future<List<String>> getAvailableModels(String apiKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getStringList(_prefKeyGeminiModels);
+      if (cached != null && cached.isNotEmpty) {
+        return cached;
+      }
+    } catch (_) {}
+
+    // Live query Google's official ModelService.ListModels endpoint
+    try {
+      final modelsUrl = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey',
+      );
+      final response = await http.get(modelsUrl).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        final rawModels = body['models'] as List?;
+        final validModels = <String>[];
+        if (rawModels != null) {
+          for (final m in rawModels) {
+            final methods = m['supportedGenerationMethods'] as List?;
+            if (methods != null && methods.contains('generateContent')) {
+              final name = (m['name'] as String? ?? '').replaceFirst('models/', '');
+              if (name.isNotEmpty) validModels.add(name);
+            }
+          }
+        }
+        if (validModels.isNotEmpty) {
+          // Sort to prioritize "flash" models (fast, multimodal, cost-effective)
+          validModels.sort((a, b) {
+            final aFlash = a.contains('flash');
+            final bFlash = b.contains('flash');
+            if (aFlash && !bFlash) return -1;
+            if (!aFlash && bFlash) return 1;
+            return 0;
+          });
+          await saveAvailableModels(validModels);
+          return validModels;
+        }
+      }
+    } catch (e) {
+      debugPrint('[ProductScannerService] Fetch models error: $e');
+    }
+
+    return AppConstants.geminiFallbackModels;
+  }
+
   /// Comprehensive test of Google Gemini API Key with detailed error feedback
   static Future<GeminiKeyTestResult> testGeminiKeyDetailed(String key) async {
     final cleanKey = cleanGeminiKey(key);
@@ -122,8 +181,18 @@ class ProductScannerService {
           }
         }
 
-        // Key is 100% valid! Auto-save to SharedPreferences
+        // Key is 100% valid! Auto-save key AND available models to SharedPreferences
         await saveGeminiKey(cleanKey);
+        if (validModels.isNotEmpty) {
+          validModels.sort((a, b) {
+            final aFlash = a.contains('flash');
+            final bFlash = b.contains('flash');
+            if (aFlash && !bFlash) return -1;
+            if (!aFlash && bFlash) return 1;
+            return 0;
+          });
+          await saveAvailableModels(validModels);
+        }
 
         return GeminiKeyTestResult(
           isValid: true,
@@ -323,8 +392,11 @@ Return ONLY a valid raw JSON object:
       },
     });
 
-    // Try primary models with fail-fast on auth/format errors
-    for (final model in AppConstants.geminiFallbackModels) {
+    // Dynamically query or load working models from Google API
+    final modelsToTry = await getAvailableModels(apiKey);
+    debugPrint('[ProductScannerService] Models available for vision scan: $modelsToTry');
+
+    for (final model in modelsToTry) {
       try {
         final url = Uri.parse(
           'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey',

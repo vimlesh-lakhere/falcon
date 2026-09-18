@@ -814,21 +814,38 @@ class AddProductScreen extends StatelessWidget {
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 12),
-          // Name English
+          // Name English with Live Auto-Suggest
           TextField(
             controller: vm.nameController,
             textCapitalization: TextCapitalization.words,
+            onChanged: (val) => vm.onNameQueryChanged(val),
             decoration: InputDecoration(
               labelText: 'Product Name (English) *',
               hintText: 'e.g. Parachute 100% Pure Coconut Oil 100ml',
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.translate, size: 18, color: AppTheme.secondary),
-                tooltip: 'Auto generate Hindi name',
-                onPressed: () => vm.onEnglishNameChanged(vm.nameController.text),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (vm.isSearchingName)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryLight),
+                      ),
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.translate, size: 18, color: AppTheme.secondary),
+                    tooltip: 'Auto generate Hindi name',
+                    onPressed: () => vm.onEnglishNameChanged(vm.nameController.text),
+                  ),
+                ],
               ),
             ),
             onSubmitted: (val) => vm.onEnglishNameChanged(val),
           ),
+          if (vm.matchingNameProducts.isNotEmpty)
+            _buildNameSuggestionsCard(vm),
           const SizedBox(height: 12),
           // Name Hindi
           TextField(
@@ -879,6 +896,117 @@ class AddProductScreen extends StatelessWidget {
               labelText: 'Description & Formulation Highlights',
               hintText: 'Auto-extracted from back packaging (ingredients, benefits, net weight)',
               alignLabelWithHint: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Live Name Search Suggestions Dropdown Card
+  Widget _buildNameSuggestionsCard(AddProductViewModel vm) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.primaryLight.withValues(alpha: 0.5), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 8, 4),
+            child: Row(
+              children: [
+                const Icon(Icons.search, size: 14, color: AppTheme.primaryLight),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Matching Products (${vm.matchingNameProducts.length}) - Tap to Auto-Fill',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                InkWell(
+                  onTap: vm.clearNameSuggestions,
+                  child: const Padding(
+                    padding: EdgeInsets.all(2),
+                    child: Icon(Icons.close, size: 14, color: AppTheme.textMuted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: vm.matchingNameProducts.length,
+              separatorBuilder: (context, index) => const Divider(height: 1, indent: 8, endIndent: 8),
+              itemBuilder: (context, idx) {
+                final p = vm.matchingNameProducts[idx];
+                return ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                  leading: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.cardBorder),
+                    ),
+                    child: p.imageUrl != null && p.imageUrl!.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.network(
+                              p.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.inventory_2, size: 16, color: AppTheme.primaryLight),
+                            ),
+                          )
+                        : const Icon(Icons.inventory_2, size: 16, color: AppTheme.primaryLight),
+                  ),
+                  title: Text(
+                    p.name,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Row(
+                    children: [
+                      if (p.brand != null && p.brand!.isNotEmpty) ...[
+                        Text(p.brand!, style: const TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                        const Text(' • ', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                      ],
+                      Text(
+                        'Stock: ${p.currentStock.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: p.currentStock > 0 ? AppTheme.success : AppTheme.error,
+                        ),
+                      ),
+                      const Text(' • ', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                      Text(
+                        '₹${p.sellingPrice.toStringAsFixed(0)}',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accent),
+                      ),
+                    ],
+                  ),
+                  trailing: const Icon(Icons.touch_app, size: 16, color: AppTheme.primaryLight),
+                  onTap: () => vm.selectExistingProduct(p),
+                );
+              },
             ),
           ),
         ],
