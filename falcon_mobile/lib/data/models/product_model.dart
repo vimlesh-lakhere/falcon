@@ -92,6 +92,8 @@ class ProductModel {
     if (wholesalePrice != null && wholesalePrice! > 0) {
       map['wholesale_price'] = wholesalePrice;
       map['wholesale_min_qty'] = wholesaleMinQty ?? 12;
+    } else if (wholesaleMinQty != null && wholesaleMinQty! > 0) {
+      map['wholesale_min_qty'] = wholesaleMinQty;
     }
     if (minimumSellingPrice != null && minimumSellingPrice! > 0) {
       map['minimum_selling_price'] = minimumSellingPrice;

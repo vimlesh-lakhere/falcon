@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -31,6 +32,7 @@ class AddProductViewModel extends ChangeNotifier {
   final TextEditingController mrpController = TextEditingController();
   final TextEditingController sellingPriceController = TextEditingController();
   final TextEditingController wholesalePriceController = TextEditingController();
+  final TextEditingController wholesaleMinQtyController = TextEditingController(text: '12');
   final TextEditingController stockController = TextEditingController(text: '10');
   final TextEditingController minStockController = TextEditingController(text: '5');
   final TextEditingController descriptionController = TextEditingController();
@@ -40,6 +42,7 @@ class AddProductViewModel extends ChangeNotifier {
   String? selectedUnitId;
   String? selectedSupplierId;
   bool isOnline = true;
+  bool sellAsFullPack = false;
 
   // ───────────────────────────────────────────────────────────────────────────
   // DUAL PHOTO STATE (FRONT & BACK)
@@ -181,6 +184,11 @@ class AddProductViewModel extends ChangeNotifier {
         if (found.wholesalePrice != null) {
           wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
         }
+        if (found.wholesaleMinQty != null && found.wholesaleMinQty! > 0) {
+          wholesaleMinQtyController.text = found.wholesaleMinQty!.toString();
+        } else {
+          wholesaleMinQtyController.text = '12';
+        }
         stockController.text = (found.currentStock + 1).toString();
         if (found.categoryId != null) selectedCategoryId = found.categoryId;
         if (found.unitId != null) selectedUnitId = found.unitId;
@@ -279,6 +287,11 @@ class AddProductViewModel extends ChangeNotifier {
     }
     if (found.wholesalePrice != null && found.wholesalePrice! > 0) {
       wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
+    }
+    if (found.wholesaleMinQty != null && found.wholesaleMinQty! > 0) {
+      wholesaleMinQtyController.text = found.wholesaleMinQty!.toString();
+    } else {
+      wholesaleMinQtyController.text = '12';
     }
     stockController.text = (found.currentStock + 1).toString();
     if (found.categoryId != null) selectedCategoryId = found.categoryId;
@@ -748,6 +761,66 @@ class AddProductViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  UnitModel? get selectedUnit {
+    if (selectedUnitId == null) return null;
+    try {
+      return units.firstWhere((u) => u.id == selectedUnitId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  double get currentConversionFactor => selectedUnit?.conversionFactor ?? 1.0;
+
+  bool get isMultiUnit => currentConversionFactor > 1;
+
+  void setSellAsFullPack(bool val) {
+    sellAsFullPack = val;
+    notifyListeners();
+  }
+
+  void refreshStockCalculation() {
+    notifyListeners();
+  }
+
+  int get calculatedBaseStock {
+    final rawStock = int.tryParse(stockController.text.trim()) ?? 0;
+    if (isMultiUnit && !sellAsFullPack) {
+      return (rawStock * currentConversionFactor).round();
+    }
+    return rawStock;
+  }
+
+  void generateAutoBarcode() {
+    final rnd = Random();
+    // 890 + 10 random digits (standard Indian EAN-13 barcode format)
+    final randomDigits = List.generate(10, (_) => rnd.nextInt(10)).join();
+    final generated = '890$randomDigits';
+    barcodeController.text = generated;
+
+    if (skuController.text.trim().isEmpty) {
+      final brandClean = brandController.text.trim();
+      final brandPrefix = brandClean.isNotEmpty
+          ? (brandClean.length >= 3
+              ? brandClean.substring(0, 3).toUpperCase()
+              : brandClean.toUpperCase())
+          : 'SKU';
+      final timestampSuffix = DateTime.now().millisecondsSinceEpoch.toString().substring(9);
+      skuController.text = '$brandPrefix-$timestampSuffix';
+    }
+
+    try {
+      HapticFeedback.lightImpact().catchError((_) {});
+      Fluttertoast.showToast(
+        msg: '✓ Generated Barcode: $generated',
+        backgroundColor: const Color(0xFF10B981),
+        textColor: Colors.white,
+      ).catchError((_) => null);
+    } catch (_) {}
+
+    notifyListeners();
+  }
+
   void setSelectedCategoryId(String? id) {
     selectedCategoryId = id;
     notifyListeners();
@@ -755,6 +828,14 @@ class AddProductViewModel extends ChangeNotifier {
 
   void setSelectedUnitId(String? id) {
     selectedUnitId = id;
+    if (id != null) {
+      final unit = selectedUnit;
+      if (unit != null && unit.conversionFactor > 1) {
+        if (wholesaleMinQtyController.text == '12' || wholesaleMinQtyController.text.trim().isEmpty) {
+          wholesaleMinQtyController.text = unit.conversionFactor.round().toString();
+        }
+      }
+    }
     notifyListeners();
   }
 
@@ -817,7 +898,8 @@ class AddProductViewModel extends ChangeNotifier {
       final purchasePrice = double.tryParse(purchasePriceController.text) ?? 0.0;
       final mrp = double.tryParse(mrpController.text);
       final wholesalePrice = double.tryParse(wholesalePriceController.text);
-      final stock = int.tryParse(stockController.text) ?? 10;
+      final wholesaleMinQty = int.tryParse(wholesaleMinQtyController.text) ?? 12;
+      final stock = calculatedBaseStock;
       final minStock = int.tryParse(minStockController.text) ?? 5;
       final description = descriptionController.text.trim().isNotEmpty
           ? descriptionController.text.trim()
@@ -837,6 +919,7 @@ class AddProductViewModel extends ChangeNotifier {
         mrp: mrp,
         sellingPrice: sellingPrice,
         wholesalePrice: wholesalePrice,
+        wholesaleMinQty: wholesaleMinQty,
         currentStock: stock,
         minimumStock: minStock,
         imageUrl: uploadedFrontUrl,
@@ -900,6 +983,8 @@ class AddProductViewModel extends ChangeNotifier {
     mrpController.clear();
     sellingPriceController.clear();
     wholesalePriceController.clear();
+    wholesaleMinQtyController.text = '12';
+    sellAsFullPack = false;
     descriptionController.clear();
     stockController.text = '10';
     minStockController.text = '5';
@@ -927,6 +1012,7 @@ class AddProductViewModel extends ChangeNotifier {
     mrpController.dispose();
     sellingPriceController.dispose();
     wholesalePriceController.dispose();
+    wholesaleMinQtyController.dispose();
     descriptionController.dispose();
     stockController.dispose();
     minStockController.dispose();

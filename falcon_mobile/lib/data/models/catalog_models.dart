@@ -28,11 +28,13 @@ class UnitModel {
   final String id;
   final String shopId;
   final String name;
+  final double conversionFactor;
 
   UnitModel({
     required this.id,
     required this.shopId,
     required this.name,
+    this.conversionFactor = 1.0,
   });
 
   factory UnitModel.fromJson(Map<String, dynamic> json) {
@@ -40,6 +42,7 @@ class UnitModel {
       id: json['id'] as String,
       shopId: json['shop_id'] as String? ?? '',
       name: json['name'] as String? ?? '',
+      conversionFactor: (json['conversion_factor'] as num?)?.toDouble() ?? 1.0,
     );
   }
 }

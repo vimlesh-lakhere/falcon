@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:falcon_mobile/data/services/product_scanner_service.dart';
 import 'package:falcon_mobile/ui/features/add_product/view_models/add_product_view_model.dart';
 import 'package:falcon_mobile/data/models/product_model.dart';
+import 'package:falcon_mobile/data/models/catalog_models.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -64,6 +65,39 @@ void main() {
       expect(vm.nameController.text, 'Parachute Coconut Oil - 500ml');
       expect(vm.skuController.text.contains('PAR-V-'), isTrue);
       expect(vm.barcodeController.text.isEmpty, isTrue);
+    });
+
+    test('Smart Stock Calculation converts Box/Lad to base pieces in loose mode and preserves pack in full pack mode', () {
+      final vm = AddProductViewModel();
+      vm.units = [
+        UnitModel(id: 'u1', shopId: 's1', name: 'Piece', conversionFactor: 1),
+        UnitModel(id: 'u2', shopId: 's1', name: 'Box (12 pcs)', conversionFactor: 12),
+        UnitModel(id: 'u3', shopId: 's1', name: 'Pack (6 pcs)', conversionFactor: 6),
+      ];
+
+      // 1. Select Box (12 pcs) and 10 boxes in loose selling mode
+      vm.setSelectedUnitId('u2');
+      vm.stockController.text = '10';
+      vm.setSellAsFullPack(false);
+
+      expect(vm.isMultiUnit, isTrue);
+      expect(vm.currentConversionFactor, 12.0);
+      expect(vm.calculatedBaseStock, 120); // 10 * 12 = 120 pieces
+
+      // 2. Switch to Full Pack / Sealed Pack mode (e.g. 6 pcs pack)
+      vm.setSelectedUnitId('u3');
+      vm.setSellAsFullPack(true);
+      expect(vm.calculatedBaseStock, 10); // 10 packs
+    });
+
+    test('generateAutoBarcode produces 13-digit EAN starting with 890 and auto SKU', () {
+      final vm = AddProductViewModel();
+      vm.brandController.text = 'Nestle';
+      vm.generateAutoBarcode();
+
+      expect(vm.barcodeController.text.length, 13);
+      expect(vm.barcodeController.text.startsWith('890'), isTrue);
+      expect(vm.skuController.text.startsWith('NES-'), isTrue);
     });
   });
 }

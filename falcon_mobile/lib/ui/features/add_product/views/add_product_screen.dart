@@ -251,7 +251,20 @@ class AddProductScreen extends StatelessWidget {
                   onSubmitted: (code) => vm.setBarcode(code),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
+              IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: AppTheme.surfaceElevated,
+                  foregroundColor: AppTheme.primaryLight,
+                  padding: const EdgeInsets.all(14),
+                  side: const BorderSide(color: AppTheme.cardBorder),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.auto_awesome, size: 20),
+                tooltip: 'Auto Generate 890 Barcode',
+                onPressed: () => vm.generateAutoBarcode(),
+              ),
+              const SizedBox(width: 8),
               IconButton(
                 style: IconButton.styleFrom(
                   backgroundColor: AppTheme.primary,
@@ -1115,23 +1128,23 @@ class AddProductScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          // Purchase Price & Wholesale Price
+          // Purchase Price
+          TextField(
+            controller: vm.purchasePriceController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Purchase Price (Cost)',
+              hintText: '0',
+              prefixText: '₹ ',
+            ),
+            onChanged: (_) => vm.refreshPricingState(),
+          ),
+          const SizedBox(height: 12),
+          // Wholesale Price & Wholesale Min Qty
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: vm.purchasePriceController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Purchase Price (Cost)',
-                    hintText: '0',
-                    prefixText: '₹ ',
-                  ),
-                  onChanged: (_) => vm.refreshPricingState(),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
+                flex: 3,
                 child: TextField(
                   controller: vm.wholesalePriceController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1139,6 +1152,19 @@ class AddProductScreen extends StatelessWidget {
                     labelText: 'Wholesale Price',
                     hintText: '0',
                     prefixText: '₹ ',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: vm.wholesaleMinQtyController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Wholesale Min Qty *',
+                    hintText: '12',
+                    suffixText: 'pcs',
                   ),
                 ),
               ),
@@ -1213,15 +1239,17 @@ class AddProductScreen extends StatelessWidget {
           const SizedBox(height: 12),
           // Unit & Stock
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
+                flex: 3,
                 child: DropdownButtonFormField<String>(
                   initialValue: vm.selectedUnitId,
                   decoration: const InputDecoration(labelText: 'Unit'),
                   items: vm.units.map((u) {
                     return DropdownMenuItem<String>(
                       value: u.id,
-                      child: Text(u.name),
+                      child: Text(u.name, overflow: TextOverflow.ellipsis),
                     );
                   }).toList(),
                   onChanged: (val) => vm.setSelectedUnitId(val),
@@ -1229,17 +1257,97 @@ class AddProductScreen extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
+                flex: 2,
                 child: TextField(
                   controller: vm.stockController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Initial Stock',
+                  decoration: InputDecoration(
+                    labelText: vm.isMultiUnit
+                        ? (vm.sellAsFullPack ? 'Pack Qty' : 'Box/Lad Qty')
+                        : 'Initial Stock',
                     hintText: '10',
                   ),
+                  onChanged: (_) => vm.refreshStockCalculation(),
                 ),
               ),
             ],
           ),
+          if (vm.isMultiUnit) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.cardBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Packaging & Selling Mode',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Sell as Pieces (Khulla)'),
+                          selected: !vm.sellAsFullPack,
+                          selectedColor: AppTheme.primary.withValues(alpha: 0.2),
+                          labelStyle: TextStyle(
+                            fontSize: 11,
+                            fontWeight: !vm.sellAsFullPack ? FontWeight.bold : FontWeight.normal,
+                            color: !vm.sellAsFullPack ? AppTheme.primaryLight : AppTheme.textMuted,
+                          ),
+                          onSelected: (_) => vm.setSellAsFullPack(false),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Sell Full Pack (Sealed)'),
+                          selected: vm.sellAsFullPack,
+                          selectedColor: AppTheme.primary.withValues(alpha: 0.2),
+                          labelStyle: TextStyle(
+                            fontSize: 11,
+                            fontWeight: vm.sellAsFullPack ? FontWeight.bold : FontWeight.normal,
+                            color: vm.sellAsFullPack ? AppTheme.primaryLight : AppTheme.textMuted,
+                          ),
+                          onSelected: (_) => vm.setSellAsFullPack(true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.inventory_2, size: 16, color: AppTheme.primaryLight),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            !vm.sellAsFullPack
+                                ? '📦 ${(int.tryParse(vm.stockController.text.trim()) ?? 0)} ${vm.selectedUnit?.name ?? 'Boxes'} × ${vm.currentConversionFactor.round()} = ${vm.calculatedBaseStock} Total Pieces in Inventory'
+                                : '📦 ${(int.tryParse(vm.stockController.text.trim()) ?? 0)} Sealed Packs in Inventory (Sold as complete pack)',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryLight),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           // Online Store Switch
           SwitchListTile(
