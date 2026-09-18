@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,6 +51,9 @@ class GeminiKeyTestResult {
 class ProductScannerService {
   static final TextRecognizer _textRecognizer =
       TextRecognizer(script: TextRecognitionScript.latin);
+
+  /// Stores last error message returned by Google Gemini API for UI feedback
+  static String? lastScanError;
 
   // ───────────────────────────────────────────────────────────────────────────
   // 1. GEMINI KEY STORAGE & VALIDATION
@@ -205,9 +209,25 @@ class ProductScannerService {
     return res.isValid;
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 2. MULTI-IMAGE GEMINI VISION SCAN (FRONT + OPTIONAL BACK)
-  // ───────────────────────────────────────────────────────────────────────────
+  /// Optimizes an image byte array to max ~800px / 75 quality (<100KB) for ultra-fast Gemini Vision upload
+  static Future<Uint8List> _optimizeImageForAi(Uint8List original) async {
+    try {
+      if (original.lengthInBytes <= 120 * 1024) return original;
+      final compressed = await FlutterImageCompress.compressWithList(
+        original,
+        minWidth: 800,
+        minHeight: 800,
+        quality: 75,
+        format: CompressFormat.jpeg,
+      );
+      if (compressed.isNotEmpty && compressed.lengthInBytes < original.lengthInBytes) {
+        return compressed;
+      }
+    } catch (_) {
+      // Fallback if platform channels are unavailable
+    }
+    return original;
+  }
 
   /// Scans product packaging with Google Gemini Vision AI using Front and Back photos
   static Future<ScannedProductInfo?> scanWithGeminiVision({
@@ -215,42 +235,49 @@ class ProductScannerService {
     Uint8List? backBytes,
     String? overrideKey,
   }) async {
+    lastScanError = null;
+
     final rawKey = (overrideKey != null && overrideKey.trim().isNotEmpty)
         ? overrideKey.trim()
         : await getSavedGeminiKey();
     final apiKey = cleanGeminiKey(rawKey);
 
     if (apiKey.isEmpty) {
-      debugPrint('[ProductScannerService] No Gemini API Key configured.');
+      lastScanError = 'No Gemini API Key saved. Please configure in settings.';
+      debugPrint('[ProductScannerService] $lastScanError');
       return null;
     }
 
-    final frontBase64 = base64Encode(frontBytes);
-    final String? backBase64 = backBytes != null ? base64Encode(backBytes) : null;
+    // 1. Optimize images for ultra-fast mobile upload (< 100KB each)
+    final fastFrontBytes = await _optimizeImageForAi(frontBytes);
+    final fastBackBytes = backBytes != null ? await _optimizeImageForAi(backBytes) : null;
+
+    final frontBase64 = base64Encode(fastFrontBytes);
+    final String? backBase64 = fastBackBytes != null ? base64Encode(fastBackBytes) : null;
 
     final parts = <Map<String, dynamic>>[];
 
-    // System instruction & prompt
+    // System prompt tailored for Indian retail packaging
     parts.add({
       'text': '''
 You are an expert Indian Retail & E-commerce Product Catalog Specialist.
 Analyze the attached product packaging photo(s).
-${backBase64 != null ? "Image 1 is the FRONT hero shot (brand, product title). Image 2 is the BACK label (MRP stamp, net weight/volume, ingredients, description, manufacturer, barcode)." : "The image shows the product packaging."}
+${backBase64 != null ? "Image 1 is FRONT hero shot (brand, product title). Image 2 is BACK label (MRP stamp, net weight/volume, ingredients, description, manufacturer, barcode)." : "The image shows the product packaging."}
 
 Extract all details accurately:
-1. "product_name": Full accurate product title including brand and size/weight (e.g. "Boro Neem Prickly Heat Powder 150g", "Parachute 100% Pure Coconut Oil 100ml", "Dettol Original Soap 75g").
-2. "hindi_name": Accurately translate/transliterate product title into Hindi (e.g. "बोरो नीम प्रिकली हीट पाउडर 150g", "पैराशूट कोकोनट ऑयल 100ml").
-3. "brand": Brand or manufacturer name (e.g. "Boro Neem", "Parachute", "Dettol", "Amul", "Patanjali", "Tata").
-4. "category_name": Best match from: "Personal Care", "Skin Care", "Hair Care", "Oral Care", "Groceries", "Beverages", "Snacks", "Health & Wellness", "Household", "General".
-5. "net_weight": Weight or volume with unit (e.g. "150g", "100ml", "1kg", "500ml").
-6. "mrp": Numeric MRP printed on packaging (search near neck, cap, bottom rim, back label or price stamp). If not visible, estimate typical Indian retail MRP.
+1. "product_name": Full accurate product title including brand and size/weight (e.g. "Get Real 100% Pure Coconut Oil 500ml", "Parachute 100% Pure Coconut Oil 100ml", "Dettol Original Soap 75g").
+2. "hindi_name": Accurately translate/transliterate product title into Hindi (e.g. "गेट रियल 100% प्योर कोकोनट ऑयल 500ml", "पैराशूट कोकोनट ऑयल 100ml").
+3. "brand": Exact brand name (e.g. "Get Real", "Parachute", "Dettol", "Amul", "Patanjali", "Tata"). Do NOT use product types like "Oil" or "Soap" as brand.
+4. "category_name": Best match from: "Hair Care", "Skin Care", "Personal Care", "Oral Care", "Groceries", "Beverages", "Snacks", "Health & Wellness", "Household", "General".
+5. "net_weight": Weight or volume with unit (e.g. "500ml", "150g", "100ml", "1kg").
+6. "mrp": Numeric MRP printed on packaging (search neck, cap, bottom rim, back label or price stamp). If not visible, estimate typical Indian retail MRP.
 7. "suggested_purchase_price": Approximate retailer cost price (~72% to 75% of MRP).
 8. "suggested_retail_price": Selling price (same as MRP or slight discount).
 9. "suggested_wholesale_price": Wholesale price (~85% to 88% of MRP).
-10. "short_description": 1-2 sentence clean description highlighting key ingredients, formulation or benefits from the back label.
+10. "short_description": 1-2 sentence clean description highlighting key ingredients, formulation or benefits from packaging.
 11. "barcode": 13-digit EAN barcode if visible on packaging, else null.
 
-Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or extra text):
+Return ONLY a valid raw JSON object:
 {
   "product_name": "...",
   "hindi_name": "...",
@@ -267,7 +294,6 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
 '''
     });
 
-    // Front image (Google Generative Language REST expects inlineData with camelCase)
     parts.add({
       'inlineData': {
         'mimeType': 'image/jpeg',
@@ -275,7 +301,6 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
       }
     });
 
-    // Optional back image
     if (backBase64 != null) {
       parts.add({
         'inlineData': {
@@ -285,7 +310,20 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
       });
     }
 
-    // Try models with fallback
+    final requestPayload = jsonEncode({
+      'contents': [
+        {
+          'role': 'user',
+          'parts': parts,
+        }
+      ],
+      'generationConfig': {
+        'temperature': 0.15,
+        'responseMimeType': 'application/json',
+      },
+    });
+
+    // Try primary models with fail-fast on auth/format errors
     for (final model in AppConstants.geminiFallbackModels) {
       try {
         final url = Uri.parse(
@@ -296,64 +334,83 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
             .post(
               url,
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'contents': [
-                  {'parts': parts}
-                ],
-                'generationConfig': {
-                  'temperature': 0.15,
-                  'response_mime_type': 'application/json',
-                },
-              }),
+              body: requestPayload,
             )
-            .timeout(const Duration(seconds: 25));
+            .timeout(const Duration(seconds: 12));
 
         if (response.statusCode == 200) {
           final resJson = jsonDecode(response.body);
           final candidates = resJson['candidates'] as List?;
           if (candidates != null && candidates.isNotEmpty) {
-            final contentParts =
-                candidates[0]['content']?['parts'] as List?;
+            final contentParts = candidates[0]['content']?['parts'] as List?;
             if (contentParts != null && contentParts.isNotEmpty) {
               final rawText = contentParts[0]['text']?.toString() ?? '';
-              final cleanText = rawText
-                  .replaceAll('```json', '')
-                  .replaceAll('```', '')
-                  .trim();
+              debugPrint('[ProductScannerService] Gemini $model succeeded! Response: $rawText');
 
-              final data = jsonDecode(cleanText) as Map<String, dynamic>;
+              // Robust JSON substring extraction between first '{' and last '}'
+              final startIdx = rawText.indexOf('{');
+              final endIdx = rawText.lastIndexOf('}');
+              if (startIdx != -1 && endIdx != -1 && endIdx > startIdx) {
+                final cleanJson = rawText.substring(startIdx, endIdx + 1);
+                final data = jsonDecode(cleanJson) as Map<String, dynamic>;
 
-              final nameEn = (data['product_name'] ?? '').toString().trim();
-              if (nameEn.isNotEmpty) {
-                final mrpVal = (data['mrp'] as num?)?.toDouble();
-                final purchasePrice = (data['suggested_purchase_price'] as num?)?.toDouble();
-                final sellingPrice = (data['suggested_retail_price'] as num?)?.toDouble() ?? mrpVal;
-                final wholesalePrice = (data['suggested_wholesale_price'] as num?)?.toDouble();
+                final nameEn = (data['product_name'] ?? '').toString().trim();
+                if (nameEn.isNotEmpty) {
+                  final mrpVal = (data['mrp'] as num?)?.toDouble();
+                  final purchasePrice = (data['suggested_purchase_price'] as num?)?.toDouble();
+                  final sellingPrice = (data['suggested_retail_price'] as num?)?.toDouble() ?? mrpVal;
+                  final wholesalePrice = (data['suggested_wholesale_price'] as num?)?.toDouble();
 
-                return ScannedProductInfo(
-                  nameEnglish: _cleanTitle(nameEn),
-                  nameHindi: (data['hindi_name'] ?? '').toString().trim(),
-                  brand: (data['brand'] ?? '').toString().trim().isNotEmpty
-                      ? _cleanTitle(data['brand'].toString().trim())
-                      : null,
-                  mrp: mrpVal,
-                  purchasePrice: purchasePrice,
-                  sellingPrice: sellingPrice,
-                  wholesalePrice: wholesalePrice,
-                  categoryName: (data['category_name'] ?? '').toString().trim(),
-                  netWeight: (data['net_weight'] ?? '').toString().trim(),
-                  barcode: (data['barcode'] ?? '').toString().trim().isNotEmpty
-                      ? data['barcode'].toString().trim()
-                      : null,
-                  description: (data['short_description'] ?? '').toString().trim(),
-                  source: 'gemini',
-                );
+                  lastScanError = null;
+                  return ScannedProductInfo(
+                    nameEnglish: _cleanTitle(nameEn),
+                    nameHindi: (data['hindi_name'] ?? '').toString().trim(),
+                    brand: (data['brand'] ?? '').toString().trim().isNotEmpty
+                        ? _cleanTitle(data['brand'].toString().trim())
+                        : null,
+                    mrp: mrpVal,
+                    purchasePrice: purchasePrice,
+                    sellingPrice: sellingPrice,
+                    wholesalePrice: wholesalePrice,
+                    categoryName: (data['category_name'] ?? '').toString().trim(),
+                    netWeight: (data['net_weight'] ?? '').toString().trim(),
+                    barcode: (data['barcode'] ?? '').toString().trim().isNotEmpty
+                        ? data['barcode'].toString().trim()
+                        : null,
+                    description: (data['short_description'] ?? '').toString().trim(),
+                    source: 'gemini',
+                  );
+                }
               }
+            }
+          }
+        } else {
+          final errorBody = response.body;
+          debugPrint('[ProductScannerService] Gemini $model HTTP ${response.statusCode}: $errorBody');
+
+          String? errMsg;
+          try {
+            final errObj = jsonDecode(errorBody);
+            errMsg = errObj['error']?['message']?.toString();
+          } catch (_) {}
+
+          lastScanError = errMsg ?? 'Google API error HTTP ${response.statusCode}';
+
+          // If invalid key, quota exhaustion, or invalid argument, STOP retrying immediately
+          if (response.statusCode == 400 || response.statusCode == 401 || response.statusCode == 403) {
+            final lower = (errMsg ?? '').toLowerCase();
+            if (lower.contains('api_key_invalid') ||
+                lower.contains('api key not valid') ||
+                lower.contains('permission_denied') ||
+                lower.contains('quota') ||
+                lower.contains('resource_exhausted')) {
+              break;
             }
           }
         }
       } catch (e) {
-        debugPrint('[ProductScannerService] Gemini $model failed: $e');
+        debugPrint('[ProductScannerService] Gemini $model attempt failed: $e');
+        lastScanError = e.toString();
       }
     }
 
@@ -497,6 +554,75 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
     'namkeen': 'नमकीन',
   };
 
+  /// Verified Indian FMCG Brands (only genuine brands, NOT category nouns like oil, soap, powder)
+  static const Set<String> _knownBrands = {
+    'get real',
+    'parachute',
+    'dettol',
+    'patanjali',
+    'colgate',
+    'pepsodent',
+    'closeup',
+    'dove',
+    'lux',
+    'lifebuoy',
+    'cinthol',
+    'santoor',
+    'himalaya',
+    'ponds',
+    'nivea',
+    'vaseline',
+    'amul',
+    'britannia',
+    'parle',
+    'lays',
+    'kurkure',
+    'fortune',
+    'tata',
+    'surf excel',
+    'surf',
+    'tide',
+    'ariel',
+    'wheel',
+    'rin',
+    'vim',
+    'harpic',
+    'lizol',
+    'colin',
+    'allout',
+    'goodknight',
+    'hit',
+    'moov',
+    'iodex',
+    'vicks',
+    'eno',
+    'hajmola',
+    'frooti',
+    'maaza',
+    'slice',
+    'thums up',
+    'coke',
+    'pepsi',
+    'sprite',
+    'haldiram',
+    'dabur',
+    'emami',
+    'godrej',
+    'marico',
+    'itc',
+    'nestle',
+    'cadbury',
+    'horlicks',
+    'bournvita',
+    'complan',
+    'everest',
+    'mdh',
+    'catch',
+    'aashirvaad',
+    'saffola',
+    'maggi',
+  };
+
   /// Scans packaging photo using Google ML Kit on-device in ~50ms
   static Future<ScannedProductInfo?> scanPackagingPhoto(String imagePath) async {
     try {
@@ -518,13 +644,13 @@ Return ONLY a valid raw JSON object (without markdown code blocks, backticks, or
 
       if (lines.isEmpty) return null;
 
-      // 1. Identify Brand
+      // 1. Identify Brand (only genuine FMCG brands, NEVER generic category nouns like oil, soap, etc.)
       String? detectedBrand;
       for (final line in lines) {
         final lower = line.toLowerCase();
-        for (final b in _phoneticPresets.keys) {
+        for (final b in _knownBrands) {
           if (lower.contains(b)) {
-            detectedBrand = _capitalize(b);
+            detectedBrand = _cleanTitle(b);
             break;
           }
         }

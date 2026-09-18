@@ -20,10 +20,8 @@ class AppConstants {
   static const List<String> geminiFallbackModels = [
     'gemini-1.5-flash',
     'gemini-2.0-flash',
-    'gemini-flash-latest',
-    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash-8b',
     'gemini-1.5-pro',
-    'gemini-2.0-flash-exp',
   ];
 
   // OpenFoodFacts Indian FMCG barcode lookup endpoint

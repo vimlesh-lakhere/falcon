@@ -251,12 +251,14 @@ class AddProductViewModel extends ChangeNotifier {
     barcodeController.clear();
     stockController.text = '10';
 
-    HapticFeedback.mediumImpact();
-    Fluttertoast.showToast(
-      msg: 'Variant Mode: Set barcode & price for "$cleanAttr"',
-      backgroundColor: const Color(0xFF8B5CF6),
-      textColor: Colors.white,
-    );
+    try {
+      HapticFeedback.mediumImpact().catchError((_) {});
+      Fluttertoast.showToast(
+        msg: 'Variant Mode: Set barcode & price for "$cleanAttr"',
+        backgroundColor: const Color(0xFF8B5CF6),
+        textColor: Colors.white,
+      ).catchError((_) => null);
+    } catch (_) {}
     notifyListeners();
   }
 
@@ -558,6 +560,8 @@ class AddProductViewModel extends ChangeNotifier {
         );
         return true;
       } else {
+        final lastErr = ProductScannerService.lastScanError;
+
         // Fallback: On-Device ML Kit
         if (frontImagePath != null) {
           final mlScanned = await ProductScannerService.scanPackagingPhoto(frontImagePath!);
@@ -570,13 +574,20 @@ class AddProductViewModel extends ChangeNotifier {
               sellingPriceController.text = mlScanned.mrp!.toStringAsFixed(0);
             }
             Fluttertoast.showToast(
-              msg: 'Used offline on-device scan (verify Gemini Key in settings)',
+              msg: lastErr != null
+                  ? 'Gemini: $lastErr (Used offline scan)'
+                  : 'Used offline on-device scan (verify Gemini Key in settings)',
               backgroundColor: Colors.orange,
+              toastLength: Toast.LENGTH_LONG,
             );
             return true;
           }
         }
-        Fluttertoast.showToast(msg: 'Could not extract text. Please enter details manually.');
+        Fluttertoast.showToast(
+          msg: lastErr != null ? 'Gemini AI: $lastErr' : 'Could not extract text. Please enter details manually.',
+          backgroundColor: Colors.red,
+          toastLength: Toast.LENGTH_LONG,
+        );
         return false;
       }
     } catch (e) {
