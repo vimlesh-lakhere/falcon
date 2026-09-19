@@ -44,6 +44,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(canonicalUrl, 308);
   }
 
+  // 2. ags.falcon360.in is the AGS store's own online store: its home page IS the storefront.
+  //    (www.falcon360.in keeps the Falcon 360 marketing home page.)
+  if (host.startsWith("ags.") && pathname === "/") {
+    const storeUrl = request.nextUrl.clone();
+    storeUrl.pathname = "/store";
+    return NextResponse.rewrite(storeUrl);
+  }
+
   // Customer OTP, Storefront Checkout, Public Leads & Cron Maintenance are public endpoints.
   const PUBLIC_API_PATHS = [
     "/api/auth/otp",
