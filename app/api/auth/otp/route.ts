@@ -14,10 +14,34 @@ const TWO_FACTOR_API_KEY = process.env.TWO_FACTOR_API_KEY;
 const otpStore = new Map<string, { otp: string; expiresAt: number; attempts: number; name?: string }>();
 const MAX_OTP_ATTEMPTS = 5;
 
+const OTP_SECRET = process.env.NEXTAUTH_SECRET || process.env.SUPABASE_JWT_SECRET || "falcon_otp_secure_hmac_secret_key_2026";
+
+function signOtpChallenge(identifier: string, otp: string, expiresAt: number): string {
+  const hash = crypto.createHmac("sha256", OTP_SECRET).update(`${identifier}:${otp}:${expiresAt}`).digest("hex");
+  return `${identifier}.${expiresAt}.${hash}`;
+}
+
+function verifyOtpChallenge(identifier: string, otp: string, challengeCookie: string | undefined): boolean {
+  if (!challengeCookie) return false;
+  const parts = challengeCookie.split(".");
+  if (parts.length !== 3) return false;
+  const [cookieIdent, expiresAtStr, cookieHash] = parts;
+  if (cookieIdent !== identifier) return false;
+  const expiresAt = parseInt(expiresAtStr, 10);
+  if (isNaN(expiresAt) || Date.now() > expiresAt) return false;
+
+  const expectedHash = crypto.createHmac("sha256", OTP_SECRET).update(`${identifier}:${otp}:${expiresAt}`).digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(cookieHash), Buffer.from(expectedHash));
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { action, phone, email, otp, name, channel = "sms" } = body;
+    const { action, phone, email, otp, name, channel = "whatsapp" } = body;
 
     const cleanPhone = phone ? phone.replace(/[^0-9]/g, "").slice(-10) : "";
     const cleanEmail = email ? (email || "").toLowerCase().trim() : "";
@@ -42,7 +66,6 @@ export async function POST(req: NextRequest) {
         attempts: 0,
         name: name?.trim(),
       });
-
 
       console.log(`[REAL OTP DISPATCH] ${identifier} -> Code: ${generatedOtp} (Channel: ${channel})`);
 
@@ -107,15 +130,25 @@ export async function POST(req: NextRequest) {
 
       // If no SMS gateway delivered successfully, return demoOtp for instant frictionless verification
       const isGatewaySent = deliveryStatus === "sms_sent";
+      const challenge = signOtpChallenge(identifier, generatedOtp, expiresAt);
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         message: isGatewaySent
           ? `Real 6-Digit OTP sent to +91 ${cleanPhone}.`
-          : `OTP sent to +91 ${cleanPhone}.`,
+          : `OTP sent for +91 ${cleanPhone}.`,
         whatsappLink,
         expiresInSeconds: 600,
       });
+
+      response.cookies.set("falcon_otp_challenge", challenge, {
+        maxAge: 600,
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+      });
+
+      return response;
     }
 
     // ACTION 2: VERIFY REAL OTP
@@ -143,18 +176,26 @@ export async function POST(req: NextRequest) {
 
       let isOtpValid = false;
 
-      // 1. Verify against server OTP storage, Firebase confirmation, or universal master OTP (123456 / 000000)
-      if (body.isFirebaseVerified || cleanOtp === "123456" || cleanOtp === "000000") {
+      // 1. Verify against cryptographic signed challenge cookie (Stateless & 100% resilient across serverless lambdas)
+      const challengeCookie = req.cookies.get("falcon_otp_challenge")?.value;
+      if (verifyOtpChallenge(identifier, cleanOtp, challengeCookie)) {
         isOtpValid = true;
-      } else if (storedData && storedData.otp === cleanOtp) {
-        if (Date.now() <= storedData.expiresAt) {
+      }
+
+      // 2. Verify against in-memory storage, Firebase confirmation, or universal master OTP (123456 / 000000)
+      if (!isOtpValid) {
+        if (body.isFirebaseVerified || cleanOtp === "123456" || cleanOtp === "000000") {
           isOtpValid = true;
-        } else {
-          otpStore.delete(identifier);
-          return NextResponse.json(
-            { success: false, error: "OTP has expired. Please request a new OTP." },
-            { status: 400 }
-          );
+        } else if (storedData && storedData.otp === cleanOtp) {
+          if (Date.now() <= storedData.expiresAt) {
+            isOtpValid = true;
+          } else {
+            otpStore.delete(identifier);
+            return NextResponse.json(
+              { success: false, error: "OTP has expired. Please request a new OTP." },
+              { status: 400 }
+            );
+          }
         }
       }
 
@@ -269,6 +310,9 @@ export async function POST(req: NextRequest) {
         path: "/",
         sameSite: "lax",
       });
+
+      // Clear used OTP challenge cookie
+      response.cookies.delete("falcon_otp_challenge");
 
       return response;
     }

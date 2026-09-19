@@ -145,8 +145,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     return () => clearInterval(timer);
   }, [step, countdown]);
 
-  // Step 1: Send Real / Fallback OTP
-  const handleSendOtp = async (e?: React.FormEvent, channel = "sms") => {
+  // Step 1: Send Real / Fallback OTP (Default: WhatsApp for zero billing / zero card requirement)
+  const handleSendOtp = async (e?: React.FormEvent, channel = "whatsapp") => {
     if (e) e.preventDefault();
     setErrorMessage(null);
 
@@ -163,7 +163,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
     setIsSubmitting(true);
 
-    // 1. Try Google Firebase Phone Auth for 10,000 free monthly real SMS
+    // 1. Try Google Firebase Phone Auth if user explicitly chose SMS
     if (channel === "sms" && isFirebaseConfigured && auth) {
       try {
         const verifier = getOrCreateRecaptchaVerifier();
@@ -185,12 +185,16 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         console.error("Firebase Phone Auth error:", fbErr);
         cleanupRecaptcha();
 
+        // If billing is not enabled, automatically fallback to WhatsApp OTP so the user is never blocked!
+        if (fbErr.code === "auth/billing-not-enabled" || fbErr.message?.includes("billing-not-enabled")) {
+          console.log("Firebase billing not enabled. Falling back to WhatsApp OTP automatically...");
+          return handleSendOtp(undefined, "whatsapp");
+        }
+
         let msg = fbErr.message || "Failed to send SMS via Firebase.";
         const code = fbErr.code || "";
 
-        if (code === "auth/billing-not-enabled" || fbErr.message?.includes("billing-not-enabled")) {
-          msg = "Firebase SMS requires Blaze plan (Pay-as-you-go with 10,000 free SMS/month). Upgrade your project in Firebase Console or tap 'Get OTP on WhatsApp' below.";
-        } else if (code === "auth/unauthorized-domain") {
+        if (code === "auth/unauthorized-domain") {
           msg = "Domain unauthorized: Please add 'falcon360.in' and 'www.falcon360.in' to Firebase Console -> Authentication -> Settings -> Authorized domains.";
         } else if (code === "auth/operation-not-allowed") {
           msg = "Phone sign-in is disabled in Firebase Console. Go to Authentication -> Sign-in method and enable 'Phone'.";
@@ -210,7 +214,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       }
     }
 
-    // 2. Fallback to server route (SMS Gateway / WhatsApp OTP)
+    // 2. Server route (Instant WhatsApp OTP - Zero Billing & Free)
     try {
       const res = await fetch("/api/auth/otp", {
         method: "POST",
@@ -232,8 +236,12 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         setOtpDigits(["", "", "", "", "", ""]);
         if (data.whatsappLink) {
           setWhatsappLink(data.whatsappLink);
+          // Try opening WhatsApp automatically
+          try {
+            window.open(data.whatsappLink, "_blank");
+          } catch {}
         }
-        setSuccessMessage(`OTP code sent to +91 ${cleanPhone}`);
+        setSuccessMessage(`OTP code sent for +91 ${cleanPhone}`);
         setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
       } else {
         setErrorMessage(data.error || "Failed to send OTP code.");
@@ -456,7 +464,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           {/* STEP 1: PHONE & NAME INPUT (ONLY MOBILE NUMBER LOGIN) */}
           {step === "input" && (
             <div className="space-y-4">
-              <form onSubmit={(e) => handleSendOtp(e, "sms")} className="space-y-3.5">
+              <form onSubmit={(e) => handleSendOtp(e, "whatsapp")} className="space-y-3.5">
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
                     Your Full Name <span className="text-rose-500">*</span>
@@ -499,20 +507,19 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
                   >
-                    <span>{isSubmitting ? "Sending Verification Code..." : "Send Verification OTP (SMS)"}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <MessageCircle className="w-4 h-4 text-white" />
+                    <span>{isSubmitting ? "Generating WhatsApp Code..." : "Get OTP on WhatsApp (Free & Instant)"}</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={(e) => handleSendOtp(e, "whatsapp")}
+                    onClick={(e) => handleSendOtp(e, "sms")}
                     disabled={isSubmitting}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-xl text-xs font-semibold transition-all cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4 text-emerald-600" />
-                    <span>Get OTP on WhatsApp</span>
+                    <span>Or receive via SMS</span>
                   </button>
                 </div>
               </form>
@@ -532,25 +539,28 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 </p>
               </div>
 
-
-
               {whatsappLink && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-left space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-800 text-xs font-bold">
-                    <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Instant WhatsApp Code Option</span>
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-emerald-900 text-xs font-bold">
+                      <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>WhatsApp Verification Code</span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      Free & Instant
+                    </span>
                   </div>
                   <p className="text-[11px] text-emerald-700">
-                    If SMS is delayed on your phone, tap below to open WhatsApp for your OTP:
+                    Tap below to open WhatsApp and get your 6-digit code, then enter it here:
                   </p>
                   <a
                     href={whatsappLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-2xs transition-colors"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
-                    Open WhatsApp for OTP
+                    <span>Open WhatsApp for OTP</span>
                   </a>
                 </div>
               )}
@@ -586,11 +596,11 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 {canResend ? (
                   <button
                     type="button"
-                    onClick={() => handleSendOtp(undefined, "sms")}
-                    className="text-purple-600 font-bold hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
+                    onClick={() => handleSendOtp(undefined, "whatsapp")}
+                    className="text-emerald-700 font-bold hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    Resend OTP
+                    Resend on WhatsApp
                   </button>
                 ) : (
                   <span className="text-gray-400 text-[11px]">
