@@ -7,18 +7,11 @@ import { supabase } from "@/lib/supabase";
 import { createRequestClient } from "@/lib/auth/server";
 
 const MASTER_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
-const DEFAULT_KEY_ID = "rzp_live_TakMuhWA7kMBGw";
-const DEFAULT_KEY_SECRET = "ssdPgkth99A3bjuPccXVZG1z";
 
 export async function POST(request: NextRequest) {
   try {
-    const keyId =
-      process.env.RAZORPAY_KEY_ID ||
-      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
-      DEFAULT_KEY_ID;
-    const keySecret =
-      process.env.RAZORPAY_KEY_SECRET ||
-      DEFAULT_KEY_SECRET;
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
     if (!keyId || !keySecret) {
       console.error("Razorpay API credentials missing in environment variables.");

@@ -96,8 +96,7 @@ export async function initiateRazorpayCheckout({
       throw new Error("Unable to connect to Razorpay payment gateway. Please check your internet connection.");
     }
 
-    const DEFAULT_KEY_ID = "rzp_live_TakMuhWA7kMBGw";
-    const keyId = data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || DEFAULT_KEY_ID;
+    const keyId = data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
     if (!keyId) {
       throw new Error("Razorpay Key ID is not configured in the environment.");
     }

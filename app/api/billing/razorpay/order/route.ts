@@ -15,16 +15,8 @@ export async function POST(request: Request) {
       customerPhone,
     } = body;
 
-    const DEFAULT_KEY_ID = "rzp_live_TakMuhWA7kMBGw";
-    const DEFAULT_KEY_SECRET = "ssdPgkth99A3bjuPccXVZG1z";
-
-    const keyId =
-      process.env.RAZORPAY_KEY_ID ||
-      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
-      DEFAULT_KEY_ID;
-    const keySecret =
-      process.env.RAZORPAY_KEY_SECRET ||
-      DEFAULT_KEY_SECRET;
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
     if (!keyId || !keySecret) {
       console.error("Razorpay credentials missing from environment variables.");
