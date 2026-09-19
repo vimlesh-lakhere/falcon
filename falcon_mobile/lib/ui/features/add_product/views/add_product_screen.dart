@@ -113,7 +113,7 @@ class AddProductScreen extends StatelessWidget {
                       const SizedBox(height: 14),
 
                       // 4. Unit & Packaging
-                      _buildUnitAndPackagingCard(vm),
+                      _buildUnitAndPackagingCard(context, vm),
                       const SizedBox(height: 14),
 
                       // 5. Pricing & Margin Shortcuts
@@ -1056,7 +1056,7 @@ class AddProductScreen extends StatelessWidget {
   // ───────────────────────────────────────────────────────────────────────────
   // 4. UNIT & PACKAGING CARD
   // ───────────────────────────────────────────────────────────────────────────
-  Widget _buildUnitAndPackagingCard(AddProductViewModel vm) {
+  Widget _buildUnitAndPackagingCard(BuildContext context, AddProductViewModel vm) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1078,6 +1078,7 @@ class AddProductScreen extends StatelessWidget {
               const Spacer(),
               if (vm.isMultiUnit)
                 Container(
+                  margin: const EdgeInsets.only(right: 8),
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppTheme.primary.withValues(alpha: 0.15),
@@ -1088,6 +1089,29 @@ class AddProductScreen extends StatelessWidget {
                     style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
                   ),
                 ),
+              InkWell(
+                onTap: () => _showCreateUnitBottomSheet(context, vm),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppTheme.primaryLight.withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 14, color: AppTheme.primaryLight),
+                      SizedBox(width: 3),
+                      Text(
+                        '+ New Unit',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -1100,10 +1124,31 @@ class AddProductScreen extends StatelessWidget {
             items: vm.units.map((u) {
               return DropdownMenuItem<String>(
                 value: u.id,
-                child: Text(u.name, overflow: TextOverflow.ellipsis),
+                child: Text(
+                  u.conversionFactor > 1 ? '${u.name} (${u.conversionFactor.round()} pcs)' : u.name,
+                  overflow: TextOverflow.ellipsis,
+                ),
               );
             }).toList(),
             onChanged: (val) => vm.setSelectedUnitId(val),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => _showCreateUnitBottomSheet(context, vm),
+            borderRadius: BorderRadius.circular(6),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+              child: Row(
+                children: [
+                  Icon(Icons.add_circle_outline, size: 14, color: AppTheme.primaryLight),
+                  SizedBox(width: 6),
+                  Text(
+                    '+ Create New Unit (जैसे Box of 24, Pack of 10, Litre)',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryLight),
+                  ),
+                ],
+              ),
+            ),
           ),
           if (vm.isMultiUnit) ...[
             const SizedBox(height: 12),
@@ -1148,6 +1193,237 @@ class AddProductScreen extends StatelessWidget {
       ),
     );
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CREATE NEW UNIT BOTTOM SHEET
+  // ───────────────────────────────────────────────────────────────────────────
+  void _showCreateUnitBottomSheet(BuildContext context, AddProductViewModel vm) {
+    final nameController = TextEditingController();
+    final factorController = TextEditingController(text: '10');
+    bool isSaving = false;
+    String? errorText;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            void onNameChanged(String val) {
+              final match = RegExp(r'(?:of|\(?)\s*(\d+)\s*(?:pcs|pc|units)?', caseSensitive: false).firstMatch(val);
+              if (match != null && match.group(1) != null) {
+                final parsed = int.tryParse(match.group(1)!);
+                if (parsed != null && parsed > 0) {
+                  setSheetState(() {
+                    factorController.text = parsed.toString();
+                  });
+                }
+              }
+            }
+
+            Future<void> handleSave() async {
+              final name = nameController.text.trim();
+              if (name.isEmpty) {
+                setSheetState(() {
+                  errorText = 'कृपया यूनिट का नाम लिखें (e.g. Pack of 12)';
+                });
+                return;
+              }
+
+              final factor = double.tryParse(factorController.text.trim()) ?? 1.0;
+              if (factor <= 0) {
+                setSheetState(() {
+                  errorText = 'पीस / मल्टीप्लायर कम से कम 1 होना चाहिए';
+                });
+                return;
+              }
+
+              setSheetState(() {
+                isSaving = true;
+                errorText = null;
+              });
+
+              try {
+                await vm.createAndSelectUnit(name, factor);
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              } catch (e) {
+                setSheetState(() {
+                  isSaving = false;
+                  errorText = 'यूनिट नहीं बन सकी: $e';
+                });
+              }
+            }
+
+            final presets = [
+              {'label': '1 (Khulla)', 'val': '1'},
+              {'label': '6 (Half Doz)', 'val': '6'},
+              {'label': '10', 'val': '10'},
+              {'label': '12 (1 Dozen)', 'val': '12'},
+              {'label': '24 (1 Box)', 'val': '24'},
+              {'label': '50', 'val': '50'},
+              {'label': '100', 'val': '100'},
+            ];
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.add_circle, color: AppTheme.primaryLight, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Create New Unit (नई यूनिट)',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'नए पैकेजिंग यूनिट का नाम और उसमें मौजूद पीस दर्ज करें',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    ),
+                    const SizedBox(height: 16),
+                    if (errorText != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.error.withValues(alpha: 0.4)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, color: AppTheme.error, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                errorText!,
+                                style: const TextStyle(fontSize: 12, color: AppTheme.error, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    // Unit Name Input
+                    TextField(
+                      controller: nameController,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Unit Name (यूनिट का नाम) *',
+                        hintText: 'e.g. Pack of 12, Box (24 pcs), Litre, Kg',
+                        prefixIcon: Icon(Icons.shopping_bag_outlined, color: AppTheme.primaryLight, size: 20),
+                      ),
+                      onChanged: onNameChanged,
+                    ),
+                    const SizedBox(height: 14),
+                    // Conversion Factor Input
+                    TextField(
+                      controller: factorController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Pieces per Unit (1 यूनिट में कितने पीस) *',
+                        hintText: 'e.g. 10 or 12 or 24',
+                        prefixIcon: Icon(Icons.numbers, color: AppTheme.primaryLight, size: 20),
+                        helperText: 'जैसे 1 Box = 24 Pieces (खूल्ला पीस 1 रखें)',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Quick Multiplier Preset Chips
+                    const Text(
+                      'Quick Presets (जल्दी चुनने के लिए):',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: presets.map((p) {
+                        final isSelected = factorController.text == p['val'];
+                        return ActionChip(
+                          label: Text(p['label']!),
+                          backgroundColor: isSelected ? AppTheme.primary.withValues(alpha: 0.25) : AppTheme.surfaceElevated,
+                          side: BorderSide(
+                            color: isSelected ? AppTheme.primaryLight : AppTheme.cardBorder,
+                          ),
+                          labelStyle: TextStyle(
+                            fontSize: 11,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected ? AppTheme.primaryLight : AppTheme.textSecondary,
+                          ),
+                          onPressed: () {
+                            setSheetState(() {
+                              factorController.text = p['val']!;
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+                    // Save Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: isSaving ? null : handleSave,
+                        child: isSaving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle_outline, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Save & Select Unit (यूनिट जोड़ें)',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
 
   // ───────────────────────────────────────────────────────────────────────────
   // 5. PRICING & PROFIT MARGINS CARD

@@ -49,6 +49,26 @@ class SupabaseService {
     }
   }
 
+  // 2b. Create New Unit
+  Future<UnitModel> createUnit({
+    required String name,
+    double conversionFactor = 1.0,
+    String shopId = AppConstants.defaultShopId,
+  }) async {
+    final cleanName = name.trim();
+    final res = await _client
+        .from('units')
+        .insert({
+          'shop_id': shopId,
+          'name': cleanName,
+          'conversion_factor': conversionFactor > 0 ? conversionFactor : 1.0,
+        })
+        .select()
+        .single();
+
+    return UnitModel.fromJson(res);
+  }
+
   // 3. Fetch Suppliers
   Future<List<SupplierModel>> getSuppliers({String shopId = AppConstants.defaultShopId}) async {
     try {

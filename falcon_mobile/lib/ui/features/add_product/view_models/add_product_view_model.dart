@@ -785,6 +785,51 @@ class AddProductViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool isCreatingUnit = false;
+
+  Future<UnitModel?> createAndSelectUnit(String name, double factor) async {
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) return null;
+
+    isCreatingUnit = true;
+    notifyListeners();
+
+    try {
+      final created = await _supabaseService.createUnit(
+        name: cleanName,
+        conversionFactor: factor > 0 ? factor : 1.0,
+      );
+
+      // Remove existing duplicate if any, add new unit, sort by name
+      units.removeWhere((u) => u.id == created.id);
+      units.add(created);
+      units.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+      selectedUnitId = created.id;
+      notifyListeners();
+
+      HapticFeedback.lightImpact();
+      Fluttertoast.showToast(
+        msg: 'Unit "${created.name}" created and selected!',
+        backgroundColor: const Color(0xFF10B981),
+        textColor: Colors.white,
+      );
+
+      return created;
+    } catch (e) {
+      debugPrint('Error creating unit: $e');
+      Fluttertoast.showToast(
+        msg: 'Failed to create unit: $e',
+        backgroundColor: const Color(0xFFEF4444),
+        textColor: Colors.white,
+      );
+      rethrow;
+    } finally {
+      isCreatingUnit = false;
+      notifyListeners();
+    }
+  }
+
   void refreshStockCalculation() {
     notifyListeners();
   }
