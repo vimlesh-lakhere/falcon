@@ -411,6 +411,96 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
+    // ACTION 4: SECURE MOBILE NUMBER CHANGE (REQUIRES OTP VERIFICATION ON NEW NUMBER)
+    if (action === "change_customer_phone") {
+      const { oldPhone, newPhone, otp: submittedOtp } = body;
+      const cleanOldPhone = (oldPhone || "").replace(/[^0-9]/g, "").slice(-10);
+      const cleanNewPhone = (newPhone || "").replace(/[^0-9]/g, "").slice(-10);
+
+      if (!cleanOldPhone || cleanOldPhone.length < 10) {
+        return NextResponse.json({ success: false, error: "Current mobile number is missing." }, { status: 400 });
+      }
+      if (!cleanNewPhone || cleanNewPhone.length < 10) {
+        return NextResponse.json({ success: false, error: "Please enter a valid 10-digit new mobile number." }, { status: 400 });
+      }
+      if (cleanOldPhone === cleanNewPhone) {
+        return NextResponse.json({ success: false, error: "New mobile number cannot be the same as current number." }, { status: 400 });
+      }
+      if (!submittedOtp || submittedOtp.trim().length !== 6) {
+        return NextResponse.json({ success: false, error: "Please enter the 6-digit verification code sent to your new mobile number." }, { status: 400 });
+      }
+
+      // Verify OTP on newPhone
+      const challengeCookie = req.cookies.get("falcon_otp_challenge")?.value;
+      const record = otpStore.get(cleanNewPhone);
+      let isValid = false;
+
+      if (verifyOtpChallenge(cleanNewPhone, submittedOtp.trim(), challengeCookie)) {
+        isValid = true;
+      } else if (record) {
+        if (Date.now() > record.expiresAt) {
+          otpStore.delete(cleanNewPhone);
+          return NextResponse.json({ success: false, error: "Verification code expired. Please request a new one." }, { status: 400 });
+        }
+        if (record.otp === submittedOtp.trim()) {
+          isValid = true;
+        }
+      }
+
+      if (!isValid) {
+        return NextResponse.json({ success: false, error: "Invalid verification code entered for new mobile number." }, { status: 400 });
+      }
+
+      // Clear used OTP
+      otpStore.delete(cleanNewPhone);
+
+      // Update phone number in Supabase customers table
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      let updatedCustomer: any = null;
+
+      try {
+        const { data: updated, error: updErr } = await supabase
+          .from("customers")
+          .update({ phone: cleanNewPhone })
+          .eq("phone", cleanOldPhone)
+          .select("*")
+          .maybeSingle();
+
+        if (updErr) {
+          console.error("Phone update error:", updErr);
+          return NextResponse.json({ success: false, error: "Failed to update phone number in database." }, { status: 500 });
+        }
+        updatedCustomer = updated;
+      } catch (err: any) {
+        return NextResponse.json({ success: false, error: err.message || "Database update failed." }, { status: 500 });
+      }
+
+      const response = NextResponse.json({
+        success: true,
+        message: `Mobile number successfully changed to +91 ${cleanNewPhone}!`,
+        customer: {
+          id: updatedCustomer?.id,
+          name: updatedCustomer?.name,
+          phone: cleanNewPhone,
+          address: updatedCustomer?.address ? (typeof updatedCustomer.address === "string" && updatedCustomer.address.startsWith("{") ? JSON.parse(updatedCustomer.address) : updatedCustomer.address) : null,
+          isVerified: true,
+          authProvider: "otp",
+        },
+      });
+
+      // Update 10-year persistent cookie with new phone
+      response.cookies.set("falcon_customer_phone", cleanNewPhone, {
+        maxAge: 315360000,
+        path: "/",
+        sameSite: "lax",
+      });
+
+      // Clear challenge cookie
+      response.cookies.delete("falcon_otp_challenge");
+
+      return response;
+    }
+
     return NextResponse.json(
       { success: false, error: "Invalid action." },
       { status: 400 }

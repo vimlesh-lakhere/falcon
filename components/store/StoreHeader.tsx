@@ -220,18 +220,24 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
 
             {/* Customer Account Button */}
             {mounted && customerUser ? (
-              <div className="flex items-center gap-1.5 bg-purple-50 border border-purple-200 rounded-xl px-2.5 py-1.5 text-xs text-purple-900 font-bold shadow-2xs">
-                {customerUser.avatarUrl ? (
-                  <img src={customerUser.avatarUrl} alt="" loading="lazy" decoding="async" className="w-4 h-4 rounded-full" />
-                ) : (
-                  <User className="w-3.5 h-3.5 text-purple-600" />
-                )}
-                <span className="max-w-[80px] sm:max-w-[110px] truncate">{customerUser.name.split(" ")[0]}</span>
-                {customerUser.isVerified && (
-                  <span title="Verified Customer">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  </span>
-                )}
+              <div className="flex items-center gap-1.5 bg-purple-50 hover:bg-purple-100/80 border border-purple-200 rounded-xl px-2.5 py-1.5 text-xs text-purple-900 font-bold shadow-2xs transition-colors">
+                <Link
+                  href="/store/profile"
+                  className="flex items-center gap-1.5 hover:text-purple-700 transition-colors"
+                  title="View & Edit Profile, Address, Mobile"
+                >
+                  {customerUser.avatarUrl ? (
+                    <img src={customerUser.avatarUrl} alt="" loading="lazy" decoding="async" className="w-4 h-4 rounded-full" />
+                  ) : (
+                    <User className="w-3.5 h-3.5 text-purple-600" />
+                  )}
+                  <span className="max-w-[80px] sm:max-w-[110px] truncate">{customerUser.name.split(" ")[0]}</span>
+                  {customerUser.isVerified && (
+                    <span title="Verified Customer">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    </span>
+                  )}
+                </Link>
                 <button
                   type="button"
                   onClick={() => {
@@ -344,7 +350,11 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
           <div className="pb-3 border-b border-gray-100">
             {mounted && customerUser ? (
               <div className="flex items-center justify-between bg-purple-50 p-3 rounded-2xl border border-purple-100">
-                <div className="flex items-center gap-2">
+                <Link
+                  href="/store/profile"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center gap-2 flex-1 hover:opacity-80 transition-opacity"
+                >
                   {customerUser.avatarUrl ? (
                     <img src={customerUser.avatarUrl} alt="" loading="lazy" decoding="async" className="w-8 h-8 rounded-full" />
                   ) : (
@@ -363,7 +373,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                       {customerUser.phone ? `+91 ${customerUser.phone}` : customerUser.email}
                     </span>
                   </div>
-                </div>
+                </Link>
                 <button
                   type="button"
                   onClick={() => {
@@ -398,6 +408,13 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
               className="block p-2 rounded-lg hover:bg-purple-50 hover:text-purple-700"
             >
               🏠 Home
+            </Link>
+            <Link
+              href="/store/profile"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="block p-2 rounded-lg hover:bg-purple-50 hover:text-purple-700 text-purple-800 font-bold"
+            >
+              👤 My Profile & Delivery Address
             </Link>
             <Link
               href="/store/products"
