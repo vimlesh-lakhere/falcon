@@ -3,7 +3,7 @@
 import React from "react";
 import { CheckCircle2, Clock, PackageCheck, Truck, Home } from "lucide-react";
 
-export type OrderStatus = "received" | "confirmed" | "packing" | "out_for_delivery" | "delivered";
+export type OrderStatus = "received" | "confirmed" | "packing" | "out_for_delivery" | "delivered" | "completed";
 
 interface OrderStatusTrackerProps {
   status: OrderStatus;
@@ -24,7 +24,8 @@ export const OrderStatusTracker: React.FC<OrderStatusTrackerProps> = ({
   orderNumber,
   createdAt,
 }) => {
-  const currentIndex = STEPS.findIndex((s) => s.key === status);
+  const normalizedStatus = status === "completed" ? "delivered" : status;
+  const currentIndex = STEPS.findIndex((s) => s.key === normalizedStatus);
   const activeStep = currentIndex === -1 ? 0 : currentIndex;
 
   return (

@@ -39,7 +39,8 @@ export interface StoredOrderSummary {
   createdAt: string;
   totalAmount: number;
   itemCount: number;
-  status: "received" | "confirmed" | "packing" | "out_for_delivery" | "delivered";
+  status: "received" | "confirmed" | "packing" | "out_for_delivery" | "delivered" | "completed";
+  orderType?: "online" | "in_store";
   items: {
     productId: string;
     productName: string;
@@ -48,7 +49,7 @@ export interface StoredOrderSummary {
     imageUrl?: string | null;
   }[];
   address: CustomerAddress;
-  paymentMethod: "cod" | "upi";
+  paymentMethod: "cod" | "upi" | "cash";
 }
 
 interface StoreCartState {

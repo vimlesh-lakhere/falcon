@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   Phone,
   MessageCircle,
+  Store,
+  Receipt,
+  Globe,
 } from "lucide-react";
 import { useStoreCart } from "@/store/useStoreCart";
 import { createClient } from "@/lib/supabase/client";
@@ -24,10 +27,10 @@ function OrdersLoadingSkeleton() {
     <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
       <div className="space-y-1">
         <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
-          📦 My Orders & 1-Click Repeat Order
+          📦 My Orders & In-Store Purchases
         </h1>
         <p className="text-xs text-gray-500">
-          Track active deliveries and instantly reorder your regular grocery and beauty supplies.
+          Track online deliveries, view in-store shop bills, and 1-click reorder your favorites.
         </p>
       </div>
       <div className="bg-white rounded-3xl border border-purple-100 p-5 space-y-3 animate-pulse">
@@ -59,6 +62,7 @@ function MyOrdersContent() {
   const [dbOrders, setDbOrders] = React.useState<typeof recentOrders>([]);
   const [phoneSearchInput, setPhoneSearchInput] = React.useState("");
   const [searchFeedback, setSearchFeedback] = React.useState<string | null>(null);
+  const [activeTab, setActiveTab] = React.useState<"all" | "online" | "in_store">("all");
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
@@ -123,6 +127,11 @@ function MyOrdersContent() {
 
         if (sales && sales.length > 0) {
           const mapped = sales.map((sale) => {
+            const isOnline =
+              sale.invoice_number?.startsWith("ORD-") ||
+              (sale.notes && sale.notes.includes("[Online Order"));
+            const orderType: "online" | "in_store" = isOnline ? "online" : "in_store";
+
             // Parse delivery note if available
             let village = sale.customer?.address || "Local Address";
             let town = "Town Area";
@@ -137,13 +146,19 @@ function MyOrdersContent() {
               } catch {}
             }
 
+            // In-store purchase is ALWAYS delivered / completed on the spot at the counter!
+            const finalStatus = !isOnline
+              ? "delivered"
+              : ((sale.status || "received") as any);
+
             return {
               orderId: sale.id,
               invoiceNumber: sale.invoice_number,
               createdAt: sale.created_at,
               totalAmount: Number(sale.total_amount) || 0,
               itemCount: sale.items?.length || 1,
-              status: (sale.status || "received") as any,
+              status: finalStatus,
+              orderType,
               items:
                 sale.items?.map((it: any) => ({
                   productId: it.product_id,
@@ -160,7 +175,7 @@ function MyOrdersContent() {
                 landmark,
                 pincode,
               },
-              paymentMethod: (sale.payments?.[0]?.method || "cod") as any,
+              paymentMethod: (sale.payments?.[0]?.method || (sale.notes?.includes("UPI") ? "upi" : "cash")) as any,
             };
           });
 
@@ -218,7 +233,10 @@ function MyOrdersContent() {
 
             const updated = recentOrders.map((o) => {
               if (statusMap.has(o.orderId)) {
-                return { ...o, status: statusMap.get(o.orderId) as any };
+                const isOnline = o.orderType === "online" || o.invoiceNumber?.startsWith("ORD-");
+                const dbStatus = statusMap.get(o.orderId);
+                const finalStatus = !isOnline ? "delivered" : ((dbStatus as any) || "received");
+                return { ...o, status: finalStatus };
               }
               return o;
             });
@@ -244,6 +262,28 @@ function MyOrdersContent() {
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, [recentOrders, dbOrders]);
+
+  const totalCount = displayOrders.length;
+  const onlineCount = displayOrders.filter(
+    (o) => o.orderType === "online" || o.invoiceNumber?.startsWith("ORD-")
+  ).length;
+  const inStoreCount = displayOrders.filter(
+    (o) => o.orderType === "in_store" || (!o.invoiceNumber?.startsWith("ORD-") && o.orderType !== "online")
+  ).length;
+
+  const filteredOrders = React.useMemo(() => {
+    if (activeTab === "online") {
+      return displayOrders.filter(
+        (o) => o.orderType === "online" || o.invoiceNumber?.startsWith("ORD-")
+      );
+    }
+    if (activeTab === "in_store") {
+      return displayOrders.filter(
+        (o) => o.orderType === "in_store" || (!o.invoiceNumber?.startsWith("ORD-") && o.orderType !== "online")
+      );
+    }
+    return displayOrders;
+  }, [displayOrders, activeTab]);
 
   const handlePhoneSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -360,19 +400,68 @@ function MyOrdersContent() {
         )}
       </div>
 
+      {/* 3-Way Tabs Filter: All / Online Orders / In-Store Purchases */}
+      {displayOrders.length > 0 && (
+        <div className="flex items-center gap-1.5 p-1.5 bg-gray-100/90 rounded-2xl border border-gray-200">
+          <button
+            type="button"
+            onClick={() => setActiveTab("all")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === "all"
+                ? "bg-white text-purple-900 shadow-xs"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            All Orders ({totalCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("online")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === "online"
+                ? "bg-white text-purple-900 shadow-xs"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-purple-600" />
+            <span>Online Orders ({onlineCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("in_store")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === "in_store"
+                ? "bg-white text-emerald-900 shadow-xs"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Store className="w-3.5 h-3.5 text-emerald-600" />
+            <span>In-Store Bills ({inStoreCount})</span>
+          </button>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="p-12 text-center text-xs text-gray-400 space-y-2">
           <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" />
           <p>Syncing orders from store database...</p>
         </div>
-      ) : displayOrders.length === 0 ? (
+      ) : filteredOrders.length === 0 ? (
         <div className="p-12 rounded-3xl bg-white border border-gray-200 text-center space-y-3 shadow-xs">
           <div className="w-16 h-16 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
-            <Package className="w-8 h-8" />
+            {activeTab === "in_store" ? <Store className="w-8 h-8" /> : <Package className="w-8 h-8" />}
           </div>
-          <h3 className="text-base font-bold text-gray-900">No Orders Found Yet</h3>
+          <h3 className="text-base font-bold text-gray-900">
+            {activeTab === "in_store"
+              ? "No In-Store Purchases Found"
+              : activeTab === "online"
+              ? "No Online Orders Found"
+              : "No Orders Found Yet"}
+          </h3>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
-            Enter your mobile number above to load your past orders, or start a new order now.
+            {activeTab === "in_store"
+              ? "When you buy items at our shop counter with your mobile number, your bills will show here."
+              : "Enter your mobile number above to load your past orders, or start a new order now."}
           </p>
           <Link
             href="/store"
@@ -383,44 +472,69 @@ function MyOrdersContent() {
         </div>
       ) : (
         <div className="space-y-4">
-          {displayOrders.map((ord) => {
-            const isDelivered = ord.status === "delivered";
+          {filteredOrders.map((ord) => {
+            const isOnline =
+              ord.orderType === "online" || ord.invoiceNumber?.startsWith("ORD-");
+            const isDelivered = ord.status === "delivered" || ord.status === "completed";
             const isOut = ord.status === "out_for_delivery";
             const isConfirmed = ord.status === "confirmed" || ord.status === "packing";
 
             return (
               <div
                 key={ord.orderId}
-                className="bg-white rounded-3xl border border-gray-200/80 p-4 sm:p-6 space-y-4 shadow-xs hover:border-purple-200 transition-colors"
+                className={`bg-white rounded-3xl border p-4 sm:p-6 space-y-4 shadow-xs transition-colors ${
+                  isOnline
+                    ? "border-gray-200/80 hover:border-purple-200"
+                    : "border-emerald-200/80 hover:border-emerald-300"
+                }`}
               >
                 {/* Order Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-gray-100">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-gray-900">
-                        Order #{ord.invoiceNumber}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isOnline ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 flex items-center gap-1">
+                          <Globe className="w-3 h-3" /> Online Order
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                          <Store className="w-3 h-3" /> In-Store Purchase (दुकान से खरीदी)
+                        </span>
+                      )}
+
+                      <span className="text-sm font-black text-gray-900 font-mono">
+                        #{ord.invoiceNumber}
                       </span>
-                      <span
-                        className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase ${
-                          isDelivered
-                            ? "bg-emerald-100 text-emerald-800"
+
+                      {isOnline ? (
+                        <span
+                          className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase ${
+                            isDelivered
+                              ? "bg-emerald-100 text-emerald-800"
+                              : isOut
+                              ? "bg-blue-100 text-blue-800"
+                              : isConfirmed
+                              ? "bg-indigo-100 text-indigo-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {isDelivered
+                            ? "Delivered"
                             : isOut
-                            ? "bg-blue-100 text-blue-800"
+                            ? "Out for Delivery"
                             : isConfirmed
-                            ? "bg-indigo-100 text-indigo-800"
-                            : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {isDelivered
-                          ? "Delivered"
-                          : isOut
-                          ? "Out for Delivery"
-                          : isConfirmed
-                          ? "Confirmed"
-                          : "Received"}
-                      </span>
+                            ? "Confirmed"
+                            : "Received"}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Handed Over (हाथों-हाथ प्राप्त)
+                        </span>
+                      )}
                     </div>
-                    <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-2">
+
+                    <div className="text-[11px] text-gray-500 mt-1 flex items-center gap-2">
                       <Clock className="w-3 h-3 text-gray-400" />
                       <span>
                         {new Date(ord.createdAt).toLocaleDateString("en-IN", {
@@ -437,14 +551,18 @@ function MyOrdersContent() {
                   <div className="flex items-center gap-2">
                     <Link
                       href={`/store/orders/${ord.orderId}`}
-                      className="px-3.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-xl text-xs font-bold transition-colors"
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                        isOnline
+                          ? "bg-purple-50 hover:bg-purple-100 text-purple-800"
+                          : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800"
+                      }`}
                     >
-                      Track Delivery &rarr;
+                      {isOnline ? "Track Delivery →" : "View Receipt (रसीद) →"}
                     </Link>
                     <button
                       type="button"
                       onClick={() => handleRepeatOrder(ord)}
-                      className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95"
+                      className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Repeat Order</span>
@@ -452,36 +570,50 @@ function MyOrdersContent() {
                   </div>
                 </div>
 
-                {/* Visual Delivery Status Progress Bar */}
-                <div className="p-3 bg-gray-50/80 rounded-2xl border border-gray-100 space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px] font-bold text-gray-500">
-                    <span className={ord.status ? "text-purple-700 font-black" : ""}>
-                      1. Placed
-                    </span>
-                    <span className={isConfirmed || isOut || isDelivered ? "text-purple-700 font-black" : ""}>
-                      2. Confirmed
-                    </span>
-                    <span className={isOut || isDelivered ? "text-purple-700 font-black" : ""}>
-                      3. On Way
-                    </span>
-                    <span className={isDelivered ? "text-emerald-600 font-black" : ""}>
-                      4. Delivered
+                {/* Status Section: Delivery Tracker vs In-Store Counter Box */}
+                {isOnline ? (
+                  <div className="p-3 bg-gray-50/80 rounded-2xl border border-gray-100 space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-gray-500">
+                      <span className={ord.status ? "text-purple-700 font-black" : ""}>
+                        1. Placed
+                      </span>
+                      <span className={isConfirmed || isOut || isDelivered ? "text-purple-700 font-black" : ""}>
+                        2. Confirmed
+                      </span>
+                      <span className={isOut || isDelivered ? "text-purple-700 font-black" : ""}>
+                        3. On Way
+                      </span>
+                      <span className={isDelivered ? "text-emerald-600 font-black" : ""}>
+                        4. Delivered
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden flex">
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          isDelivered
+                            ? "w-full bg-emerald-500"
+                            : isOut
+                            ? "w-3/4 bg-purple-600"
+                            : isConfirmed
+                            ? "w-1/2 bg-purple-600"
+                            : "w-1/4 bg-amber-500"
+                        }`}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-100 flex items-center justify-between text-xs text-emerald-950">
+                    <div className="flex items-center gap-2">
+                      <Store className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="font-semibold">
+                        सामान दुकान काउंटर से हाथों-हाथ प्राप्त किया गया (In-Person Store Purchase)
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold bg-white text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                      Counter Billed
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden flex">
-                    <div
-                      className={`h-full transition-all duration-500 ${
-                        isDelivered
-                          ? "w-full bg-emerald-500"
-                          : isOut
-                          ? "w-3/4 bg-purple-600"
-                          : isConfirmed
-                          ? "w-1/2 bg-purple-600"
-                          : "w-1/4 bg-amber-500"
-                      }`}
-                    />
-                  </div>
-                </div>
+                )}
 
                 {/* Items in this order */}
                 <div className="space-y-2">
@@ -512,10 +644,21 @@ function MyOrdersContent() {
                 {/* Order Footer Details */}
                 <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                   <div className="text-gray-500 text-[11px]">
-                    Deliver to: <strong className="text-gray-800">{ord.address.fullName}</strong> (+91 {ord.address.mobileNumber})
-                    <span className="block text-gray-400">
-                      {ord.address.villageOrColony}, {ord.address.tehsilOrTown}
-                    </span>
+                    {isOnline ? (
+                      <>
+                        Deliver to: <strong className="text-gray-800">{ord.address.fullName}</strong> (+91 {ord.address.mobileNumber})
+                        <span className="block text-gray-400">
+                          {ord.address.villageOrColony}, {ord.address.tehsilOrTown}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🏪 Purchased In-Person at AGS Store Counter</span>
+                        <span className="block text-gray-400">
+                          Customer: {ord.address.fullName} (+91 {ord.address.mobileNumber})
+                        </span>
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
