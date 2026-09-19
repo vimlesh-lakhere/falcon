@@ -49,7 +49,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const [countdown, setCountdown] = useState(45);
   const [canResend, setCanResend] = useState(false);
   const [whatsappLink, setWhatsappLink] = useState<string | null>(null);
-  const [demoOtp, setDemoOtp] = useState<string | null>(null);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
 
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -124,17 +123,38 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         setIsSubmitting(false);
         return;
       } catch (fbErr: any) {
-        console.warn("Firebase Phone Auth notice, falling back to server route:", fbErr);
+        console.error("Firebase Phone Auth error:", fbErr);
         if (recaptchaVerifierRef.current) {
           try {
             recaptchaVerifierRef.current.clear();
           } catch {}
           recaptchaVerifierRef.current = null;
         }
+
+        let msg = fbErr.message || "Failed to send SMS via Firebase.";
+        const code = fbErr.code || "";
+
+        if (code === "auth/unauthorized-domain") {
+          msg = "Domain unauthorized: Please add 'falcon360.in' and 'www.falcon360.in' to Firebase Console -> Authentication -> Settings -> Authorized domains.";
+        } else if (code === "auth/operation-not-allowed") {
+          msg = "Phone sign-in is disabled in Firebase Console. Go to Authentication -> Sign-in method and enable 'Phone'.";
+        } else if (code === "auth/quota-exceeded") {
+          msg = "Firebase SMS daily quota exceeded. Please try WhatsApp or try again later.";
+        } else if (code === "auth/invalid-phone-number") {
+          msg = "Invalid mobile number. Please check the 10-digit number.";
+        } else if (code === "auth/captcha-check-failed") {
+          msg = "reCAPTCHA check failed. Please refresh the page and try again.";
+        } else if (code === "auth/too-many-requests") {
+          msg = "Too many SMS requests. Please wait a few minutes before trying again.";
+        }
+
+        setErrorMessage(msg);
+        setIsSubmitting(false);
+        return;
       }
     }
 
-    // 2. Fallback to server route (SMS Gateway / WhatsApp OTP / Instant Verification)
+    // 2. Fallback to server route (SMS Gateway / WhatsApp OTP)
     try {
       const res = await fetch("/api/auth/otp", {
         method: "POST",
@@ -156,11 +176,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         setOtpDigits(["", "", "", "", "", ""]);
         if (data.whatsappLink) {
           setWhatsappLink(data.whatsappLink);
-        }
-        if (data.demoOtp) {
-          setDemoOtp(data.demoOtp);
-        } else {
-          setDemoOtp(null);
         }
         setSuccessMessage(`OTP code sent to +91 ${cleanPhone}`);
         setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
@@ -461,31 +476,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 </p>
               </div>
 
-              {/* Instant Verification Helper Banner if SMS Gateway isn't delivering */}
-              {demoOtp && (
-                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl text-left space-y-1.5 animate-in fade-in">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-indigo-600" />
-                      Verification Code:
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const digits = demoOtp.split("").slice(0, 6);
-                        setOtpDigits(digits);
-                        verifyRealOtp(demoOtp);
-                      }}
-                      className="text-[11px] font-bold text-indigo-700 bg-white border border-indigo-300 px-2.5 py-1 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
-                    >
-                      Auto-Fill & Verify ({demoOtp})
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-indigo-700">
-                    Use code <strong>{demoOtp}</strong> (or master code <strong>123456</strong>) to verify instantly.
-                  </p>
-                </div>
-              )}
+
 
               {whatsappLink && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-left space-y-2">

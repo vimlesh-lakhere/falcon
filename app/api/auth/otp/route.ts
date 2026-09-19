@@ -112,11 +112,9 @@ export async function POST(req: NextRequest) {
         success: true,
         message: isGatewaySent
           ? `Real 6-Digit OTP sent to +91 ${cleanPhone}.`
-          : `OTP code generated for +91 ${cleanPhone}. (Code: ${generatedOtp})`,
+          : `OTP sent to +91 ${cleanPhone}.`,
         whatsappLink,
         expiresInSeconds: 600,
-        // Provided when no external SMS gateway is configured so users are never blocked
-        demoOtp: !isGatewaySent ? generatedOtp : undefined,
       });
     }
 
