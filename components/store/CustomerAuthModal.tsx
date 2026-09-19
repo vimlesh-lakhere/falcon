@@ -188,7 +188,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         let msg = fbErr.message || "Failed to send SMS via Firebase.";
         const code = fbErr.code || "";
 
-        if (code === "auth/unauthorized-domain") {
+        if (code === "auth/billing-not-enabled" || fbErr.message?.includes("billing-not-enabled")) {
+          msg = "Firebase SMS requires Blaze plan (Pay-as-you-go with 10,000 free SMS/month). Upgrade your project in Firebase Console or tap 'Get OTP on WhatsApp' below.";
+        } else if (code === "auth/unauthorized-domain") {
           msg = "Domain unauthorized: Please add 'falcon360.in' and 'www.falcon360.in' to Firebase Console -> Authentication -> Settings -> Authorized domains.";
         } else if (code === "auth/operation-not-allowed") {
           msg = "Phone sign-in is disabled in Firebase Console. Go to Authentication -> Sign-in method and enable 'Phone'.";
