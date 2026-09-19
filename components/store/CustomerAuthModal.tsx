@@ -54,9 +54,68 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
 
+  const cleanupRecaptcha = () => {
+    if (recaptchaVerifierRef.current) {
+      try {
+        recaptchaVerifierRef.current.clear();
+      } catch (e) {
+        console.warn("Recaptcha clear error:", e);
+      }
+      recaptchaVerifierRef.current = null;
+    }
+    const container = document.getElementById("recaptcha-container");
+    if (container && container.parentNode) {
+      const freshContainer = document.createElement("div");
+      freshContainer.id = "recaptcha-container";
+      container.parentNode.replaceChild(freshContainer, container);
+    }
+  };
+
+  const getOrCreateRecaptchaVerifier = () => {
+    if (!auth) return null;
+
+    if (recaptchaVerifierRef.current) {
+      return recaptchaVerifierRef.current;
+    }
+
+    // Ensure clean DOM container without stale grecaptcha widget bindings
+    const container = document.getElementById("recaptcha-container");
+    if (container && container.parentNode) {
+      const freshContainer = document.createElement("div");
+      freshContainer.id = "recaptcha-container";
+      container.parentNode.replaceChild(freshContainer, container);
+    }
+
+    try {
+      const verifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+        size: "invisible",
+        callback: () => {},
+        "expired-callback": () => {
+          cleanupRecaptcha();
+        },
+      });
+      recaptchaVerifierRef.current = verifier;
+      return verifier;
+    } catch (err: any) {
+      console.error("Error creating RecaptchaVerifier:", err);
+      cleanupRecaptcha();
+      return null;
+    }
+  };
+
   useEffect(() => {
     setMounted(true);
+    return () => {
+      cleanupRecaptcha();
+    };
   }, []);
+
+  // Reset recaptcha when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      cleanupRecaptcha();
+    }
+  }, [isOpen]);
 
   // Lock body scroll and listen for Escape key when modal is open
   useEffect(() => {
@@ -107,12 +166,12 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     // 1. Try Google Firebase Phone Auth for 10,000 free monthly real SMS
     if (channel === "sms" && isFirebaseConfigured && auth) {
       try {
-        if (!recaptchaVerifierRef.current) {
-          recaptchaVerifierRef.current = new RecaptchaVerifier(auth, "recaptcha-container", {
-            size: "invisible",
-          });
+        const verifier = getOrCreateRecaptchaVerifier();
+        if (!verifier) {
+          throw new Error("Unable to initialize reCAPTCHA. Please try again or use WhatsApp.");
         }
-        const confirmation = await signInWithPhoneNumber(auth, `+91${cleanPhone}`, recaptchaVerifierRef.current);
+
+        const confirmation = await signInWithPhoneNumber(auth, `+91${cleanPhone}`, verifier);
         setConfirmationResult(confirmation);
         setStep("otp");
         setCountdown(45);
@@ -124,12 +183,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         return;
       } catch (fbErr: any) {
         console.error("Firebase Phone Auth error:", fbErr);
-        if (recaptchaVerifierRef.current) {
-          try {
-            recaptchaVerifierRef.current.clear();
-          } catch {}
-          recaptchaVerifierRef.current = null;
-        }
+        cleanupRecaptcha();
 
         let msg = fbErr.message || "Failed to send SMS via Firebase.";
         const code = fbErr.code || "";
@@ -142,8 +196,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           msg = "Firebase SMS daily quota exceeded. Please try WhatsApp or try again later.";
         } else if (code === "auth/invalid-phone-number") {
           msg = "Invalid mobile number. Please check the 10-digit number.";
-        } else if (code === "auth/captcha-check-failed") {
-          msg = "reCAPTCHA check failed. Please refresh the page and try again.";
+        } else if (code === "auth/captcha-check-failed" || fbErr.message?.includes("reCAPTCHA")) {
+          msg = "reCAPTCHA verification reset. Please tap 'Send Verification OTP' again.";
         } else if (code === "auth/too-many-requests") {
           msg = "Too many SMS requests. Please wait a few minutes before trying again.";
         }
