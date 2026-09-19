@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShoppingBag, Sparkles, Filter } from "lucide-react";
 import { ProductCard } from "@/components/store/ProductCard";
@@ -12,7 +12,9 @@ import { isProductOnline } from "@/lib/product-online";
 
 export default function CategoryCatalogPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const categoryId = params?.id as string;
+  const shopParam = searchParams.get("shop");
 
   const [category, setCategory] = useState<Category | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -35,7 +37,7 @@ export default function CategoryCatalogPage() {
         setCategory(cat);
 
         // 2. Fetch products in this category
-        const targetShopId = cat?.shop_id || resolveActiveShopId();
+        const targetShopId = resolveActiveShopId(shopParam || cat?.shop_id);
         const { data: prods } = await supabase
           .from("products")
           .select("*, category:categories(*)")
@@ -53,7 +55,7 @@ export default function CategoryCatalogPage() {
     }
 
     loadCategoryData();
-  }, [categoryId]);
+  }, [categoryId, shopParam]);
 
   const categoryName = category?.name || "Category Products";
 

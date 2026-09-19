@@ -36,6 +36,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   shopName = "Falcon Store",
   shopPhone = "",
 }) => {
+  const effectiveShopPhone = shopPhone?.trim() || process.env.NEXT_PUBLIC_SHOP_WHATSAPP || "919340362381";
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -123,7 +124,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
         </div>
         <div className="hidden sm:flex items-center gap-3 text-[10px]">
           <a
-            href={`https://wa.me/${shopPhone}?text=${encodeURIComponent("Hello AGS Store, I want to inquire about products.")}`}
+            href={`https://wa.me/${effectiveShopPhone}?text=${encodeURIComponent("Hello AGS Store, I want to inquire about products.")}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 hover:underline text-emerald-200"
@@ -448,7 +449,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
 
           <div className="pt-2 border-t border-gray-100">
             <a
-              href={`https://wa.me/${shopPhone}`}
+              href={`https://wa.me/${effectiveShopPhone}`}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-xs"

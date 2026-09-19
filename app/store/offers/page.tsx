@@ -7,9 +7,13 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product } from "@/types/database";
 
+import { useSearchParams } from "next/navigation";
 import { resolveActiveShopId } from "@/lib/tenant";
+import { isProductOnline, getProductOnlineConfig } from "@/lib/product-online";
 
 export default function StoreOffersPage() {
+  const searchParams = useSearchParams();
+  const shopParam = searchParams.get("shop");
   const [discountProducts, setDiscountProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -17,7 +21,7 @@ export default function StoreOffersPage() {
     const loadOffers = async () => {
       try {
         setLoading(true);
-        const targetShopId = resolveActiveShopId();
+        const targetShopId = resolveActiveShopId(shopParam);
         const supabase = createClient();
         const { data } = await supabase
           .from("products")
@@ -25,9 +29,14 @@ export default function StoreOffersPage() {
           .eq("shop_id", targetShopId)
           .eq("is_active", true);
 
-        const list = data || [];
+        const list = (data || []).filter(isProductOnline);
         // Filter products with discounts or special deals
-        const filtered = list.filter((p) => Number((p as any).mrp) > Number(p.selling_price));
+        const filtered = list.filter((p) => {
+          const cfg = getProductOnlineConfig(p);
+          const hasOnlineDeal = typeof cfg.onlinePrice === "number" && cfg.onlinePrice < (Number(p.selling_price) || 0);
+          const hasMrpDiscount = Number((p as any).mrp) > Number(p.selling_price);
+          return hasOnlineDeal || hasMrpDiscount;
+        });
         setDiscountProducts(filtered.length > 0 ? filtered : list.slice(0, 12));
       } catch (err) {
         console.error("Failed to load offers:", err);
@@ -37,7 +46,7 @@ export default function StoreOffersPage() {
     };
 
     loadOffers();
-  }, []);
+  }, [shopParam]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-6">

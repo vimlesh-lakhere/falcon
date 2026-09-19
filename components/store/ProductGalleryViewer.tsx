@@ -5,12 +5,14 @@ import { Sparkles, Maximize2, ShieldCheck, Eye } from "lucide-react";
 
 interface ProductGalleryViewerProps {
   heroUrl?: string | null;
+  backImageUrl?: string | null;
   galleryUrls?: string[] | null;
   productName: string;
 }
 
 export const ProductGalleryViewer: React.FC<ProductGalleryViewerProps> = ({
   heroUrl,
+  backImageUrl,
   galleryUrls = [],
   productName,
 }) => {
@@ -22,6 +24,9 @@ export const ProductGalleryViewer: React.FC<ProductGalleryViewerProps> = ({
     heroUrl.split("|||").forEach((u) => {
       if (u.trim()) rawList.push(u.trim());
     });
+  }
+  if (backImageUrl && backImageUrl.trim()) {
+    rawList.push(backImageUrl.trim());
   }
   if (galleryUrls) {
     galleryUrls.forEach((u) => {

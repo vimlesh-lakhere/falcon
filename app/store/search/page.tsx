@@ -14,6 +14,7 @@ import { isProductOnline } from "@/lib/product-online";
 function SearchContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
+  const shopParam = searchParams.get("shop");
 
   const [searchInput, setSearchInput] = useState(query);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -24,7 +25,7 @@ function SearchContent() {
     async function loadData() {
       try {
         setLoading(true);
-        const targetShopId = resolveActiveShopId();
+        const targetShopId = resolveActiveShopId(shopParam);
         const supabase = createClient();
         const { data } = await supabase
           .from("products")
@@ -43,7 +44,7 @@ function SearchContent() {
     }
 
     loadData();
-  }, [query]);
+  }, [query, shopParam]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

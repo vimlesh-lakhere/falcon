@@ -997,6 +997,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         online_price: Number(onlinePrice) > 0 ? Number(onlinePrice) : null,
         description: finalDescription.trim() || null,
         image_url: combinedImageUrl,
+        back_image_url: backImageUrl.trim() || null,
       };
 
       let saved: Product;

@@ -101,9 +101,11 @@ function StoreCartContent() {
               item.product.image_url ||
               "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&auto=format&fit=crop&q=60";
 
+            const itemKey = item.itemKey || `${item.product.id}___${item.selectedVariant || "default"}`;
+
             return (
               <div
-                key={item.product.id}
+                key={itemKey}
                 className="flex gap-4 p-4 rounded-2xl bg-white border border-gray-200/80 shadow-xs"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -115,8 +117,15 @@ function StoreCartContent() {
 
                 <div className="flex-1 min-w-0 flex flex-col justify-between">
                   <div>
-                    <div className="text-[10px] font-bold text-purple-700 uppercase">
-                      {item.product.brand || "Authentic"}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-purple-700 uppercase">
+                        {item.product.brand || "Authentic"}
+                      </span>
+                      {item.selectedVariant && (
+                        <span className="text-[9px] font-black text-purple-800 bg-purple-100 px-2 py-0.5 rounded-md">
+                          {item.selectedVariant}
+                        </span>
+                      )}
                     </div>
                     <Link href={`/store/product/${item.product.id}`}>
                       <h3 className="text-xs sm:text-sm font-bold text-gray-900 hover:text-purple-700 line-clamp-2">
@@ -150,7 +159,7 @@ function StoreCartContent() {
                     <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl p-1">
                       <button
                         type="button"
-                        onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                        onClick={() => updateQuantity(itemKey, item.quantity - 1, item.selectedVariant)}
                         className="w-7 h-7 flex items-center justify-center text-gray-600 hover:bg-white rounded-lg"
                       >
                         <Minus className="w-3.5 h-3.5" />
@@ -158,7 +167,7 @@ function StoreCartContent() {
                       <span className="text-xs font-black px-2 text-gray-900">{item.quantity}</span>
                       <button
                         type="button"
-                        onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                        onClick={() => updateQuantity(itemKey, item.quantity + 1, item.selectedVariant)}
                         className="w-7 h-7 flex items-center justify-center text-gray-600 hover:bg-white rounded-lg"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -171,7 +180,7 @@ function StoreCartContent() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => removeFromCart(item.product.id)}
+                        onClick={() => removeFromCart(itemKey, item.selectedVariant)}
                         className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg flex items-center gap-1 text-xs font-semibold"
                       >
                         <Trash2 className="w-4 h-4" />

@@ -14,6 +14,7 @@ interface CartItemPayload {
     image_url?: string | null;
   };
   quantity: number;
+  selectedVariant?: string;
 }
 
 interface AddressPayload {
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
     const productIds = cart.map((it) => it.product.id);
     const { data: dbProducts, error: prodErr } = await supabase
       .from("products")
-      .select("id, name, selling_price, purchase_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp")
+      .select("id, name, selling_price, purchase_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp, online_price, is_online, description")
       .in("id", productIds)
       .eq("shop_id", shopId);
 
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest) {
       price: number;
       costPrice: number;
       imageUrl?: string | null;
+      variant?: string;
     }[] = [];
 
     for (const item of cart) {
@@ -103,17 +105,32 @@ export async function POST(req: NextRequest) {
       }
 
       const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+
+      // If variant was selected, check if description contains variant price
+      let variantPrice: number | null = null;
+      if (item.selectedVariant && dbProd.description) {
+        try {
+          const { extractProductVariants } = await import("@/lib/product-variants");
+          const vars = extractProductVariants(dbProd as any);
+          const matchedVar = vars.find((v) => v.size === item.selectedVariant);
+          if (matchedVar && matchedVar.price > 0) {
+            variantPrice = matchedVar.price;
+          }
+        } catch {}
+      }
+
       const effective = getEffectiveItemPrice(dbProd as any, qty, "piece");
-      const price = effective.unitPrice;
+      const price = variantPrice !== null ? variantPrice : effective.unitPrice;
       verifiedSubtotal += price * qty;
 
       verifiedItems.push({
         productId: dbProd.id,
-        productName: dbProd.name,
+        productName: item.selectedVariant ? `${dbProd.name} (${item.selectedVariant})` : dbProd.name,
         quantity: qty,
         price,
         costPrice: Number(dbProd.purchase_price) || 0,
         imageUrl: dbProd.image_url,
+        variant: item.selectedVariant,
       });
     }
 

@@ -99,9 +99,11 @@ export const CartDrawer: React.FC = () => {
                   item.product.image_url ||
                   "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&auto=format&fit=crop&q=60";
 
+                const itemKey = item.itemKey || `${item.product.id}___${item.selectedVariant || "default"}`;
+
                 return (
                   <div
-                    key={item.product.id}
+                    key={itemKey}
                     className="flex gap-3 p-3 rounded-2xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-purple-200 transition-all"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -115,8 +117,15 @@ export const CartDrawer: React.FC = () => {
 
                     <div className="flex-1 min-w-0 flex flex-col justify-between">
                       <div>
-                        <div className="text-[10px] text-purple-700 font-bold uppercase">
-                          {item.product.brand || "Authentic"}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-purple-700 font-bold uppercase">
+                            {item.product.brand || "Authentic"}
+                          </span>
+                          {item.selectedVariant && (
+                            <span className="text-[9px] font-black text-purple-800 bg-purple-100 px-1.5 py-0.2 rounded-md">
+                              {item.selectedVariant}
+                            </span>
+                          )}
                         </div>
                         <h4 className="text-xs font-bold text-gray-900 line-clamp-1">
                           {item.product.name}
@@ -147,7 +156,7 @@ export const CartDrawer: React.FC = () => {
                         <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5 shadow-2xs">
                           <button
                             type="button"
-                            onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                            onClick={() => updateQuantity(itemKey, item.quantity - 1, item.selectedVariant)}
                             className="w-7 h-7 flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-purple-100 rounded-md transition-colors"
                             title="Reduce quantity"
                           >
@@ -158,7 +167,7 @@ export const CartDrawer: React.FC = () => {
                           </span>
                           <button
                             type="button"
-                            onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                            onClick={() => updateQuantity(itemKey, item.quantity + 1, item.selectedVariant)}
                             className="w-7 h-7 flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-purple-100 rounded-md transition-colors"
                             title="Increase quantity"
                           >
@@ -172,7 +181,7 @@ export const CartDrawer: React.FC = () => {
                           </span>
                           <button
                             type="button"
-                            onClick={() => removeFromCart(item.product.id)}
+                            onClick={() => removeFromCart(itemKey, item.selectedVariant)}
                             className="text-gray-400 hover:text-red-600 p-1.5 rounded-md transition-colors"
                             title="Remove item"
                           >

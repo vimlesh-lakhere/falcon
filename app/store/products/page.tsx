@@ -23,6 +23,7 @@ import { isProductOnline, getProductEffectiveOnlinePrice } from "@/lib/product-o
 function AllProductsCatalogContent() {
   const searchParams = useSearchParams();
   const initialCatParam = searchParams.get("category") || "all";
+  const shopParam = searchParams.get("shop");
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -35,7 +36,7 @@ function AllProductsCatalogContent() {
     async function loadCatalog() {
       try {
         setLoading(true);
-        const targetShopId = resolveActiveShopId();
+        const targetShopId = resolveActiveShopId(shopParam);
         const supabase = createClient();
 
         const [{ data: prodList }, { data: catList }] = await Promise.all([
@@ -64,7 +65,7 @@ function AllProductsCatalogContent() {
     }
 
     loadCatalog();
-  }, []);
+  }, [shopParam]);
 
   // Update selected category if URL query changes
   useEffect(() => {

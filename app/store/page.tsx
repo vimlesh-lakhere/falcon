@@ -51,22 +51,7 @@ function StoreHomeContent() {
         setLoading(true);
         const supabase = createClient();
 
-        let targetShopId = resolveActiveShopId();
-
-        if (shopParam) {
-          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(shopParam)) {
-            targetShopId = shopParam;
-          } else {
-            const { data: matchedShop } = await supabase
-              .from("shops")
-              .select("id")
-              .eq("slug", shopParam)
-              .maybeSingle();
-            if (matchedShop?.id) {
-              targetShopId = matchedShop.id;
-            }
-          }
-        }
+        const targetShopId = resolveActiveShopId(shopParam);
 
         const [{ data: prodList }, { data: catList }] = await Promise.all([
           supabase

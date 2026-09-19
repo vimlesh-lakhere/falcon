@@ -239,7 +239,13 @@ export function getProductUnitPricing(
   unitPrice: number;
 } {
   const { conversionFactor } = resolveProductUnitDetails(product, unitCatalog);
-  const rawSelling = Number(product.selling_price) || 0;
+  const onlinePrice =
+    (product as any).online_price !== undefined &&
+    (product as any).online_price !== null &&
+    Number((product as any).online_price) > 0
+      ? Number((product as any).online_price)
+      : null;
+  const rawSelling = onlinePrice !== null ? onlinePrice : (Number(product.selling_price) || 0);
   const rawWholesale = Number(product.wholesale_price) || 0;
   const rawMrp = Number(product.mrp) || 0;
 
@@ -426,12 +432,16 @@ export function getEffectiveItemPrice(
     };
   }
 
+  const baseSellingPrice = Number(product.selling_price) || regularUnitPrice;
+  const baseOriginalPrice = baseSellingPrice > regularUnitPrice ? baseSellingPrice : regularUnitPrice;
+  const onlineSavings = Math.max(0, baseOriginalPrice - regularUnitPrice);
+
   return {
     unitPrice: regularUnitPrice,
-    originalPrice: regularUnitPrice,
+    originalPrice: baseOriginalPrice,
     isWholesaleTriggered: false,
     totalPieces,
-    savingsPerUnit: 0,
+    savingsPerUnit: Number(onlineSavings.toFixed(2)),
   };
 }
 

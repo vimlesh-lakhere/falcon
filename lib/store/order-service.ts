@@ -38,6 +38,7 @@ export const storeOrderService = {
               image_url: it.product.image_url,
             },
             quantity: it.quantity,
+            selectedVariant: it.selectedVariant,
           })),
           address,
           paymentMethod,

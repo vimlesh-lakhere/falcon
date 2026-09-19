@@ -48,7 +48,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const frontImage =
     rawImages[0] ||
     "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=500&auto=format&fit=crop&q=60";
-  const backImage = rawImages.length > 1 ? rawImages[1] : null;
+  const backImage =
+    (product as any).back_image_url?.trim() ||
+    (rawImages.length > 1 ? rawImages[1] : null);
 
   const [activeSide, setActiveSide] = React.useState<"front" | "back">("front");
   const [isHovered, setIsHovered] = React.useState(false);
@@ -60,12 +62,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       ? backImage
       : frontImage;
 
+  const effectiveShopPhone = (shopPhone && shopPhone.trim() && shopPhone !== "919876543210")
+    ? shopPhone.trim()
+    : (process.env.NEXT_PUBLIC_SHOP_WHATSAPP || "919340362381");
+
   const handleWhatsAppOrder = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const sizeText = selectedVariant ? ` (${selectedVariant.size})` : "";
     const text = `Hello! I would like to order this product from your online store:\n\n*${product.name}${sizeText}*\nBrand: ${product.brand || "Standard"}\nPrice: ₹${price}\nLink: ${window.location.origin}/store/product/${product.id}`;
-    window.open(`https://wa.me/${shopPhone}?text=${encodeURIComponent(text)}`, "_blank");
+    window.open(`https://wa.me/${effectiveShopPhone}?text=${encodeURIComponent(text)}`, "_blank");
   };
 
   const handleAddToCart = (e: React.MouseEvent) => {

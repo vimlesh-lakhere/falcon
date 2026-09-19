@@ -188,6 +188,7 @@ export default function ProductDetailPage() {
         <div className="lg:col-span-6">
           <ProductGalleryViewer
             heroUrl={product.image_url}
+            backImageUrl={(product as any).back_image_url}
             galleryUrls={(product as any).gallery_urls || []}
             productName={product.name}
           />

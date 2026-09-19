@@ -7,6 +7,11 @@ export interface CartItem {
   product: Product;
   quantity: number;
   selectedVariant?: string;
+  itemKey?: string;
+}
+
+export function getCartItemKey(productId: string, variant?: string): string {
+  return `${productId}___${(variant || "default").trim()}`;
 }
 
 export interface CustomerAddress {
@@ -47,6 +52,7 @@ export interface StoredOrderSummary {
     quantity: number;
     price: number;
     imageUrl?: string | null;
+    variant?: string;
   }[];
   address: CustomerAddress;
   paymentMethod: "cod" | "upi" | "cash";
@@ -62,8 +68,8 @@ interface StoreCartState {
 
   // Actions
   addToCart: (product: Product, quantity?: number, variant?: string) => void;
-  removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  removeFromCart: (keyOrProductId: string, variant?: string) => void;
+  updateQuantity: (keyOrProductId: string, quantity: number, variant?: string) => void;
   clearCart: () => void;
   setIsCartOpen: (open: boolean) => void;
 
@@ -89,40 +95,65 @@ export const useStoreCart = create<StoreCartState>()(
 
       addToCart: (product, quantity = 1, variant) => {
         set((state) => {
+          const itemKey = getCartItemKey(product.id, variant);
           const existingIndex = state.cart.findIndex(
-            (item) => item.product.id === product.id && item.selectedVariant === variant
+            (item) => (item.itemKey ? item.itemKey === itemKey : item.product.id === product.id && item.selectedVariant === variant)
           );
 
           if (existingIndex > -1) {
             const updatedCart = [...state.cart];
             updatedCart[existingIndex].quantity += quantity;
+            updatedCart[existingIndex].itemKey = itemKey;
             return { cart: updatedCart };
           }
 
           return {
-            cart: [...state.cart, { product, quantity, selectedVariant: variant }],
+            cart: [...state.cart, { product, quantity, selectedVariant: variant, itemKey }],
           };
         });
       },
 
-      removeFromCart: (productId) => {
+      removeFromCart: (keyOrProductId: string, variant?: string) => {
         set((state) => ({
-          cart: state.cart.filter((item) => item.product.id !== productId),
+          cart: state.cart.filter((item) => {
+            if (item.itemKey && item.itemKey === keyOrProductId) return false;
+            if (variant !== undefined) {
+              return !(item.product.id === keyOrProductId && item.selectedVariant === variant);
+            }
+            if (item.itemKey && item.itemKey === getCartItemKey(keyOrProductId, item.selectedVariant)) {
+              return false;
+            }
+            return item.product.id !== keyOrProductId;
+          }),
         }));
       },
 
-      updateQuantity: (productId, quantity) => {
+      updateQuantity: (keyOrProductId: string, quantity: number, variant?: string) => {
         set((state) => {
           if (quantity <= 0) {
             return {
-              cart: state.cart.filter((item) => item.product.id !== productId),
+              cart: state.cart.filter((item) => {
+                if (item.itemKey && item.itemKey === keyOrProductId) return false;
+                if (variant !== undefined) {
+                  return !(item.product.id === keyOrProductId && item.selectedVariant === variant);
+                }
+                return item.product.id !== keyOrProductId;
+              }),
             };
           }
 
           return {
-            cart: state.cart.map((item) =>
-              item.product.id === productId ? { ...item, quantity } : item
-            ),
+            cart: state.cart.map((item) => {
+              const matches =
+                (item.itemKey && item.itemKey === keyOrProductId) ||
+                (variant !== undefined
+                  ? item.product.id === keyOrProductId && item.selectedVariant === variant
+                  : item.product.id === keyOrProductId);
+
+              return matches
+                ? { ...item, quantity, itemKey: item.itemKey || getCartItemKey(item.product.id, item.selectedVariant) }
+                : item;
+            }),
           };
         });
       },

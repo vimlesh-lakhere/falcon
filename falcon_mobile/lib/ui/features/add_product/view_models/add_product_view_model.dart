@@ -1138,13 +1138,8 @@ class AddProductViewModel extends ChangeNotifier {
           // ── Case 1: Khulla Loose Piece Selling ──
           if (enterPriceAsPack) {
             finalPurchasePrice = currentConversionFactor > 0 ? enteredPurchasePrice / currentConversionFactor : enteredPurchasePrice;
-
-            if (enteredMrp != null && enteredMrp > 0) {
-              finalSellingPrice = enteredMrp;
-              finalMrp = enteredMrp;
-            } else {
-              finalSellingPrice = currentConversionFactor > 0 ? enteredSellingPrice / currentConversionFactor : enteredSellingPrice;
-            }
+            finalSellingPrice = currentConversionFactor > 0 ? enteredSellingPrice / currentConversionFactor : enteredSellingPrice;
+            finalMrp = (enteredMrp != null && enteredMrp > 0) ? enteredMrp : null;
 
             // Pack selling price becomes the wholesale rate!
             if (finalWholesalePrice == null || finalWholesalePrice <= 0) {
@@ -1157,6 +1152,13 @@ class AddProductViewModel extends ChangeNotifier {
           if (enterPriceAsPack) {
             finalPurchasePrice = enteredPurchasePrice;
             finalSellingPrice = enteredSellingPrice;
+            if (enteredMrp != null && enteredMrp > 0) {
+              finalMrp = enteredMrp * currentConversionFactor;
+            }
+          } else {
+            // Entered as piece, selling as full pack
+            finalPurchasePrice = enteredPurchasePrice * currentConversionFactor;
+            finalSellingPrice = enteredSellingPrice * currentConversionFactor;
             if (enteredMrp != null && enteredMrp > 0) {
               finalMrp = enteredMrp * currentConversionFactor;
             }
