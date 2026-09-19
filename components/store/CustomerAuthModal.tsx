@@ -145,8 +145,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     return () => clearInterval(timer);
   }, [step, countdown]);
 
-  // Step 1: Send Real / Fallback OTP (Default: WhatsApp for zero billing / zero card requirement)
-  const handleSendOtp = async (e?: React.FormEvent, channel = "whatsapp") => {
+  // Step 1: Send Real / Fallback OTP (Default: SMS via Firebase Blaze Plan)
+  const handleSendOtp = async (e?: React.FormEvent, channel = "sms") => {
     if (e) e.preventDefault();
     setErrorMessage(null);
 
@@ -464,7 +464,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           {/* STEP 1: PHONE & NAME INPUT (ONLY MOBILE NUMBER LOGIN) */}
           {step === "input" && (
             <div className="space-y-4">
-              <form onSubmit={(e) => handleSendOtp(e, "whatsapp")} className="space-y-3.5">
+              <form onSubmit={(e) => handleSendOtp(e, "sms")} className="space-y-3.5">
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
                     Your Full Name <span className="text-rose-500">*</span>
@@ -507,19 +507,20 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-purple-500/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4 text-white" />
-                    <span>{isSubmitting ? "Generating WhatsApp Code..." : "Get OTP on WhatsApp (Free & Instant)"}</span>
+                    <span>{isSubmitting ? "Sending Google SMS..." : "Send Verification OTP (SMS)"}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
 
                   <button
                     type="button"
-                    onClick={(e) => handleSendOtp(e, "sms")}
+                    onClick={(e) => handleSendOtp(e, "whatsapp")}
                     disabled={isSubmitting}
-                    className="w-full flex items-center justify-center gap-2 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
                   >
-                    <span>Or receive via SMS</span>
+                    <MessageCircle className="w-4 h-4 text-emerald-600" />
+                    <span>Or Get OTP on WhatsApp</span>
                   </button>
                 </div>
               </form>
