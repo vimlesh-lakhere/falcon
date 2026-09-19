@@ -12,7 +12,7 @@ export const productsRepository = {
   async getAll(shopId: string, options?: { categoryId?: string; search?: string; isActive?: boolean }) {
     let query = supabase
       .from("products")
-      .select("*, category:categories(*), supplier:suppliers(*)")
+      .select("*, category:categories(*), supplier:suppliers(*), unit:units(*)")
       .eq("shop_id", shopId)
       .order("name", { ascending: true });
 
@@ -34,7 +34,7 @@ export const productsRepository = {
   async getById(id: string) {
     const { data, error } = await supabase
       .from("products")
-      .select("*, category:categories(*), supplier:suppliers(*)")
+      .select("*, category:categories(*), supplier:suppliers(*), unit:units(*)")
       .eq("id", id)
       .single();
     if (error) throw error;
@@ -309,11 +309,52 @@ export const productsRepository = {
     return (data as Unit[]) || [];
   },
 
+  async createUnit(unit: Partial<Unit>): Promise<Unit> {
+    const { data, error } = await supabase
+      .from("units")
+      .insert([
+        {
+          shop_id: unit.shop_id,
+          name: unit.name,
+          base_unit_id: unit.base_unit_id || null,
+          conversion_factor: unit.conversion_factor !== undefined ? Number(unit.conversion_factor) : 1,
+        },
+      ])
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data as Unit;
+  },
+
+  async updateUnit(id: string, updates: Partial<Unit>): Promise<Unit> {
+    const payload: any = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.conversion_factor !== undefined) payload.conversion_factor = Number(updates.conversion_factor);
+    if (updates.base_unit_id !== undefined) payload.base_unit_id = updates.base_unit_id;
+
+    const { data, error } = await supabase
+      .from("units")
+      .update(payload)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data as Unit;
+  },
+
+  async deleteUnit(id: string): Promise<boolean> {
+    // Unassign products from this unit first so they don't break
+    await supabase.from("products").update({ unit_id: null }).eq("unit_id", id);
+    const { error } = await supabase.from("units").delete().eq("id", id);
+    if (error) throw error;
+    return true;
+  },
+
   async getOrCreateQuickSaleProduct(shopId: string): Promise<Product> {
     try {
       const { data: existing } = await supabase
         .from("products")
-        .select("*, category:categories(*), supplier:suppliers(*)")
+        .select("*, category:categories(*), supplier:suppliers(*), unit:units(*)")
         .eq("shop_id", shopId)
         .eq("sku", "QUICK-CALC-SALE")
         .maybeSingle();

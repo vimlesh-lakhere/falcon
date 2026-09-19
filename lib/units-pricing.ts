@@ -1,6 +1,6 @@
-import { Product } from "@/types/database";
+import { Product, Unit } from "@/types/database";
 
-export type UnitKey = "piece" | "half_dozen" | "dozen" | "bundle_10_doz" | "custom";
+export type UnitKey = "piece" | "half_dozen" | "dozen" | "bundle_10_doz" | "half_unit" | "unit" | "bulk_5" | "bulk_10" | "custom" | string;
 
 export interface UnitDefinition {
   key: UnitKey;
@@ -8,15 +8,26 @@ export interface UnitDefinition {
   shortName: string;
   multiplier: number; // in base pieces
   description: string;
+  isDefault?: boolean;
 }
 
-export const STANDARD_UNITS: Record<UnitKey, UnitDefinition> = {
+export interface DynamicProductUnit {
+  key: string;
+  label: string;
+  shortName: string;
+  multiplier: number;
+  description: string;
+  isDefault?: boolean;
+}
+
+export const STANDARD_UNITS: Record<string, UnitDefinition> = {
   piece: {
     key: "piece",
     label: "Piece (1 Pc)",
     shortName: "Pc",
     multiplier: 1,
     description: "Single piece standard retail unit",
+    isDefault: true,
   },
   half_dozen: {
     key: "half_dozen",
@@ -49,102 +60,324 @@ export const STANDARD_UNITS: Record<UnitKey, UnitDefinition> = {
 };
 
 /**
- * Calculates the suggested default price for a given unit
- * based on the product's selling_price and wholesale_price.
- * Handles both per-piece wholesale rate (e.g. ₹32/pc vs ₹35/pc) and full-pack rate.
+ * Extracts a clean unit label from unit name.
+ * e.g. "Lad (16 pcs)" -> "Ladi", "Box (24 pcs)" -> "Box", "Pack (8 pcs)" -> "Pack"
  */
-export function calculateDefaultUnitPrice(
-  product: Product,
-  unitKey: UnitKey,
-  customMultiplier: number = 1
-): number {
-  const piecePrice = Number(product.selling_price) || 0;
-  const wholesaleRaw = Number(product.wholesale_price) || 0;
+export function getCleanUnitBaseName(unitName?: string | null): string {
+  if (!unitName) return "Pack";
+  const lower = unitName.toLowerCase();
+  if (lower.includes("lad")) return "Ladi";
+  if (lower.includes("box")) return "Box";
+  if (lower.includes("pack") || lower.includes("pkt")) return "Pack";
+  if (lower.includes("strip") || lower.includes("patta")) return "Strip";
+  if (lower.includes("pouch")) return "Pouch";
+  if (lower.includes("carton") || lower.includes("peti")) return "Carton";
+  if (lower.includes("doz")) return "Doz";
+  if (lower.includes("bunch") || lower.includes("bundle")) return "Bundle";
+  if (lower.includes("bottle") || lower.includes("botal")) return "Bottle";
+  if (lower.includes("can")) return "Can";
+  if (lower.includes("tin")) return "Tin";
+  if (lower.includes("jar")) return "Jar";
+  if (lower.includes("roll")) return "Roll";
+  if (lower.includes("set")) return "Set";
+  if (lower.includes("pair")) return "Pair";
+  if (lower.includes("bag") || lower.includes("bori")) return "Bag";
+  if (lower.includes("pc") || lower.includes("piece")) return "Pc";
 
-  // Determine wholesale per-piece rate and dozen rate
-  let wholesalePerPiece = 0;
-  let dozenRate = 0;
-
-  if (wholesaleRaw > 0) {
-    if (wholesaleRaw < piecePrice * 3) {
-      // It's a per-piece wholesale rate (e.g. ₹32 wholesale vs ₹35 retail)
-      wholesalePerPiece = wholesaleRaw;
-      dozenRate = wholesaleRaw * 12;
-    } else {
-      // It's a full-dozen rate (e.g. ₹384 per dozen)
-      dozenRate = wholesaleRaw;
-      wholesalePerPiece = wholesaleRaw / 12;
-    }
-  } else {
-    dozenRate = Math.round(piecePrice * 12 * 0.9); // 10% wholesale discount
-    wholesalePerPiece = dozenRate / 12;
-  }
-
-  switch (unitKey) {
-    case "piece":
-      return piecePrice;
-
-    case "half_dozen":
-      return Math.round(wholesalePerPiece * 6);
-
-    case "dozen":
-      return Math.round(dozenRate);
-
-    case "bundle_10_doz":
-      return Math.round(dozenRate * 10 * 0.95); // extra 5% bulk discount
-
-    case "custom":
-      return Math.round(piecePrice * customMultiplier);
-
-    default:
-      return piecePrice;
-  }
+  const cleaned = unitName.replace(/\(.*?\)/g, "").replace(/[0-9]/g, "").trim();
+  return cleaned || "Pack";
 }
 
 /**
- * Returns formatted summary of retail, wholesale per-piece, and full dozen prices.
+ * Resolves the unit and conversion factor for a product.
  */
-export function getProductPricingSummary(product: Product) {
-  const piecePrice = Number(product.selling_price) || 0;
-  const wholesaleRaw = Number(product.wholesale_price) || 0;
+export function resolveProductUnitDetails(
+  product: Product,
+  unitCatalog?: Unit[]
+): {
+  unitId: string | null;
+  unitName: string;
+  conversionFactor: number;
+  cleanBaseName: string;
+} {
+  let matchedUnit: Unit | undefined = product.unit;
 
-  let wholesalePerPiece = 0;
-  let dozenPrice = 0;
+  if (!matchedUnit && product.unit_id && unitCatalog && unitCatalog.length > 0) {
+    matchedUnit = unitCatalog.find((u) => u.id === product.unit_id);
+  }
 
-  if (wholesaleRaw > 0) {
-    if (wholesaleRaw < piecePrice * 3) {
-      wholesalePerPiece = wholesaleRaw;
-      dozenPrice = wholesaleRaw * 12;
-    } else {
-      dozenPrice = wholesaleRaw;
-      wholesalePerPiece = Math.round(wholesaleRaw / 12);
+  if (matchedUnit) {
+    const factor = Number(matchedUnit.conversion_factor) || 1;
+    return {
+      unitId: matchedUnit.id,
+      unitName: matchedUnit.name,
+      conversionFactor: factor > 0 ? factor : 1,
+      cleanBaseName: getCleanUnitBaseName(matchedUnit.name),
+    };
+  }
+
+  // Fallback: parse from product name or description
+  const combinedText = `${product.name} ${product.description || ""}`;
+  const packMatch =
+    combinedText.match(/(?:pack|box|lad|ladi|strip|bundle)\s*(?:of|\()?[\s]*(\d+)\s*(?:pcs|pc|units)?/i) ||
+    combinedText.match(/(\d+)\s*(?:pcs|pc)\s*(?:lad|ladi|box|pack|strip)/i);
+
+  if (packMatch && packMatch[1]) {
+    const parsedFactor = parseInt(packMatch[1], 10);
+    if (parsedFactor > 1) {
+      return {
+        unitId: null,
+        unitName: `Pack (${parsedFactor} pcs)`,
+        conversionFactor: parsedFactor,
+        cleanBaseName: getCleanUnitBaseName(packMatch[0]),
+      };
     }
-  } else {
-    dozenPrice = Math.round(piecePrice * 12 * 0.9);
-    wholesalePerPiece = Math.round(dozenPrice / 12);
   }
 
   return {
-    piecePrice,
-    mrp: Number(product.mrp) || piecePrice,
-    wholesalePerPiece: wholesaleRaw > 0 ? wholesalePerPiece : 0,
-    dozenPrice,
-    halfDozenPrice: calculateDefaultUnitPrice(product, "half_dozen"),
-    bundle10DozPrice: calculateDefaultUnitPrice(product, "bundle_10_doz"),
-    wholesaleMinQty: Number(product.wholesale_min_qty) || 12,
+    unitId: null,
+    unitName: "Piece",
+    conversionFactor: 1,
+    cleanBaseName: "Pc",
   };
 }
 
 /**
- * Computes the active selling price for an item based on piece quantity and wholesale trigger rules.
- * If total pieces >= wholesale_min_qty (default 12 when wholesale_price is configured):
- * Automatically applies the wholesale rate per unit.
+ * Dynamically generates POS quick-select pills for ANY product.
+ * Supports standard pieces, 10, 12, 16, 24 pcs ladi/box, and future custom units (e.g. 8, 9 pcs).
+ */
+export function getAvailableUnitsForProduct(
+  product: Product,
+  unitCatalog?: Unit[]
+): DynamicProductUnit[] {
+  const { conversionFactor, cleanBaseName, unitName } = resolveProductUnitDetails(product, unitCatalog);
+
+  // If conversion factor is 1, return single piece
+  if (conversionFactor <= 1) {
+    return [
+      {
+        key: "piece",
+        label: "Pc (1)",
+        shortName: "Pc",
+        multiplier: 1,
+        description: "Single piece standard retail unit",
+        isDefault: true,
+      },
+    ];
+  }
+
+  const units: DynamicProductUnit[] = [];
+
+  // 1. Single loose piece (Auto-Break)
+  units.push({
+    key: "piece",
+    label: "Pc (1)",
+    shortName: "Pc",
+    multiplier: 1,
+    description: `Loose single piece (auto-broken from ${unitName})`,
+    isDefault: false,
+  });
+
+  // 2. Half pack (if conversionFactor >= 4)
+  if (conversionFactor >= 4) {
+    const halfQty = Math.floor(conversionFactor / 2);
+    units.push({
+      key: "half_unit",
+      label: `1/2 ${cleanBaseName} (${halfQty})`,
+      shortName: `1/2 ${cleanBaseName}`,
+      multiplier: halfQty,
+      description: `Half ${cleanBaseName} containing ${halfQty} pieces`,
+    });
+  }
+
+  // 3. Full pack / box / ladi
+  units.push({
+    key: "unit",
+    label: `1 ${cleanBaseName} (${conversionFactor})`,
+    shortName: cleanBaseName,
+    multiplier: conversionFactor,
+    description: `Full ${cleanBaseName} containing ${conversionFactor} pieces`,
+    isDefault: true,
+  });
+
+  // 4. Bulk Pack (5x or 10x)
+  if (conversionFactor <= 20) {
+    const bulk10Qty = conversionFactor * 10;
+    units.push({
+      key: "bulk_10",
+      label: `10 ${cleanBaseName} (${bulk10Qty})`,
+      shortName: `10 ${cleanBaseName}`,
+      multiplier: bulk10Qty,
+      description: `Bulk pack of 10 ${cleanBaseName}s (${bulk10Qty} pieces)`,
+    });
+  } else {
+    const bulk5Qty = conversionFactor * 5;
+    units.push({
+      key: "bulk_5",
+      label: `5 ${cleanBaseName} (${bulk5Qty})`,
+      shortName: `5 ${cleanBaseName}`,
+      multiplier: bulk5Qty,
+      description: `Bulk pack of 5 ${cleanBaseName}s (${bulk5Qty} pieces)`,
+    });
+  }
+
+  return units;
+}
+
+/**
+ * Resolves piece price and full-pack price for a product.
+ * Handles loose-piece retail price vs wholesale pack price seamlessly.
+ */
+export function getProductUnitPricing(
+  product: Product,
+  unitMultiplier: number = 1,
+  unitCatalog?: Unit[]
+): {
+  piecePrice: number;
+  packPrice: number;
+  conversionFactor: number;
+  unitPrice: number;
+} {
+  const { conversionFactor } = resolveProductUnitDetails(product, unitCatalog);
+  const rawSelling = Number(product.selling_price) || 0;
+  const rawWholesale = Number(product.wholesale_price) || 0;
+  const rawMrp = Number(product.mrp) || 0;
+
+  let piecePrice = rawSelling;
+  let packPrice = rawSelling;
+
+  if (conversionFactor <= 1) {
+    piecePrice = rawSelling;
+    packPrice = rawSelling;
+    return {
+      piecePrice,
+      packPrice,
+      conversionFactor: 1,
+      unitPrice: Math.round(piecePrice * unitMultiplier),
+    };
+  }
+
+  // Multi-pack product pricing logic
+  if (rawWholesale > 0) {
+    if (rawWholesale > rawSelling * 2) {
+      // rawWholesale is full pack price (e.g. ₹55 box, ₹160 ladi)
+      // rawSelling is retail single piece rate (e.g. ₹5/pc, ₹10/pc)
+      piecePrice = rawSelling;
+      packPrice = rawWholesale;
+    } else {
+      // rawWholesale is wholesale per-piece rate (e.g. ₹32/pc vs ₹35/pc)
+      piecePrice = rawSelling;
+      packPrice = Math.round(rawWholesale * conversionFactor);
+    }
+  } else if (rawMrp > 0 && rawMrp < rawSelling * 0.5) {
+    // rawSelling is pack price, rawMrp is single piece rate
+    piecePrice = rawMrp;
+    packPrice = rawSelling;
+  } else {
+    // rawSelling is pack price, calculate loose piece auto-break rate
+    piecePrice = Math.ceil(rawSelling / conversionFactor);
+    packPrice = rawSelling;
+  }
+
+  let unitPrice = packPrice;
+  if (unitMultiplier === 1) {
+    unitPrice = piecePrice;
+  } else if (unitMultiplier === conversionFactor) {
+    unitPrice = packPrice;
+  } else if (unitMultiplier < conversionFactor) {
+    // Half pack or partial pack
+    unitPrice = Math.round((packPrice / conversionFactor) * unitMultiplier);
+  } else {
+    // Bulk pack (extra 5% bulk discount for 10 packs)
+    const discount = unitMultiplier >= conversionFactor * 10 ? 0.95 : 1.0;
+    unitPrice = Math.round((packPrice / conversionFactor) * unitMultiplier * discount);
+  }
+
+  return {
+    piecePrice,
+    packPrice,
+    conversionFactor,
+    unitPrice,
+  };
+}
+
+/**
+ * Calculates default unit price for a product based on unitKey and multiplier.
+ */
+export function calculateDefaultUnitPrice(
+  product: Product,
+  unitKey: UnitKey,
+  customMultiplier: number = 1,
+  unitCatalog?: Unit[]
+): number {
+  const multiplier = getBaseMultiplier(unitKey, customMultiplier, product, unitCatalog);
+  const pricing = getProductUnitPricing(product, multiplier, unitCatalog);
+  return pricing.unitPrice;
+}
+
+/**
+ * Resolves the multiplier in base pieces for a given unit key.
+ */
+export function getBaseMultiplier(
+  unitKey: UnitKey,
+  customMultiplier: number = 1,
+  product?: Product,
+  unitCatalog?: Unit[]
+): number {
+  if (unitKey === "custom") return customMultiplier > 0 ? customMultiplier : 1;
+
+  if (unitKey === "piece") return 1;
+
+  if (product) {
+    const { conversionFactor } = resolveProductUnitDetails(product, unitCatalog);
+    if (unitKey === "half_unit" || unitKey === "half_dozen") {
+      return Math.max(1, Math.floor(conversionFactor / 2));
+    }
+    if (unitKey === "unit" || unitKey === "dozen") {
+      return conversionFactor;
+    }
+    if (unitKey === "bulk_10" || unitKey === "bundle_10_doz") {
+      return conversionFactor * 10;
+    }
+    if (unitKey === "bulk_5") {
+      return conversionFactor * 5;
+    }
+  }
+
+  // Fallback to STANDARD_UNITS
+  const std = STANDARD_UNITS[unitKey];
+  if (std) return std.multiplier;
+
+  return customMultiplier > 0 ? customMultiplier : 1;
+}
+
+/**
+ * Returns formatted summary of pricing for display in catalog cards.
+ */
+export function getProductPricingSummary(product: Product, unitCatalog?: Unit[]) {
+  const pricing = getProductUnitPricing(product, 1, unitCatalog);
+  const wholesaleRaw = Number(product.wholesale_price) || 0;
+  const wholesaleMinQty = Number(product.wholesale_min_qty) || pricing.conversionFactor || 12;
+
+  return {
+    piecePrice: pricing.piecePrice,
+    packPrice: pricing.packPrice,
+    conversionFactor: pricing.conversionFactor,
+    mrp: Number(product.mrp) || pricing.piecePrice,
+    wholesalePerPiece: wholesaleRaw > 0 && wholesaleRaw < pricing.piecePrice * 2 ? wholesaleRaw : Math.round(pricing.packPrice / pricing.conversionFactor),
+    wholesaleMinQty,
+  };
+}
+
+/**
+ * Computes effective item price with wholesale threshold detection.
  */
 export function getEffectiveItemPrice(
   product: Product,
   quantity: number = 1,
   unitKey: UnitKey = "piece",
-  customMultiplier: number = 1
+  customMultiplier: number = 1,
+  unitCatalog?: Unit[]
 ): {
   unitPrice: number;
   originalPrice: number;
@@ -152,41 +385,43 @@ export function getEffectiveItemPrice(
   totalPieces: number;
   savingsPerUnit: number;
 } {
-  const baseQty = getBaseQuantity(quantity, unitKey, customMultiplier);
-  const regularUnitPrice = calculateDefaultUnitPrice(product, unitKey, customMultiplier);
+  const multiplier = getBaseMultiplier(unitKey, customMultiplier, product, unitCatalog);
+  const totalPieces = quantity * multiplier;
+  const regularUnitPrice = calculateDefaultUnitPrice(product, unitKey, multiplier, unitCatalog);
   const wholesaleRaw = Number(product.wholesale_price) || 0;
-  const wholesaleMinQty = Number(product.wholesale_min_qty) || 12;
+  const wholesaleMinQty = Number(product.wholesale_min_qty) || (product.unit?.conversion_factor ? Number(product.unit.conversion_factor) : 12);
 
-  // If wholesale price is set and total pieces reach or exceed the wholesale trigger threshold
-  if (wholesaleRaw > 0 && baseQty >= wholesaleMinQty) {
-    const piecePrice = Number(product.selling_price) || 0;
+  // If wholesale price is configured and total base pieces reach wholesale trigger
+  if (wholesaleRaw > 0 && totalPieces >= wholesaleMinQty) {
+    const { conversionFactor, piecePrice, packPrice } = getProductUnitPricing(product, multiplier, unitCatalog);
     let wholesalePerPiece = 0;
-    if (wholesaleRaw < piecePrice * 3) {
-      wholesalePerPiece = wholesaleRaw; // e.g. ₹14.50/pc
+
+    if (wholesaleRaw > piecePrice * 2) {
+      // wholesaleRaw is pack price
+      wholesalePerPiece = wholesaleRaw / conversionFactor;
     } else {
-      wholesalePerPiece = wholesaleRaw / 12; // e.g. ₹175 / 12 = ₹14.5833
+      // wholesaleRaw is per-piece price
+      wholesalePerPiece = wholesaleRaw;
     }
 
     let wholesaleUnitPrice = regularUnitPrice;
-    if (unitKey === "piece") {
+    if (multiplier === 1) {
       wholesaleUnitPrice = wholesalePerPiece;
-    } else if (unitKey === "dozen") {
-      wholesaleUnitPrice = wholesalePerPiece * 12;
-    } else if (unitKey === "half_dozen") {
-      wholesaleUnitPrice = wholesalePerPiece * 6;
-    } else if (unitKey === "bundle_10_doz") {
-      wholesaleUnitPrice = wholesalePerPiece * 120 * 0.95;
+    } else if (multiplier === conversionFactor) {
+      wholesaleUnitPrice = wholesaleRaw > piecePrice * 2 ? wholesaleRaw : wholesalePerPiece * conversionFactor;
     } else {
-      wholesaleUnitPrice = wholesalePerPiece * customMultiplier;
+      const discount = multiplier >= conversionFactor * 10 ? 0.95 : 1.0;
+      wholesaleUnitPrice = wholesalePerPiece * multiplier * discount;
     }
 
-    const savings = Math.max(0, regularUnitPrice - wholesaleUnitPrice);
+    const finalWholesalePrice = Number(wholesaleUnitPrice.toFixed(2));
+    const savings = Math.max(0, regularUnitPrice - finalWholesalePrice);
 
     return {
-      unitPrice: Number(wholesaleUnitPrice.toFixed(2)),
+      unitPrice: finalWholesalePrice,
       originalPrice: regularUnitPrice,
       isWholesaleTriggered: true,
-      totalPieces: baseQty,
+      totalPieces,
       savingsPerUnit: Number(savings.toFixed(2)),
     };
   }
@@ -195,14 +430,14 @@ export function getEffectiveItemPrice(
     unitPrice: regularUnitPrice,
     originalPrice: regularUnitPrice,
     isWholesaleTriggered: false,
-    totalPieces: baseQty,
+    totalPieces,
     savingsPerUnit: 0,
   };
 }
 
 /**
- * Formats the quantity and unit name for receipts and WhatsApp messages.
- * e.g. "2 Doz", "1 Pc", "3 (1/2 Doz)"
+ * Formats the quantity and unit name for thermal receipts, invoices, and WhatsApp bills.
+ * e.g. "2 Ladi (16 pcs)", "1 Box (24 pcs)", "3 Pcs", "1/2 Box (12 pcs)"
  */
 export function formatItemQuantityAndUnit(
   quantity: number,
@@ -213,12 +448,11 @@ export function formatItemQuantityAndUnit(
     return `${quantity} ${customUnitName}`;
   }
 
-  const unit = STANDARD_UNITS[unitKey] || STANDARD_UNITS.piece;
   if (unitKey === "piece") {
     return `${quantity} ${quantity > 1 ? "Pcs" : "Pc"}`;
   }
   if (unitKey === "half_dozen") {
-    return `${quantity} Half-Doz`;
+    return `${quantity} (1/2 Doz)`;
   }
   if (unitKey === "dozen") {
     return `${quantity} ${quantity > 1 ? "Dozens" : "Dozen"}`;
@@ -226,7 +460,13 @@ export function formatItemQuantityAndUnit(
   if (unitKey === "bundle_10_doz") {
     return `${quantity} Master-Pack (10 Doz)`;
   }
-  return `${quantity} ${unit.shortName}`;
+
+  const unit = STANDARD_UNITS[unitKey];
+  if (unit) {
+    return `${quantity} ${unit.shortName}`;
+  }
+
+  return `${quantity} Unit`;
 }
 
 /**
@@ -235,8 +475,10 @@ export function formatItemQuantityAndUnit(
 export function getBaseQuantity(
   quantity: number,
   unitKey: UnitKey = "piece",
-  customMultiplier: number = 1
+  customMultiplier: number = 1,
+  product?: Product,
+  unitCatalog?: Unit[]
 ): number {
-  const multiplier = unitKey === "custom" ? customMultiplier : (STANDARD_UNITS[unitKey]?.multiplier || 1);
+  const multiplier = getBaseMultiplier(unitKey, customMultiplier, product, unitCatalog);
   return quantity * multiplier;
 }

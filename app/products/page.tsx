@@ -50,6 +50,7 @@ import { UnifiedAddProductModal } from "@/components/products/UnifiedAddProductM
 import { FalconAiProductModal } from "@/components/products/FalconAiProductModal";
 import { ExcelBulkImportModal } from "@/components/products/ExcelBulkImportModal";
 import { ManageCategoriesModal } from "@/components/products/ManageCategoriesModal";
+import { UnitManagementModal } from "@/components/products/UnitManagementModal";
 import { BarcodeLabelGenerator } from "@/components/products/BarcodeLabelGenerator";
 import { resolveCategoryVisual } from "@/lib/category-icons";
 import { isProductOnline, getProductOnlineConfig } from "@/lib/product-online";
@@ -73,10 +74,10 @@ export default function ProductsPage() {
   const [isFalconAiModalOpen, setIsFalconAiModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  // Quick Stock Adjustment Dialog state
+  // Stock Adjustment Modal state
   const [stockAdjustProduct, setStockAdjustProduct] = useState<Product | null>(null);
   const [adjustMode, setAdjustMode] = useState<"add" | "deduct" | "set">("add");
-  const [adjustQty, setAdjustQty] = useState<number>(10);
+  const [adjustQty, setAdjustQty] = useState<number>(0);
   const [adjustReason, setAdjustReason] = useState("");
   const [isAdjustingStock, setIsAdjustingStock] = useState(false);
 
@@ -85,6 +86,9 @@ export default function ProductsPage() {
 
   // Category Management Modal state
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
+
+  // Packaging Units Management Modal state
+  const [isUnitsModalOpen, setIsUnitsModalOpen] = useState(false);
 
   // Barcode Label Print Modal state
   const [printProduct, setPrintProduct] = useState<Product | null>(null);
@@ -547,6 +551,17 @@ export default function ProductsPage() {
             >
               <Layers className="w-3.5 h-3.5 text-purple-600" />
               <span>Categories ({categories.length})</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsUnitsModalOpen(true)}
+              className="gap-1.5 text-xs text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100/70 border-indigo-200 font-bold rounded-xl"
+              title="Manage Packaging Units (10, 12, 16, 24 pcs, or custom packs)"
+            >
+              <Package className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Units ({units.length})</span>
             </Button>
 
             <Button
@@ -1277,6 +1292,7 @@ export default function ProductsPage() {
           existingProducts={products}
           onCategoryCreated={(newCat) => setCategories((prev) => [...prev, newCat])}
           onSupplierCreated={(newSupp) => setSuppliers((prev) => [...prev, newSupp])}
+          onUnitCreated={(newUnit) => setUnits((prev) => [...prev, newUnit])}
         />
 
         {/* ========================================================================= */}
@@ -1341,6 +1357,17 @@ export default function ProductsPage() {
           products={products}
           onCategoriesUpdated={() => {
             loadData();
+          }}
+        />
+
+        {/* Manage Packaging Units Modal */}
+        <UnitManagementModal
+          isOpen={isUnitsModalOpen}
+          onClose={() => setIsUnitsModalOpen(false)}
+          shopId={activeShopId}
+          units={units}
+          onUnitsUpdated={(updatedUnits) => {
+            setUnits(updatedUnits);
           }}
         />
       </div>

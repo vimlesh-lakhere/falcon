@@ -94,6 +94,24 @@ export const offlinePosEngine = {
     }
   },
 
+  // 5. Cache Units locally
+  cacheUnits(units: any[]) {
+    try {
+      localStorage.setItem("falcon_pos_cached_units", JSON.stringify(units));
+    } catch (e) {
+      console.warn("Offline units cache warning:", e);
+    }
+  },
+
+  getCachedUnits(): any[] {
+    try {
+      const data = localStorage.getItem("falcon_pos_cached_units");
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
   // 3. Queue bill created while offline
   saveOfflineBill(payload: CheckoutPayload): Sale {
     const offlineId = `OFFLINE-${Date.now()}`;

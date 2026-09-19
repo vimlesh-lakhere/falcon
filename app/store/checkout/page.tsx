@@ -99,15 +99,38 @@ export default function StoreCheckoutPage() {
 
         if (data) {
           setFoundExistingCustomer(true);
-          setAddress((prev) => ({
-            ...prev,
-            fullName: prev.fullName || data.name || "",
-            villageOrColony: prev.villageOrColony || data.address || "",
-          }));
+          let parsedAddr: any = null;
+          if (data.address && data.address !== "Town / Local Area") {
+            try {
+              parsedAddr = JSON.parse(data.address);
+            } catch {
+              parsedAddr = {
+                fullName: data.name,
+                mobileNumber: cleanPhone,
+                villageOrColony: data.address,
+                tehsilOrTown: "Town Area",
+                landmark: "",
+                pincode: "483501",
+              };
+            }
+          }
+          if (parsedAddr) {
+            setAddress((prev) => ({ ...prev, ...parsedAddr }));
+            setSavedAddress(parsedAddr);
+          } else {
+            setAddress((prev) => ({
+              ...prev,
+              fullName: prev.fullName || data.name || "",
+              villageOrColony: prev.villageOrColony || data.address || "",
+            }));
+          }
           loginCustomer({
             id: data.id,
             name: data.name || "Customer",
             phone: cleanPhone,
+            isVerified: true,
+            authProvider: "phone",
+            address: parsedAddr,
           });
         }
       } catch (err) {
@@ -162,8 +185,30 @@ export default function StoreCheckoutPage() {
 
     try {
       setSubmitting(true);
-      // Save address for next time
+      // Save address permanently in Zustand and localStorage
       setSavedAddress(address);
+      if (customerUser) {
+        loginCustomer({
+          ...customerUser,
+          name: address.fullName || customerUser.name,
+          address,
+        });
+
+        // Persist to Supabase customers table permanently
+        try {
+          const { createClient } = await import("@/lib/supabase/client");
+          const supabase = createClient();
+          await supabase
+            .from("customers")
+            .update({
+              name: address.fullName,
+              address: JSON.stringify(address),
+            })
+            .eq("phone", address.mobileNumber.replace(/[^0-9]/g, "").slice(-10));
+        } catch (dbErr) {
+          console.warn("Address persist notice:", dbErr);
+        }
+      }
 
       const res = await storeOrderService.placeOrder({
         shopId: resolveActiveShopId(),

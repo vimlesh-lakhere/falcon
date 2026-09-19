@@ -60,6 +60,7 @@ interface UnifiedAddProductModalProps {
   existingProducts?: Product[];
   onCategoryCreated?: (newCategory: Category) => void;
   onSupplierCreated?: (newSupplier: Supplier) => void;
+  onUnitCreated?: (newUnit: Unit) => void;
 }
 
 export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
@@ -74,6 +75,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   existingProducts = [],
   onCategoryCreated,
   onSupplierCreated,
+  onUnitCreated,
 }) => {
   // Mode: "photo" | "barcode" | "manual"
   const [activeMode, setActiveMode] = useState<"photo" | "barcode" | "manual">("photo");
@@ -433,12 +435,15 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
     }
   };
 
-  // Inline Category & Supplier Quick Add
+  // Inline Category, Supplier & Unit Quick Add
   const [isQuickCatOpen, setIsQuickCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [isQuickSuppOpen, setIsQuickSuppOpen] = useState(false);
   const [newSuppName, setNewSuppName] = useState("");
   const [newSuppPhone, setNewSuppPhone] = useState("");
+  const [isQuickUnitOpen, setIsQuickUnitOpen] = useState(false);
+  const [newUnitName, setNewUnitName] = useState("");
+  const [newUnitFactor, setNewUnitFactor] = useState<number | "">(10);
   const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
 
   const frontFileInputRef = useRef<HTMLInputElement>(null);
@@ -916,6 +921,27 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
       setIsQuickSuppOpen(false);
     } catch (err: any) {
       alert("Failed to create supplier: " + err.message);
+    }
+  };
+
+  // Quick Unit Creation
+  const handleQuickCreateUnit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUnitName.trim()) return;
+    try {
+      const factor = Number(newUnitFactor) || 1;
+      const created = await productsRepository.createUnit({
+        shop_id: shopId,
+        name: newUnitName.trim(),
+        conversion_factor: factor > 0 ? factor : 1,
+      });
+      if (onUnitCreated) onUnitCreated(created);
+      setUnitId(created.id);
+      setNewUnitName("");
+      setNewUnitFactor(10);
+      setIsQuickUnitOpen(false);
+    } catch (err: any) {
+      alert("Failed to create unit: " + err.message);
     }
   };
 
@@ -2407,9 +2433,18 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-1">
-                          Unit of Measure
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-semibold text-gray-700">
+                            Unit of Measure
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickUnitOpen(true)}
+                            className="text-[10px] text-purple-600 hover:text-purple-800 font-bold cursor-pointer"
+                          >
+                            + New
+                          </button>
+                        </div>
                         <select
                           value={unitId}
                           onChange={(e) => setUnitId(e.target.value)}
@@ -2556,6 +2591,57 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 </Button>
                 <Button type="submit" size="sm" className="bg-purple-600 text-white font-bold">
                   Add Supplier
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* INLINE QUICK UNIT ADD MODAL                                               */}
+      {/* ========================================================================= */}
+      {isQuickUnitOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-5 w-full max-w-sm space-y-4">
+            <h3 className="text-sm font-bold text-gray-900">Add New Packaging Unit</h3>
+            <form onSubmit={handleQuickCreateUnit} className="space-y-3">
+              <Input
+                label="Unit Name *"
+                required
+                placeholder="e.g. Pack of 8, Strip (10 pcs), Box (50 pcs)"
+                value={newUnitName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNewUnitName(val);
+                  const match = val.match(/(?:of|\(?)\s*(\d+)\s*(?:pcs|pc|units)?/i);
+                  if (match && match[1]) {
+                    const parsed = parseInt(match[1], 10);
+                    if (parsed > 0) setNewUnitFactor(parsed);
+                  }
+                }}
+                autoFocus
+              />
+              <Input
+                label="Pieces per Unit (Multiplier) *"
+                type="number"
+                min="1"
+                required
+                placeholder="10"
+                value={newUnitFactor}
+                onChange={(e) => setNewUnitFactor(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsQuickUnitOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" className="bg-purple-600 text-white font-bold">
+                  Add Unit
                 </Button>
               </div>
             </form>

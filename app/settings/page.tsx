@@ -1,16 +1,18 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Settings, Store, Shield, Receipt, Database, Save, Check, Printer, HardDrive } from "lucide-react";
+import { Settings, Store, Shield, Receipt, Database, Save, Check, Printer, HardDrive, Package, Plus } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { supabase } from "@/lib/supabase/client";
-import { Shop } from "@/types/database";
+import { Shop, Unit } from "@/types/database";
 import { PrinterSettingsTab } from "@/components/settings/PrinterSettingsTab";
 import { BackupSettingsTab } from "@/components/settings/BackupSettingsTab";
+import { UnitManagementModal } from "@/components/products/UnitManagementModal";
+import { productsRepository } from "@/repositories/products.repo";
 import { useAuthStore } from "@/store/useAuthStore";
 
 export default function SettingsPage() {
@@ -20,7 +22,9 @@ export default function SettingsPage() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState<"profile" | "printer" | "invoice" | "roles" | "database" | "backup">("backup");
+  const [activeTab, setActiveTab] = useState<"profile" | "printer" | "invoice" | "roles" | "database" | "backup" | "units">("backup");
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -48,6 +52,16 @@ export default function SettingsPage() {
     }
   };
 
+  const fetchUnits = async () => {
+    if (!SHOP_ID) return;
+    try {
+      const list = await productsRepository.getUnits(SHOP_ID);
+      setUnits(list);
+    } catch (err) {
+      console.error("Failed to fetch units:", err);
+    }
+  };
+
   useEffect(() => {
     fetchSession();
   }, [fetchSession]);
@@ -55,6 +69,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (SHOP_ID) {
       fetchShop();
+      fetchUnits();
     }
   }, [SHOP_ID]);
 
@@ -90,6 +105,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-2 border-b border-gray-200 pb-2 overflow-x-auto">
           {[
             { id: "backup", label: "💾 Backup & Disaster Recovery", icon: HardDrive },
+            { id: "units", label: "📦 Packaging Units", icon: Package },
             { id: "printer", label: "🖨️ Thermal Printer & ATPOS", icon: Printer },
             { id: "profile", label: "Shop Profile & GST", icon: Store },
             { id: "invoice", label: "Receipt & Invoicing", icon: Receipt },
@@ -282,7 +298,94 @@ export default function SettingsPage() {
 
         {/* Tab 5: Backup & Disaster Recovery */}
         {activeTab === "backup" && <BackupSettingsTab />}
+
+        {/* Tab 6: Packaging Units & Conversion Factors */}
+        {activeTab === "units" && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Package className="w-4 h-4 text-brand-600" />
+                  Packaging Units & Auto-Break Factors
+                </CardTitle>
+                <p className="text-xs text-gray-500 mt-1">
+                  Define packaging units (e.g. 10 pcs Ladi, 16 pcs Ladi, Box of 24, Pack of 8) for POS multi-unit billing and automatic loose-piece pricing.
+                </p>
+              </div>
+              <Button
+                onClick={() => setIsUnitModalOpen(true)}
+                size="sm"
+                className="gap-1.5 bg-brand-600 text-white text-xs font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add / Manage Units
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6">
+              {units.length === 0 ? (
+                <div className="text-center py-10 border border-dashed border-gray-200 rounded-xl">
+                  <Package className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-gray-700">No custom packaging units found</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Add packaging units to enable auto-break billing in POS</p>
+                  <Button
+                    onClick={() => setIsUnitModalOpen(true)}
+                    size="sm"
+                    className="mt-3 bg-brand-600 text-white text-xs"
+                  >
+                    Create First Unit
+                  </Button>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="grid grid-cols-12 bg-gray-50/80 px-4 py-2.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                    <span className="col-span-4">Unit Name</span>
+                    <span className="col-span-3">Pieces Per Unit</span>
+                    <span className="col-span-3">Unit Type</span>
+                    <span className="col-span-2 text-right">Action</span>
+                  </div>
+                  {units.map((u) => {
+                    const factor = Number(u.conversion_factor) || 1;
+                    return (
+                      <div key={u.id} className="grid grid-cols-12 items-center px-4 py-3 text-xs hover:bg-gray-50/60 transition-colors">
+                        <div className="col-span-4 font-semibold text-gray-900 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-brand-500" />
+                          {u.name}
+                        </div>
+                        <div className="col-span-3 font-mono font-bold text-brand-700">
+                          {factor} {factor === 1 ? "piece" : "pieces"}
+                        </div>
+                        <div className="col-span-3">
+                          {factor === 1 ? (
+                            <Badge variant="neutral">Single Piece</Badge>
+                          ) : (
+                            <Badge variant="info">Multi-Piece Pack</Badge>
+                          )}
+                        </div>
+                        <div className="col-span-2 text-right">
+                          <button
+                            onClick={() => setIsUnitModalOpen(true)}
+                            className="text-[11px] text-brand-600 hover:text-brand-800 font-semibold cursor-pointer"
+                          >
+                            Configure
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      <UnitManagementModal
+        isOpen={isUnitModalOpen}
+        onClose={() => setIsUnitModalOpen(false)}
+        shopId={SHOP_ID}
+        units={units}
+        onUnitsUpdated={(newUnits) => setUnits(newUnits)}
+      />
     </MainLayout>
   );
 }

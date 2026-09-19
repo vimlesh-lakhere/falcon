@@ -44,7 +44,7 @@ import { supabase } from "@/lib/supabase/client";
 import { productsRepository } from "@/repositories/products.repo";
 import { customersRepository } from "@/repositories/customers.repo";
 import { posRepository, CheckoutPayload } from "@/repositories/pos.repo";
-import { Product, Category, Customer, Sale } from "@/types/database";
+import { Product, Category, Customer, Sale, Unit } from "@/types/database";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import { offlinePosEngine } from "@/lib/offline-pos";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -67,6 +67,10 @@ import {
   getBaseQuantity,
   getProductPricingSummary,
   getEffectiveItemPrice,
+  getAvailableUnitsForProduct,
+  getBaseMultiplier,
+  getCleanUnitBaseName,
+  DynamicProductUnit,
 } from "@/lib/units-pricing";
 import {
   BillLanguage,
@@ -116,6 +120,7 @@ export default function PosBillingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -494,19 +499,22 @@ export default function PosBillingPage() {
   const loadCatalog = async () => {
     if (!SHOP_ID) return;
     try {
-      const [prods, cats, custs] = await Promise.all([
+      const [prods, cats, custs, unts] = await Promise.all([
         productsRepository.getAll(SHOP_ID, { isActive: true }),
         productsRepository.getCategories(SHOP_ID),
         customersRepository.getAll(SHOP_ID),
+        productsRepository.getUnits(SHOP_ID),
       ]);
       setProducts(prods);
       setCategories(cats);
       setCustomers(custs);
+      setUnits(unts);
 
       // Cache locally for offline use
       offlinePosEngine.cacheCatalog(prods);
       offlinePosEngine.cacheCategories(cats);
       offlinePosEngine.cacheCustomers(custs);
+      offlinePosEngine.cacheUnits(unts);
 
       // Fetch sales stats to compute top selling items
       try {
@@ -533,10 +541,12 @@ export default function PosBillingPage() {
       const cachedCats = offlinePosEngine.getCachedCategories();
       const cachedCusts = offlinePosEngine.getCachedCustomers();
       const cachedStats = offlinePosEngine.getCachedSalesStats();
+      const cachedUnits = offlinePosEngine.getCachedUnits();
 
       if (cachedProds.length > 0) setProducts(cachedProds);
       if (cachedCats.length > 0) setCategories(cachedCats);
       if (cachedCusts.length > 0) setCustomers(cachedCusts);
+      if (cachedUnits.length > 0) setUnits(cachedUnits);
       if (Object.keys(cachedStats).length > 0) setProductSalesCount(cachedStats);
     }
   };
@@ -777,7 +787,13 @@ export default function PosBillingPage() {
   };
 
   // Add product to cart with Unit support (Atomic functional state update)
-  const addToCart = (product: Product, unitKey: UnitKey = "piece", initialQty: number = 1) => {
+  const addToCart = (
+    product: Product,
+    unitKey: UnitKey = "piece",
+    initialQty: number = 1,
+    preferredMultiplier?: number,
+    preferredUnitName?: string
+  ) => {
     // Subtle mobile haptic feedback on add
     if (typeof window !== "undefined" && typeof navigator !== "undefined" && navigator.vibrate) {
       try {
@@ -786,11 +802,16 @@ export default function PosBillingPage() {
     }
 
     setCart((prevCart) => {
+      const multiplier = preferredMultiplier !== undefined
+        ? preferredMultiplier
+        : getBaseMultiplier(unitKey, 1, product, units);
+
+      const unitName = preferredUnitName || (unitKey === "piece" ? "Pc" : formatItemQuantityAndUnit(1, unitKey).replace(/^1\s*/, ""));
+
       const existingIndex = prevCart.findIndex(
-        (item) => item.product.id === product.id && item.unit === unitKey
+        (item) => item.product.id === product.id && (item.unit === unitKey || item.unitMultiplier === multiplier)
       );
       const customPrice = customerPrices[product.id];
-      const unitDef = STANDARD_UNITS[unitKey] || STANDARD_UNITS.piece;
 
       if (existingIndex > -1) {
         const updated = [...prevCart];
@@ -801,8 +822,8 @@ export default function PosBillingPage() {
         let newOriginalPrice = existingItem.originalPrice;
 
         // Auto-recalculate wholesale price if not manually overridden by cashier and no custom customer price
-        if (!existingItem.isPriceOverridden && (customPrice === undefined || unitKey !== "piece")) {
-          const effective = getEffectiveItemPrice(product, newQty, unitKey, unitDef.multiplier);
+        if (!existingItem.isPriceOverridden && (customPrice === undefined || existingItem.unit !== "piece")) {
+          const effective = getEffectiveItemPrice(product, newQty, existingItem.unit, existingItem.unitMultiplier, units);
           newUnitPrice = effective.unitPrice;
           newOriginalPrice = effective.originalPrice;
         }
@@ -822,7 +843,7 @@ export default function PosBillingPage() {
           unitPrice = customPrice;
           originalPrice = customPrice;
         } else {
-          const effective = getEffectiveItemPrice(product, initialQty, unitKey, unitDef.multiplier);
+          const effective = getEffectiveItemPrice(product, initialQty, unitKey, multiplier, units);
           unitPrice = effective.unitPrice;
           originalPrice = effective.originalPrice;
         }
@@ -836,22 +857,30 @@ export default function PosBillingPage() {
             originalPrice,
             isPriceOverridden: customPrice !== undefined && unitKey === "piece",
             unit: unitKey,
-            unitName: unitDef.shortName,
-            unitMultiplier: unitDef.multiplier,
+            unitName,
+            unitMultiplier: multiplier,
           },
         ];
       }
     });
   };
 
-  // Switch unit on an existing cart item (e.g. from Piece to Dozen)
-  const updateCartItemUnit = (index: number, newUnit: UnitKey) => {
+  // Switch unit on an existing cart item (e.g. from Piece to Dozen, 1/2 Ladi, etc.)
+  const updateCartItemUnit = (
+    index: number,
+    newUnit: UnitKey,
+    newMultiplier?: number,
+    newUnitName?: string
+  ) => {
     setCart((prevCart) => {
       if (index < 0 || index >= prevCart.length) return prevCart;
       const updated = [...prevCart];
       const item = updated[index];
-      const unitDef = STANDARD_UNITS[newUnit] || STANDARD_UNITS.piece;
       const customPrice = customerPrices[item.product.id];
+      const multiplier = newMultiplier !== undefined
+        ? newMultiplier
+        : getBaseMultiplier(newUnit, item.unitMultiplier, item.product, units);
+      const unitName = newUnitName || (newUnit === "piece" ? "Pc" : formatItemQuantityAndUnit(1, newUnit).replace(/^1\s*/, ""));
 
       let newPrice: number;
       let originalPrice: number;
@@ -862,7 +891,7 @@ export default function PosBillingPage() {
         originalPrice = customPrice;
         isOverridden = true;
       } else {
-        const effective = getEffectiveItemPrice(item.product, item.quantity, newUnit, unitDef.multiplier);
+        const effective = getEffectiveItemPrice(item.product, item.quantity, newUnit, multiplier, units);
         newPrice = effective.unitPrice;
         originalPrice = effective.originalPrice;
       }
@@ -870,8 +899,8 @@ export default function PosBillingPage() {
       updated[index] = {
         ...item,
         unit: newUnit,
-        unitName: unitDef.shortName,
-        unitMultiplier: unitDef.multiplier,
+        unitName,
+        unitMultiplier: multiplier,
         unitPrice: newPrice,
         originalPrice: originalPrice,
         isPriceOverridden: isOverridden,
@@ -903,7 +932,7 @@ export default function PosBillingPage() {
 
         // Automatically apply wholesale price if threshold reached, or revert to retail if quantity drops below
         if (!item.isPriceOverridden && (customPrice === undefined || item.unit !== "piece")) {
-          const effective = getEffectiveItemPrice(item.product, newQty, item.unit, item.unitMultiplier);
+          const effective = getEffectiveItemPrice(item.product, newQty, item.unit, item.unitMultiplier, units);
           newUnitPrice = effective.unitPrice;
           newOriginalPrice = effective.originalPrice;
         }
@@ -1258,7 +1287,7 @@ export default function PosBillingPage() {
           cost_price: Number(it.product.purchase_price || 0),
           unit_name: it.unitName,
           unit_multiplier: it.unitMultiplier,
-          base_quantity: getBaseQuantity(it.quantity, it.unit),
+          base_quantity: getBaseQuantity(it.quantity, it.unit, it.unitMultiplier, it.product, units),
           is_price_overridden: it.isPriceOverridden,
         })),
         payments,
@@ -1890,7 +1919,7 @@ export default function PosBillingPage() {
                   filteredProducts.map((p) => {
                     const stockQty = Number(p.current_stock) || 0;
                     const inStock = stockQty > 0;
-                    const pricing = getProductPricingSummary(p);
+                    const pricing = getProductPricingSummary(p, units);
                     const customPrice = customerPrices[p.id];
                     const effectivePiecePrice = customPrice !== undefined ? customPrice : pricing.piecePrice;
                     const salesCount = productSalesCount[p.id] || 0;
@@ -1902,10 +1931,11 @@ export default function PosBillingPage() {
                     const cartPieceIndex = cart.findIndex((i) => i.product.id === p.id && i.unit === "piece");
                     const inCartPieceQty = cartPieceIndex > -1 ? cart[cartPieceIndex].quantity : 0;
 
-                    const cartDozenIndex = cart.findIndex((i) => i.product.id === p.id && i.unit === "dozen");
-                    const inCartDozenQty = cartDozenIndex > -1 ? cart[cartDozenIndex].quantity : 0;
+                    const cartPackIndex = cart.findIndex((i) => i.product.id === p.id && i.unit !== "piece");
+                    const inCartPackQty = cartPackIndex > -1 ? cart[cartPackIndex].quantity : 0;
+                    const inCartPackName = cartPackIndex > -1 ? cart[cartPackIndex].unitName : "";
 
-                    const totalInCart = inCartPieceQty + inCartDozenQty;
+                    const totalInCart = inCartPieceQty + inCartPackQty;
 
                     return (
                       <div
@@ -1949,7 +1979,7 @@ export default function PosBillingPage() {
                             <div className="absolute top-1 left-1 right-1 flex items-center justify-between gap-1 pointer-events-none">
                               {totalInCart > 0 ? (
                                 <span className="text-[9px] sm:text-[10px] font-black bg-purple-600/95 text-white px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
-                                  <span>⚡ {inCartPieceQty ? `${inCartPieceQty}p` : ""}{inCartPieceQty && inCartDozenQty ? "+" : ""}{inCartDozenQty ? `${inCartDozenQty}d` : ""}</span>
+                                  <span>⚡ {inCartPieceQty ? `${inCartPieceQty}p` : ""}{inCartPieceQty && inCartPackQty ? "+" : ""}{inCartPackQty ? `${inCartPackQty}${inCartPackName || "pk"}` : ""}</span>
                                 </span>
                               ) : isTopSeller ? (
                                 <span className="text-[9px] sm:text-[10px] font-black bg-amber-500/95 text-white px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-xs backdrop-blur-xs">
@@ -1967,7 +1997,7 @@ export default function PosBillingPage() {
                                 }`}
                               >
                                 {inStock
-                                  ? `${stockQty} ${stockQty >= 12 ? `(${Math.floor(stockQty / 12)}d)` : "pcs"}`
+                                  ? `${stockQty} ${pricing.conversionFactor > 1 && stockQty >= pricing.conversionFactor ? `(${Math.floor(stockQty / pricing.conversionFactor)} ${getCleanUnitBaseName(p.unit?.name)})` : "pcs"}`
                                   : "Out"}
                               </span>
                             </div>
@@ -2006,10 +2036,10 @@ export default function PosBillingPage() {
                               )}
                             </div>
 
-                            {/* Full Dozen Rate info */}
-                            {pricing.dozenPrice > 0 && (
+                            {/* Full Pack Rate info */}
+                            {pricing.conversionFactor > 1 && pricing.packPrice > 0 && (
                               <div className="text-[10px] text-gray-500 font-semibold truncate">
-                                1 Doz: <span className="font-bold text-indigo-900">{formatCurrency(pricing.dozenPrice)}</span>
+                                1 {getCleanUnitBaseName(p.unit?.name)}: <span className="font-bold text-indigo-900">{formatCurrency(pricing.packPrice)}</span>
                               </div>
                             )}
                           </div>
@@ -2048,20 +2078,24 @@ export default function PosBillingPage() {
                               </div>
                             )}
 
-                            {/* Secondary Dozen Quick Chip if available */}
-                            {pricing.dozenPrice > 0 && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  addToCart(p, "dozen", 1);
-                                }}
-                                className="py-1.5 px-2 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors shrink-0 cursor-pointer active:scale-95 border border-indigo-100"
-                                title={`Add 1 Dozen (${formatCurrency(pricing.dozenPrice)})`}
-                              >
-                                +1 Doz
-                              </button>
-                            )}
+                            {/* Secondary Pack Quick Chip if available */}
+                            {pricing.conversionFactor > 1 && pricing.packPrice > 0 && (() => {
+                              const packUnit = getAvailableUnitsForProduct(p, units).find((u) => u.key === "unit");
+                              if (!packUnit) return null;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    addToCart(p, packUnit.key, 1, packUnit.multiplier, packUnit.shortName);
+                                  }}
+                                  className="py-1.5 px-2 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors shrink-0 cursor-pointer active:scale-95 border border-indigo-100"
+                                  title={`Add 1 ${packUnit.shortName} (${formatCurrency(pricing.packPrice)})`}
+                                >
+                                  +1 {packUnit.shortName}
+                                </button>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -2195,10 +2229,12 @@ export default function PosBillingPage() {
             ) : (
               cart.map((item, index) => {
                 const stock = Number(item.product.current_stock) || 0;
-                const baseQtyNeeded = getBaseQuantity(item.quantity, item.unit, item.unitMultiplier);
+                const baseQtyNeeded = getBaseQuantity(item.quantity, item.unit, item.unitMultiplier, item.product, units);
                 const isOverStock = baseQtyNeeded > stock;
 
-                const wholesaleMinQty = Number(item.product.wholesale_min_qty) || 12;
+                const wholesaleMinQty =
+                  Number(item.product.wholesale_min_qty) ||
+                  (item.product.unit?.conversion_factor ? Number(item.product.unit.conversion_factor) : 12);
                 const wholesaleRaw = Number(item.product.wholesale_price) || 0;
                 const isWholesaleActive = wholesaleRaw > 0 && baseQtyNeeded >= wholesaleMinQty && !item.isPriceOverridden;
                 const mrp = Number(item.product.mrp) || 0;
@@ -2280,62 +2316,41 @@ export default function PosBillingPage() {
                       <div className="text-[9.5px] text-indigo-700 font-medium flex items-center justify-between bg-indigo-50/70 border border-indigo-100 px-2 py-0.5 rounded-md">
                         <span>💡 Add {wholesaleMinQty - baseQtyNeeded} more pcs to unlock Wholesale rate</span>
                         <span className="font-bold text-indigo-900">
-                          ₹{item.product.wholesale_price}{wholesaleRaw >= Number(item.product.selling_price) * 3 ? "/doz" : "/pc"}
+                          ₹{item.product.wholesale_price}{wholesaleRaw >= Number(item.product.selling_price) * 2 ? `/${getCleanUnitBaseName(item.product.unit?.name)}` : "/pc"}
                         </span>
                       </div>
                     )}
 
-                    {/* Unit Selector Pills */}
-                    <div className="flex items-center gap-1 bg-gray-100/80 p-0.5 rounded-lg">
-                      <button
-                        type="button"
-                        onClick={() => updateCartItemUnit(index, "piece")}
-                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
-                          item.unit === "piece"
-                            ? "bg-white text-purple-700 shadow-xs"
-                            : "text-gray-600 hover:text-gray-900"
-                        }`}
-                        title="Sell in single pieces"
-                      >
-                        Pc (1)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateCartItemUnit(index, "half_dozen")}
-                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
-                          item.unit === "half_dozen"
-                            ? "bg-white text-purple-700 shadow-xs"
-                            : "text-gray-600 hover:text-gray-900"
-                        }`}
-                        title="Sell in half-dozen pack (6 pcs)"
-                      >
-                        1/2 Doz (6)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateCartItemUnit(index, "dozen")}
-                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
-                          item.unit === "dozen"
-                            ? "bg-white text-indigo-700 shadow-xs"
-                            : "text-gray-600 hover:text-gray-900"
-                        }`}
-                        title="Sell in dozen wholesale pack (12 pcs)"
-                      >
-                        Dozen (12)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateCartItemUnit(index, "bundle_10_doz")}
-                        className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${
-                          item.unit === "bundle_10_doz"
-                            ? "bg-white text-emerald-700 shadow-xs"
-                            : "text-gray-600 hover:text-gray-900"
-                        }`}
-                        title="Sell in 10 Dozen Master Pack (120 pcs)"
-                      >
-                        10 Doz (120)
-                      </button>
-                    </div>
+                    {/* Dynamic Unit Selector Pills */}
+                    {(() => {
+                      const availableUnits = getAvailableUnitsForProduct(item.product, units);
+                      if (availableUnits.length <= 1) return null;
+
+                      return (
+                        <div className="flex items-center gap-1 bg-gray-100/80 p-0.5 rounded-lg overflow-x-auto">
+                          {availableUnits.map((uOpt) => {
+                            const isSelected =
+                              item.unit === uOpt.key ||
+                              (item.unitMultiplier === uOpt.multiplier && item.unitName === uOpt.shortName);
+                            return (
+                              <button
+                                key={uOpt.key}
+                                type="button"
+                                onClick={() => updateCartItemUnit(index, uOpt.key, uOpt.multiplier, uOpt.shortName)}
+                                className={`flex-1 py-1 px-1.5 text-[10px] font-bold rounded-md whitespace-nowrap transition-all cursor-pointer ${
+                                  isSelected
+                                    ? "bg-white text-purple-700 shadow-xs"
+                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-200/60"
+                                }`}
+                                title={uOpt.description}
+                              >
+                                {uOpt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
 
                     {/* Bottom Row: Quantity Stepper, Unit Price Input, and Line Total */}
                     <div className="flex items-center justify-between gap-2 pt-0.5">

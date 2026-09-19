@@ -52,22 +52,45 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
 
-    // Auto-detect Supabase Auth session (e.g. Google Sign-In)
+    // Auto-restore customer session from persistent cookie if available
     try {
-      const supabase = createClient();
-      supabase.auth.getSession().then(({ data }: any) => {
-        if (data?.session?.user && !customerUser) {
-          const u = data.session.user;
-          loginCustomer({
-            name: u.user_metadata?.full_name || u.email?.split("@")[0] || "Customer",
-            email: u.email || "",
-            phone: u.phone || "",
-            avatarUrl: u.user_metadata?.avatar_url,
-            isVerified: true,
-            authProvider: "google",
+      const match = document.cookie.match(/(?:^|;\s*)falcon_customer_phone=([^;]+)/);
+      const savedPhone = match ? decodeURIComponent(match[1]) : null;
+      if (savedPhone && !customerUser) {
+        const supabase = createClient();
+        supabase
+          .from("customers")
+          .select("*")
+          .eq("phone", savedPhone)
+          .maybeSingle()
+          .then(({ data }: any) => {
+            if (data) {
+              let parsedAddr: any = null;
+              if (data.address && data.address !== "Town / Local Area") {
+                try {
+                  parsedAddr = JSON.parse(data.address);
+                } catch {
+                  parsedAddr = {
+                    fullName: data.name,
+                    mobileNumber: data.phone,
+                    villageOrColony: data.address,
+                    tehsilOrTown: "Town Area",
+                    landmark: "",
+                    pincode: "483501",
+                  };
+                }
+              }
+              loginCustomer({
+                id: data.id,
+                name: data.name,
+                phone: data.phone,
+                isVerified: true,
+                authProvider: "phone",
+                address: parsedAddr,
+              });
+            }
           });
-        }
-      });
+      }
     } catch {
       // Non-blocking
     }
@@ -211,15 +234,12 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 )}
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     logoutCustomer();
-                    try {
-                      const supabase = createClient();
-                      await supabase.auth.signOut();
-                    } catch {}
-                    window.location.href = "/login";
+                    document.cookie = "falcon_customer_phone=; path=/; max-age=0";
+                    window.location.reload();
                   }}
-                  className="p-1 text-gray-400 hover:text-red-600 rounded ml-0.5"
+                  className="p-1 text-gray-400 hover:text-red-600 rounded ml-0.5 cursor-pointer"
                   title="Sign Out"
                 >
                   <LogOut className="w-3 h-3" />
@@ -346,8 +366,12 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={logoutCustomer}
-                  className="px-2.5 py-1 text-rose-600 bg-white rounded-lg border border-rose-200 text-xs font-bold"
+                  onClick={() => {
+                    logoutCustomer();
+                    document.cookie = "falcon_customer_phone=; path=/; max-age=0";
+                    window.location.reload();
+                  }}
+                  className="px-2.5 py-1 text-rose-600 bg-white rounded-lg border border-rose-200 text-xs font-bold cursor-pointer"
                 >
                   Logout
                 </button>
@@ -359,10 +383,10 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                   setIsMobileMenuOpen(false);
                   setIsAuthModalOpen(true);
                 }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-xs"
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
               >
                 <User className="w-4 h-4" />
-                <span>Sign In (Google / Mobile OTP)</span>
+                <span>Sign In with Mobile Number</span>
               </button>
             )}
           </div>

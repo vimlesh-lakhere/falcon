@@ -132,6 +132,7 @@ export interface Product {
   created_at: string;
   category?: Category;
   supplier?: Supplier;
+  unit?: Unit;
 }
 
 export interface ProductVariant {
@@ -299,6 +300,9 @@ export interface SaleItem {
   is_price_overridden: boolean;
   overridden_by: string | null;
   product?: Product;
+  unit_name?: string;
+  unit_multiplier?: number;
+  base_quantity?: number;
 }
 
 export interface Payment {
