@@ -330,7 +330,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
           <div>
             <span className="font-bold">Notice:</span> Aapka internet provider (ISP) Bhopal dikha raha hai kyunki aap PC/Wi-Fi par hain.
             <div className="mt-0.5 font-medium">
-              Chhatarpur set karne ke liye upar <strong>"Chhatarpur"</strong> search karein ya mobile phone se GPS dabaayein.
+              Chhatarpur set karne ke liye upar <strong>&quot;Chhatarpur&quot;</strong> search karein ya mobile phone se GPS dabaayein.
             </div>
           </div>
         </div>

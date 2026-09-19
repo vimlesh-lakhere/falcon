@@ -2829,7 +2829,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                     aistudio.google.com/app/apikey <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                 </li>
-                <li>Sign in with your Google Account & click <b>"Create API Key"</b></li>
+                <li>Sign in with your Google Account & click <b>&quot;Create API Key&quot;</b></li>
                 <li>Copy and paste your key below (Starts with <code>AIzaSy...</code>)</li>
               </ol>
             </div>

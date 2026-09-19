@@ -276,7 +276,7 @@ export default function KhataPage() {
             <CardContent className="p-4 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">
-                  आज की वसूली (Today's Vasooli)
+                  आज की वसूली (Today&apos;s Vasooli)
                 </span>
                 <span className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
                   <ArrowUpRight className="w-4 h-4" />

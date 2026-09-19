@@ -750,7 +750,7 @@ export default function AdminTrialsCrmPage() {
 
                   {lead.message && (
                     <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg italic line-clamp-2">
-                      "{lead.message}"
+                      &quot;{lead.message}&quot;
                     </p>
                   )}
 

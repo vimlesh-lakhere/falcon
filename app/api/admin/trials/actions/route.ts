@@ -1,7 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireStaff } from "@/lib/auth/server";
+import { DEFAULT_FALLBACK_SHOP_ID } from "@/lib/tenant";
 import { saasTrialsRepository } from "@/repositories/saas-trials.repo";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Platform-level actions (activate / extend / deactivate / purge) are for the
+  // master store's Owner/Admin only, never for tenant or storefront users.
+  const auth = await requireStaff(request, ["Owner", "Admin"]);
+  if (auth instanceof NextResponse) return auth;
+  if (auth.shopId !== DEFAULT_FALLBACK_SHOP_ID) {
+    return NextResponse.json({ error: "You do not have permission to perform this action." }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
     const { action, shopId, plan, additionalDays, durationMonths, amountPaid } = body;
