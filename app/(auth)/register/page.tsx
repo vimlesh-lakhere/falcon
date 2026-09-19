@@ -175,20 +175,30 @@ export default function RegisterBusinessPage() {
 
       const storeId = storeData?.id;
 
-      // 3. Update Profile with store & Owner role
+      // 3. Link the profile to the new store as Owner.
+      // profiles.store_id references the `stores` table (not `shops`), so mirror the shop there first.
       if (userId && storeId) {
-        await supabase
+        const { error: storesError } = await supabase
+          .from("stores")
+          .upsert({ id: storeId, name: storeName, currency: data.currency || "INR" });
+        if (storesError) console.warn("Store mirror warning", storesError);
+
+        const { error: profileError } = await supabase
           .from("profiles")
           .upsert({
             id: userId,
             store_id: storeId,
-            shop_id: storeId,
             full_name: data.ownerName,
             email: data.email,
             phone: data.phone,
             role: "Owner",
             is_active: true,
           });
+        if (profileError) {
+          console.warn("Profile link warning", profileError);
+          setErrorMessage("Your store was created but linking your account failed. Please contact support.");
+          return;
+        }
 
         if (typeof window !== "undefined") {
           localStorage.setItem("falcon_active_store_id", storeId);
