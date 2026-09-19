@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/server";
-import { DEFAULT_FALLBACK_SHOP_ID } from "@/lib/tenant";
+import { DEFAULT_FALLBACK_SHOP_ID, MASTER_OWNER_EMAILS } from "@/lib/tenant";
 import { saasTrialsRepository } from "@/repositories/saas-trials.repo";
 
 export async function POST(request: NextRequest) {
   // Platform-level actions (activate / extend / deactivate / purge) are for the
-  // master store's Owner/Admin only, never for tenant or storefront users.
+  // platform owners only, never for tenant or storefront users.
   const auth = await requireStaff(request, ["Owner", "Admin"]);
   if (auth instanceof NextResponse) return auth;
-  if (auth.shopId !== DEFAULT_FALLBACK_SHOP_ID) {
+
+  // Profile role/store can be self-assigned at signup, so also require the
+  // server-verified login email to be a platform owner.
+  const {
+    data: { user },
+  } = await auth.supabase.auth.getUser();
+  const isMasterOwner = !!user?.email && MASTER_OWNER_EMAILS.includes(user.email);
+  if (!isMasterOwner || auth.shopId !== DEFAULT_FALLBACK_SHOP_ID) {
     return NextResponse.json({ error: "You do not have permission to perform this action." }, { status: 403 });
   }
 

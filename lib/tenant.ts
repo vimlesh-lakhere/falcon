@@ -1,6 +1,13 @@
 export const DEFAULT_FALLBACK_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 export const DEFAULT_FALLBACK_SHOP_SLUG = "ags-store";
 
+// Platform owners (same list middleware.ts uses for trial/subscription exemption).
+export const MASTER_OWNER_EMAILS = [
+  "vimlesh.lakhere@gmail.com",
+  "vlakhere@gmail.com",
+  "owner_1786762700828@agsstore.com",
+];
+
 export function isUuid(str?: string | null): boolean {
   if (!str) return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
