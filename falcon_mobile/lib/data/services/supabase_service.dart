@@ -87,6 +87,39 @@ class SupabaseService {
     }
   }
 
+  // 3b. Create New Supplier
+  Future<SupplierModel> createSupplier({
+    required String name,
+    String? phone,
+    String? address,
+    String shopId = AppConstants.defaultShopId,
+  }) async {
+    final cleanName = name.trim();
+    final cleanPhone = phone?.trim();
+    final cleanAddress = address?.trim();
+
+    final payload = <String, dynamic>{
+      'shop_id': shopId,
+      'name': cleanName,
+      'is_active': true,
+    };
+    if (cleanPhone != null && cleanPhone.isNotEmpty) {
+      payload['phone'] = cleanPhone;
+    }
+    if (cleanAddress != null && cleanAddress.isNotEmpty) {
+      payload['address'] = cleanAddress;
+    }
+
+    final res = await _client
+        .from('suppliers')
+        .insert(payload)
+        .select()
+        .single();
+
+    return SupplierModel.fromJson(res);
+  }
+
+
   // 4. Quick Barcode Lookup
   Future<ProductModel?> findProductByBarcode(String barcode, {String shopId = AppConstants.defaultShopId}) async {
     try {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -40,7 +41,15 @@ class AddProductViewModel extends ChangeNotifier {
   // Dropdown Selections
   String? selectedCategoryId;
   String? selectedUnitId;
-  String? selectedSupplierId;
+  List<String> selectedSupplierIds = [];
+  String? get selectedSupplierId => selectedSupplierIds.isNotEmpty ? selectedSupplierIds.first : null;
+  set selectedSupplierId(String? id) {
+    if (id != null && id.isNotEmpty) {
+      if (!selectedSupplierIds.contains(id)) {
+        selectedSupplierIds.add(id);
+      }
+    }
+  }
   bool isOnline = true;
   bool sellAsFullPack = false;
   bool isWholesaleEnabled = false;
@@ -193,12 +202,28 @@ class AddProductViewModel extends ChangeNotifier {
         }
         if (found.categoryId != null) selectedCategoryId = found.categoryId;
         if (found.unitId != null) selectedUnitId = found.unitId;
-        populateStockForExistingProduct(found);
+        selectedSupplierIds.clear();
+        if (found.supplierId != null && found.supplierId!.isNotEmpty) {
+          selectedSupplierIds.add(found.supplierId!);
+        }
         if (found.description != null) {
+          final sMatch = RegExp(r'<!--SUPPLIERS:(.*?)-->').firstMatch(found.description!);
+          if (sMatch != null && sMatch.group(1) != null) {
+            try {
+              final list = jsonDecode(sMatch.group(1)!) as List;
+              for (final item in list) {
+                final sId = item.toString();
+                if (!selectedSupplierIds.contains(sId)) {
+                  selectedSupplierIds.add(sId);
+                }
+              }
+            } catch (_) {}
+          }
           descriptionController.text = found.description!
               .replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '')
               .trim();
         }
+        populateStockForExistingProduct(found);
 
         HapticFeedback.mediumImpact();
         Fluttertoast.showToast(
@@ -830,6 +855,84 @@ class AddProductViewModel extends ChangeNotifier {
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // SUPPLIER MANAGEMENT (MULTIPLE SUPPLIERS)
+  // ───────────────────────────────────────────────────────────────────────────
+  List<SupplierModel> get selectedSuppliers =>
+      suppliers.where((s) => selectedSupplierIds.contains(s.id)).toList();
+
+  void toggleSupplier(String id) {
+    if (selectedSupplierIds.contains(id)) {
+      selectedSupplierIds.remove(id);
+    } else {
+      selectedSupplierIds.add(id);
+    }
+    notifyListeners();
+  }
+
+  bool isSupplierSelected(String id) => selectedSupplierIds.contains(id);
+
+  void removeSupplier(String id) {
+    selectedSupplierIds.remove(id);
+    notifyListeners();
+  }
+
+  void clearSuppliers() {
+    selectedSupplierIds.clear();
+    notifyListeners();
+  }
+
+  bool isCreatingSupplier = false;
+
+  Future<SupplierModel?> createAndSelectSupplier({
+    required String name,
+    String? phone,
+    String? address,
+  }) async {
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) return null;
+
+    isCreatingSupplier = true;
+    notifyListeners();
+
+    try {
+      final created = await _supabaseService.createSupplier(
+        name: cleanName,
+        phone: phone,
+        address: address,
+      );
+
+      suppliers.removeWhere((s) => s.id == created.id);
+      suppliers.add(created);
+      suppliers.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+      if (!selectedSupplierIds.contains(created.id)) {
+        selectedSupplierIds.add(created.id);
+      }
+      notifyListeners();
+
+      HapticFeedback.lightImpact();
+      Fluttertoast.showToast(
+        msg: 'Supplier "${created.name}" created & selected!',
+        backgroundColor: const Color(0xFF10B981),
+        textColor: Colors.white,
+      );
+
+      return created;
+    } catch (e) {
+      debugPrint('Error creating supplier: $e');
+      Fluttertoast.showToast(
+        msg: 'Failed to create supplier: $e',
+        backgroundColor: const Color(0xFFEF4444),
+        textColor: Colors.white,
+      );
+      rethrow;
+    } finally {
+      isCreatingSupplier = false;
+      notifyListeners();
+    }
+  }
+
   void refreshStockCalculation() {
     notifyListeners();
   }
@@ -1068,6 +1171,14 @@ class AddProductViewModel extends ChangeNotifier {
         }
       }
 
+      String? finalDescription = description;
+      if (selectedSupplierIds.length > 1) {
+        final supTag = '<!--SUPPLIERS:${jsonEncode(selectedSupplierIds)}-->';
+        finalDescription = (finalDescription != null && finalDescription.isNotEmpty)
+            ? '$finalDescription\n$supTag'
+            : supTag;
+      }
+
       final newProduct = ProductModel(
         shopId: AppConstants.defaultShopId,
         name: finalName,
@@ -1087,7 +1198,7 @@ class AddProductViewModel extends ChangeNotifier {
         minimumStock: minStock,
         imageUrl: uploadedFrontUrl,
         backImageUrl: uploadedBackUrl,
-        description: description,
+        description: finalDescription,
         isOnline: isOnline,
         onlinePrice: finalSellingPrice,
         isActive: true,
@@ -1153,6 +1264,7 @@ class AddProductViewModel extends ChangeNotifier {
     descriptionController.clear();
     stockController.text = '10';
     minStockController.text = '5';
+    selectedSupplierIds.clear();
     frontImageBytes = null;
     frontOriginalBytes = null;
     frontImagePath = null;

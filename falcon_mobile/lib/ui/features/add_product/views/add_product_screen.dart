@@ -122,6 +122,10 @@ class AddProductScreen extends StatelessWidget {
 
                       // 6. Stock & Category
                       _buildStockAndCategoryCard(vm),
+                      const SizedBox(height: 14),
+
+                      // 7. Additional Details & Suppliers (Multiple Suppliers)
+                      _buildAdditionalDetailsAndSuppliersCard(context, vm),
                     ],
                   ),
                 ),
@@ -1792,6 +1796,424 @@ class AddProductScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 7. ADDITIONAL DETAILS & MULTIPLE SUPPLIERS CARD
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildAdditionalDetailsAndSuppliersCard(BuildContext context, AddProductViewModel vm) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.local_shipping_outlined, size: 18, color: AppTheme.primaryLight),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Suppliers & Reordering',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                    ),
+                    Text(
+                      'Select multiple suppliers for fast stock ordering',
+                      style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
+                onTap: () => _showCreateSupplierBottomSheet(context, vm),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppTheme.primaryLight.withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 14, color: AppTheme.primaryLight),
+                      SizedBox(width: 3),
+                      Text(
+                        '+ New Supplier',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Available Suppliers Chips (Multi-Select)
+          if (vm.suppliers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: InkWell(
+                onTap: () => _showCreateSupplierBottomSheet(context, vm),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceElevated,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.cardBorder),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.person_add_outlined, size: 16, color: AppTheme.primaryLight),
+                      SizedBox(width: 8),
+                      Text(
+                        'No suppliers added yet. Tap to add your first supplier',
+                        style: TextStyle(fontSize: 11, color: AppTheme.primaryLight, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else ...[
+            const Text(
+              'Tap to select/unselect suppliers for this product:',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: vm.suppliers.map((s) {
+                final isSelected = vm.isSupplierSelected(s.id);
+                return FilterChip(
+                  label: Text(
+                    s.phone != null && s.phone!.isNotEmpty ? '${s.name} (${s.phone})' : s.name,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? Colors.white : AppTheme.textSecondary,
+                    ),
+                  ),
+                  selected: isSelected,
+                  selectedColor: AppTheme.primary,
+                  checkmarkColor: Colors.white,
+                  backgroundColor: AppTheme.surfaceElevated,
+                  side: BorderSide(
+                    color: isSelected ? AppTheme.primaryLight : AppTheme.cardBorder,
+                  ),
+                  onSelected: (_) => vm.toggleSupplier(s.id),
+                );
+              }).toList(),
+            ),
+          ],
+
+          // Selected Suppliers Summary List
+          if (vm.selectedSuppliers.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Selected Suppliers (${vm.selectedSuppliers.length})',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryLight),
+                      ),
+                      InkWell(
+                        onTap: () => vm.clearSuppliers(),
+                        child: const Text(
+                          'Clear All',
+                          style: TextStyle(fontSize: 10, color: AppTheme.error, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ...vm.selectedSuppliers.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final s = entry.value;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppTheme.cardBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: index == 0
+                                  ? AppTheme.primary.withValues(alpha: 0.2)
+                                  : AppTheme.surfaceElevated,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              index == 0 ? 'Primary' : 'Alt #${index + 1}',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: index == 0 ? AppTheme.primaryLight : AppTheme.textMuted,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s.name,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (s.phone != null && s.phone!.isNotEmpty)
+                                  Text(
+                                    s.phone!,
+                                    style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (s.phone != null && s.phone!.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.copy, size: 14, color: AppTheme.textMuted),
+                              tooltip: 'Copy Phone',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: s.phone!));
+                                Fluttertoast.showToast(msg: 'Phone copied: ${s.phone!}');
+                              },
+                            ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 14, color: AppTheme.textMuted),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => vm.removeSupplier(s.id),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '💡 जब भी स्टॉक खत्म होगा, आप सीधे इन सप्लायर्स से नया माल मंगा सकते हैं।',
+                    style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CREATE NEW SUPPLIER BOTTOM SHEET
+  // ───────────────────────────────────────────────────────────────────────────
+  void _showCreateSupplierBottomSheet(BuildContext context, AddProductViewModel vm) {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final addressController = TextEditingController();
+    bool isSaving = false;
+    String? errorText;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> handleSave() async {
+              final name = nameController.text.trim();
+              if (name.isEmpty) {
+                setSheetState(() {
+                  errorText = 'कृपया सप्लायर का नाम लिखें';
+                });
+                return;
+              }
+
+              setSheetState(() {
+                isSaving = true;
+                errorText = null;
+              });
+
+              try {
+                await vm.createAndSelectSupplier(
+                  name: name,
+                  phone: phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
+                  address: addressController.text.trim().isEmpty ? null : addressController.text.trim(),
+                );
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              } catch (e) {
+                setSheetState(() {
+                  isSaving = false;
+                  errorText = 'सप्लायर नहीं बन सका: $e';
+                });
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.store, color: AppTheme.primaryLight, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Add New Supplier (नया सप्लायर)',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'दुकान, एजेंसी या डिस्ट्रीब्यूटर की जानकारी दर्ज करें',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    ),
+                    const SizedBox(height: 16),
+                    if (errorText != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.error.withValues(alpha: 0.4)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, color: AppTheme.error, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                errorText!,
+                                style: const TextStyle(fontSize: 12, color: AppTheme.error, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    // Supplier Name
+                    TextField(
+                      controller: nameController,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Supplier / Agency Name (सप्लायर का नाम) *',
+                        hintText: 'e.g. Balaji Agencies, Sharma Distributor',
+                        prefixIcon: Icon(Icons.storefront_outlined, color: AppTheme.primaryLight, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Phone / WhatsApp
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Mobile / WhatsApp Number (ऑर्डर के लिए) *',
+                        hintText: 'e.g. 98260XXXXX',
+                        prefixIcon: Icon(Icons.phone_outlined, color: AppTheme.primaryLight, size: 20),
+                        helperText: 'री-ऑर्डर और संपर्क के लिए उपयोगी',
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Address / City
+                    TextField(
+                      controller: addressController,
+                      decoration: const InputDecoration(
+                        labelText: 'Address / City (पता / शहर - Optional)',
+                        hintText: 'e.g. Katni Road, Jabalpur',
+                        prefixIcon: Icon(Icons.location_on_outlined, color: AppTheme.primaryLight, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // Save Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: isSaving ? null : handleSave,
+                        child: isSaving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle_outline, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Save & Select Supplier (सप्लायर जोड़ें)',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

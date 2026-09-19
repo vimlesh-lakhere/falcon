@@ -52,12 +52,14 @@ class SupplierModel {
   final String shopId;
   final String name;
   final String? phone;
+  final String? address;
 
   SupplierModel({
     required this.id,
     required this.shopId,
     required this.name,
     this.phone,
+    this.address,
   });
 
   factory SupplierModel.fromJson(Map<String, dynamic> json) {
@@ -66,6 +68,8 @@ class SupplierModel {
       shopId: json['shop_id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       phone: json['phone'] as String?,
+      address: json['address'] as String?,
     );
   }
 }
+
