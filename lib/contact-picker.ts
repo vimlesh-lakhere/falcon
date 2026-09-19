@@ -78,14 +78,38 @@ export async function syncOrRegisterCustomerFromContact(
       (c) => sanitizeIndianPhone(c.phone || "") === cleanPhone
     );
     if (match) return match;
+
+    // Check if name matches an existing customer
+    if (contact.name) {
+      const nameMatches = existingCustomers.filter(
+        (c) => c.name.trim().toLowerCase() === contact.name.trim().toLowerCase()
+      );
+      if (nameMatches.length > 0) {
+        // Sort to pick one with balance > 0 or existing phone
+        nameMatches.sort((a, b) => Number(b.outstanding_balance || 0) - Number(a.outstanding_balance || 0));
+        const bestMatch = nameMatches[0];
+        if (!bestMatch.phone && cleanPhone) {
+          try {
+            await customersRepository.update(bestMatch.id, { phone: cleanPhone });
+            bestMatch.phone = cleanPhone;
+          } catch (e) {
+            console.warn("Could not update customer phone:", e);
+          }
+        }
+        return bestMatch;
+      }
+    }
   } else if (contact.name) {
-    const match = existingCustomers.find(
-      (c) => c.name.toLowerCase() === contact.name.toLowerCase()
+    const sorted = [...existingCustomers].sort(
+      (a, b) => Number(b.outstanding_balance || 0) - Number(a.outstanding_balance || 0)
+    );
+    const match = sorted.find(
+      (c) => c.name.trim().toLowerCase() === contact.name.trim().toLowerCase()
     );
     if (match) return match;
   }
 
-  // 2. Query database for this phone
+  // 2. Query database for this phone or name
   if (cleanPhone) {
     try {
       const found = await customersRepository.getAll(shopId, cleanPhone);
@@ -95,6 +119,28 @@ export async function syncOrRegisterCustomerFromContact(
       if (exactMatch) return exactMatch;
     } catch (e) {
       console.warn("Error querying customers by phone:", e);
+    }
+  }
+
+  if (contact.name) {
+    try {
+      const foundByName = await customersRepository.getAll(shopId, contact.name.trim());
+      const exactNameMatch = foundByName.find(
+        (c) => c.name.trim().toLowerCase() === contact.name.trim().toLowerCase()
+      );
+      if (exactNameMatch) {
+        if (!exactNameMatch.phone && cleanPhone) {
+          try {
+            await customersRepository.update(exactNameMatch.id, { phone: cleanPhone });
+            exactNameMatch.phone = cleanPhone;
+          } catch (e) {
+            console.warn("Could not update customer phone:", e);
+          }
+        }
+        return exactNameMatch;
+      }
+    } catch (e) {
+      console.warn("Error querying customers by name:", e);
     }
   }
 

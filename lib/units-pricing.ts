@@ -265,13 +265,16 @@ export function getProductUnitPricing(
 
   // Multi-pack product pricing logic
   if (rawWholesale > 0) {
-    if (rawWholesale > rawSelling * 2) {
-      // rawWholesale is full pack price (e.g. ₹55 box, ₹160 ladi)
-      // rawSelling is retail single piece rate (e.g. ₹5/pc, ₹10/pc)
+    if (rawWholesale > rawSelling) {
+      // rawSelling is piece price (e.g. ₹10), rawWholesale is pack price (e.g. ₹200 for box of 24)
       piecePrice = rawSelling;
       packPrice = rawWholesale;
+    } else if (rawSelling >= conversionFactor * 2 && rawWholesale >= conversionFactor * 1.5) {
+      // Both are pack prices (e.g. Selling ₹240/pack, Wholesale ₹200/pack)
+      packPrice = rawWholesale;
+      piecePrice = Math.round((rawSelling / conversionFactor) * 100) / 100;
     } else {
-      // rawWholesale is wholesale per-piece rate (e.g. ₹32/pc vs ₹35/pc)
+      // rawWholesale is wholesale per-piece rate (e.g. ₹8/pc vs ₹10/pc retail)
       piecePrice = rawSelling;
       packPrice = Math.round(rawWholesale * conversionFactor);
     }
@@ -280,9 +283,9 @@ export function getProductUnitPricing(
     piecePrice = rawMrp;
     packPrice = rawSelling;
   } else {
-    // rawSelling is pack price, calculate loose piece auto-break rate
-    piecePrice = Math.ceil(rawSelling / conversionFactor);
-    packPrice = rawSelling;
+    // Standard: rawSelling is piece price, packPrice is rawSelling * conversionFactor
+    piecePrice = rawSelling;
+    packPrice = Math.round(rawSelling * conversionFactor);
   }
 
   let unitPrice = packPrice;
@@ -364,12 +367,17 @@ export function getProductPricingSummary(product: Product, unitCatalog?: Unit[])
   const pricing = getProductUnitPricing(product, 1, unitCatalog);
   const wholesaleRaw = Number(product.wholesale_price) || 0;
   const wholesaleMinQty = Number(product.wholesale_min_qty) || pricing.conversionFactor || 12;
+  const rawMrp = Number(product.mrp) || 0;
+  const pieceMrp = pricing.conversionFactor > 1 && rawMrp > pricing.piecePrice * 2
+    ? Math.round((rawMrp / pricing.conversionFactor) * 100) / 100
+    : (rawMrp || pricing.piecePrice);
 
   return {
     piecePrice: pricing.piecePrice,
     packPrice: pricing.packPrice,
     conversionFactor: pricing.conversionFactor,
-    mrp: Number(product.mrp) || pricing.piecePrice,
+    mrp: pieceMrp,
+    packMrp: rawMrp || Math.round(pieceMrp * pricing.conversionFactor),
     wholesalePerPiece: wholesaleRaw > 0 && wholesaleRaw < pricing.piecePrice * 2 ? wholesaleRaw : Math.round(pricing.packPrice / pricing.conversionFactor),
     wholesaleMinQty,
   };
@@ -402,7 +410,7 @@ export function getEffectiveItemPrice(
     const { conversionFactor, piecePrice, packPrice } = getProductUnitPricing(product, multiplier, unitCatalog);
     let wholesalePerPiece = 0;
 
-    if (wholesaleRaw > piecePrice * 2) {
+    if (wholesaleRaw > piecePrice) {
       // wholesaleRaw is pack price
       wholesalePerPiece = wholesaleRaw / conversionFactor;
     } else {

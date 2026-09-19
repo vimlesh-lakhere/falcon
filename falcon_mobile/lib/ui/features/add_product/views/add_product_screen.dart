@@ -540,6 +540,48 @@ class AddProductScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              InkWell(
+                onTap: vm.toggleAutoWhiteBackground,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: vm.autoWhiteBackground
+                        ? AppTheme.primary.withValues(alpha: 0.2)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: vm.autoWhiteBackground
+                          ? AppTheme.primaryLight
+                          : AppTheme.cardBorder,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.auto_fix_high,
+                        size: 14,
+                        color: vm.autoWhiteBackground
+                            ? AppTheme.primaryLight
+                            : AppTheme.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Auto White',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: vm.autoWhiteBackground
+                              ? AppTheme.primaryLight
+                              : AppTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               IconButton(
                 icon: const Icon(Icons.tune, size: 18, color: AppTheme.primaryLight),
                 tooltip: 'Gemini & AI Settings',
@@ -577,10 +619,10 @@ class AddProductScreen extends StatelessWidget {
                   subtitle: 'MRP, weight, ingredients',
                   imageBytes: vm.backImageBytes,
                   isProcessing: vm.isProcessingBackImage,
-                  isWhiteBgApplied: false,
+                  isWhiteBgApplied: vm.hasAppliedBackWhiteBg,
                   onSnapCamera: () => vm.captureBackImage(ImageSource.camera),
                   onPickGallery: () => vm.captureBackImage(ImageSource.gallery),
-                  onToggleWhiteBg: null, // White BG only for front hero photo
+                  onToggleWhiteBg: vm.toggleBackWhiteBackground,
                   onDelete: vm.removeBackImage,
                 ),
               ),
@@ -1561,11 +1603,13 @@ class AddProductScreen extends StatelessWidget {
                   controller: vm.mrpController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: vm.isMultiUnit && vm.enterPriceAsPack ? 'Piece MRP (₹)' : 'MRP (₹)',
+                    labelText: vm.isMultiUnit && vm.enterPriceAsPack
+                        ? '${vm.selectedUnit?.name.split(" ").first ?? "Pack"} MRP (₹)'
+                        : 'MRP (₹)',
                     hintText: '0',
                     prefixText: '₹ ',
                     helperText: vm.isMultiUnit && vm.enterPriceAsPack
-                        ? 'Full ${vm.selectedUnit?.name.split(" ").first ?? "Pack"}: ₹${vm.packMrp.toStringAsFixed(0)}'
+                        ? '₹${((double.tryParse(vm.mrpController.text) ?? 0) / (vm.currentConversionFactor > 0 ? vm.currentConversionFactor : 1)).toStringAsFixed(2)} / pc MRP'
                         : null,
                     helperStyle: const TextStyle(fontSize: 10, color: AppTheme.primaryLight),
                   ),

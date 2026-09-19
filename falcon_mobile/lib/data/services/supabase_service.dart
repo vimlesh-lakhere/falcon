@@ -290,9 +290,20 @@ class SupabaseService {
     }
   }
 
-  // 9. Quick Add Stock to an existing product
-  Future<ProductModel> quickAddStock(String id, int currentStock, int addQuantity) async {
-    final newStock = currentStock + addQuantity;
+  // 9. Quick Add Stock to an existing product (fetches fresh live stock to prevent stale overwrites)
+  Future<ProductModel> quickAddStock(String id, int fallbackStock, int addQuantity) async {
+    int liveStock = fallbackStock;
+    try {
+      final res = await _client
+          .from('products')
+          .select('current_stock')
+          .eq('id', id)
+          .single();
+      if (res['current_stock'] != null) {
+        liveStock = (res['current_stock'] as num).toInt();
+      }
+    } catch (_) {}
+    final newStock = liveStock + addQuantity;
     return await updateProduct(id, {'current_stock': newStock});
   }
 

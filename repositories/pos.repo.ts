@@ -176,18 +176,49 @@ export const posRepository = {
 
     if (fetchOldError) throw fetchOldError;
 
-    // 2. Reverse previous item stock deductions
-    if (existingSale?.items && existingSale.items.length > 0) {
-      const returnMovements = existingSale.items.map((it: any) => ({
+    // 2. Reverse previous item stock deductions (use exact previous stock_movements to avoid losing multi-unit quantities)
+    const { data: previousMovements } = await supabase
+      .from("stock_movements")
+      .select("product_id, variant_id, quantity_delta")
+      .eq("reference_table", "sales")
+      .eq("reference_id", payload.sale_id)
+      .eq("movement_type", "sale");
+
+    if (previousMovements && previousMovements.length > 0) {
+      const returnMovements = previousMovements.map((mov: any) => ({
         shop_id: payload.shop_id,
-        product_id: it.product_id,
-        variant_id: it.variant_id || null,
+        product_id: mov.product_id,
+        variant_id: mov.variant_id || null,
         movement_type: "adjustment",
-        quantity_delta: Math.abs(it.quantity),
+        quantity_delta: Math.abs(mov.quantity_delta),
         reference_table: "sales",
         reference_id: payload.sale_id,
         notes: `Reversal for Edit Invoice: ${existingSale.invoice_number}`,
       }));
+      await supabase.from("stock_movements").insert(returnMovements);
+    } else if (existingSale?.items && existingSale.items.length > 0) {
+      // Fallback: fetch product unit conversion factor if previous movements were missing
+      const returnMovements = await Promise.all(
+        existingSale.items.map(async (it: any) => {
+          const { data: prod } = await supabase
+            .from("products")
+            .select("unit:units(conversion_factor)")
+            .eq("id", it.product_id)
+            .single();
+          const factor = Number((prod as any)?.unit?.conversion_factor) || 1;
+          const baseQty = Math.abs(it.quantity) * factor;
+          return {
+            shop_id: payload.shop_id,
+            product_id: it.product_id,
+            variant_id: it.variant_id || null,
+            movement_type: "adjustment",
+            quantity_delta: baseQty,
+            reference_table: "sales",
+            reference_id: payload.sale_id,
+            notes: `Reversal for Edit Invoice: ${existingSale.invoice_number}`,
+          };
+        })
+      );
       await supabase.from("stock_movements").insert(returnMovements);
     }
 

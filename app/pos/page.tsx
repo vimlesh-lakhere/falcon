@@ -1756,7 +1756,7 @@ export default function PosBillingPage() {
                       </div>
                       <div className="min-w-0 truncate">
                         <span className="text-purple-200">Voice: </span>
-                        <span className="text-purple-100 font-mono italic">"{voiceFeedback.original}"</span>
+                        <span className="text-purple-100 font-mono italic">&quot;{voiceFeedback.original}&quot;</span>
                         {voiceFeedback.confidence > 0 && (
                           <>
                             <span className="text-pink-300 font-bold mx-1.5">➔ Auto-Corrected:</span>
@@ -2774,16 +2774,23 @@ export default function PosBillingPage() {
               );
             }
 
-            // Filtered customer list
+            // Filtered customer list: prioritize debtors with outstanding balance at the top
+            const sortedCustomers = [...customers].sort((a, b) => {
+              const balA = Number(a.outstanding_balance || 0);
+              const balB = Number(b.outstanding_balance || 0);
+              if (balB !== balA) return balB - balA; // Higher balance first
+              return a.name.localeCompare(b.name);
+            });
+
             const filteredCustomers = customerSearchQuery.trim()
-              ? customers.filter((c) => {
+              ? sortedCustomers.filter((c) => {
                   const q = customerSearchQuery.toLowerCase();
                   return (
                     c.name.toLowerCase().includes(q) ||
                     (c.phone && c.phone.includes(q))
                   );
                 })
-              : customers.slice(0, 8);
+              : sortedCustomers;
 
             return (
               <div className={`rounded-xl border text-xs space-y-2 p-3 ${
@@ -2888,7 +2895,7 @@ export default function PosBillingPage() {
 
                 {/* Customer List */}
                 {!isAddingNewCustomer && (
-                  <div className="max-h-36 overflow-y-auto space-y-0.5 rounded-lg">
+                  <div className="max-h-48 overflow-y-auto space-y-0.5 rounded-lg pr-1">
                     {filteredCustomers.length === 0 ? (
                       <div className="text-center py-3 text-gray-400 text-[11px]">
                         कोई ग्राहक नहीं मिला —{" "}
@@ -2909,10 +2916,18 @@ export default function PosBillingPage() {
                             setSelectedCustomer(c);
                             setCustomerSearchQuery("");
                           }}
-                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-brand-50 hover:border-brand-300 border border-transparent text-left transition-all cursor-pointer group"
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-left transition-all cursor-pointer group ${
+                            Number(c.outstanding_balance || 0) > 0
+                              ? "bg-red-50/50 hover:bg-red-100/70 border-red-100"
+                              : "hover:bg-brand-50 hover:border-brand-300 border-transparent"
+                          }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-black text-[10px] shrink-0">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 ${
+                              Number(c.outstanding_balance || 0) > 0
+                                ? "bg-red-200 text-red-800"
+                                : "bg-purple-100 text-purple-700"
+                            }`}>
                               {c.name[0].toUpperCase()}
                             </div>
                             <div className="min-w-0">
@@ -2923,7 +2938,7 @@ export default function PosBillingPage() {
                             </div>
                           </div>
                           {Number(c.outstanding_balance || 0) > 0 && (
-                            <span className="text-[10px] font-bold text-red-600 shrink-0 ml-2">
+                            <span className="text-[10px] font-black text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full shrink-0 ml-2">
                               बकाया: {formatCurrency(Number(c.outstanding_balance))}
                             </span>
                           )}

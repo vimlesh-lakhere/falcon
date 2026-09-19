@@ -67,8 +67,11 @@ class AddProductViewModel extends ChangeNotifier {
 
   // Back Photo (Packaging, Ingredients, Net Weight, MRP details)
   Uint8List? backImageBytes;
+  Uint8List? backOriginalBytes;
   String? backImagePath;
+  bool hasAppliedBackWhiteBg = false;
   bool isProcessingBackImage = false;
+  bool autoWhiteBackground = false; // Auto pure-white background for crisp catalog photos
 
   // Backwards compatibility getter for single-image references
   Uint8List? get compressedImageBytes => frontImageBytes;
@@ -176,54 +179,7 @@ class AddProductViewModel extends ChangeNotifier {
       // Step A: Search in Falcon Database
       final found = await _supabaseService.findProductByBarcode(clean);
       if (found != null) {
-        existingProductFound = found;
-        isVariantMode = false;
-        variantParentProduct = null;
-
-        nameController.text = found.name;
-        if (found.nameHindi != null) nameHindiController.text = found.nameHindi!;
-        if (found.brand != null) brandController.text = found.brand!;
-        if (found.purchasePrice > 0) {
-          purchasePriceController.text = found.purchasePrice.toStringAsFixed(0);
-        }
-        if (found.mrp != null && found.mrp! > 0) {
-          mrpController.text = found.mrp!.toStringAsFixed(0);
-        }
-        if (found.sellingPrice > 0) {
-          sellingPriceController.text = found.sellingPrice.toStringAsFixed(0);
-        }
-        if (found.wholesalePrice != null) {
-          wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
-        }
-        if (found.wholesaleMinQty != null && found.wholesaleMinQty! > 0) {
-          wholesaleMinQtyController.text = found.wholesaleMinQty!.toString();
-        } else {
-          wholesaleMinQtyController.text = '12';
-        }
-        if (found.categoryId != null) selectedCategoryId = found.categoryId;
-        if (found.unitId != null) selectedUnitId = found.unitId;
-        selectedSupplierIds.clear();
-        if (found.supplierId != null && found.supplierId!.isNotEmpty) {
-          selectedSupplierIds.add(found.supplierId!);
-        }
-        if (found.description != null) {
-          final sMatch = RegExp(r'<!--SUPPLIERS:(.*?)-->').firstMatch(found.description!);
-          if (sMatch != null && sMatch.group(1) != null) {
-            try {
-              final list = jsonDecode(sMatch.group(1)!) as List;
-              for (final item in list) {
-                final sId = item.toString();
-                if (!selectedSupplierIds.contains(sId)) {
-                  selectedSupplierIds.add(sId);
-                }
-              }
-            } catch (_) {}
-          }
-          descriptionController.text = found.description!
-              .replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '')
-              .trim();
-        }
-        populateStockForExistingProduct(found);
+        _populateFromExistingProduct(found);
 
         HapticFeedback.mediumImpact();
         Fluttertoast.showToast(
@@ -291,49 +247,8 @@ class AddProductViewModel extends ChangeNotifier {
 
   /// Select an existing product from live suggestions to auto-fill details
   void selectExistingProduct(ProductModel found) {
-    existingProductFound = found;
-    isVariantMode = false;
-    variantParentProduct = null;
     matchingNameProducts = [];
-
-    nameController.text = found.name;
-    if (found.nameHindi != null && found.nameHindi!.isNotEmpty) {
-      nameHindiController.text = found.nameHindi!;
-    }
-    if (found.brand != null && found.brand!.isNotEmpty) {
-      brandController.text = found.brand!;
-    }
-    if (found.purchasePrice > 0) {
-      purchasePriceController.text = found.purchasePrice.toStringAsFixed(0);
-    }
-    if (found.mrp != null && found.mrp! > 0) {
-      mrpController.text = found.mrp!.toStringAsFixed(0);
-    }
-    if (found.sellingPrice > 0) {
-      sellingPriceController.text = found.sellingPrice.toStringAsFixed(0);
-    }
-    if (found.wholesalePrice != null && found.wholesalePrice! > 0) {
-      wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
-    }
-    if (found.wholesaleMinQty != null && found.wholesaleMinQty! > 0) {
-      wholesaleMinQtyController.text = found.wholesaleMinQty!.toString();
-    } else {
-      wholesaleMinQtyController.text = '12';
-    }
-    if (found.categoryId != null) selectedCategoryId = found.categoryId;
-    if (found.unitId != null) selectedUnitId = found.unitId;
-    populateStockForExistingProduct(found);
-    if (found.barcode != null && found.barcode!.isNotEmpty) {
-      barcodeController.text = found.barcode!;
-    }
-    if (found.sku != null && found.sku!.isNotEmpty) {
-      skuController.text = found.sku!;
-    }
-    if (found.description != null && found.description!.isNotEmpty) {
-      descriptionController.text = found.description!
-          .replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '')
-          .trim();
-    }
+    _populateFromExistingProduct(found);
 
     try {
       HapticFeedback.mediumImpact().catchError((_) {});
@@ -344,6 +259,100 @@ class AddProductViewModel extends ChangeNotifier {
       );
     } catch (_) {}
     notifyListeners();
+  }
+
+  /// Shared helper to populate existing product details without corrupting multi-unit prices & stock
+  void _populateFromExistingProduct(ProductModel found) {
+    existingProductFound = found;
+    isVariantMode = false;
+    variantParentProduct = null;
+
+    nameController.text = found.name;
+    if (found.nameHindi != null && found.nameHindi!.isNotEmpty) {
+      nameHindiController.text = found.nameHindi!;
+    }
+    if (found.brand != null && found.brand!.isNotEmpty) {
+      brandController.text = found.brand!;
+    }
+    if (found.categoryId != null) selectedCategoryId = found.categoryId;
+    if (found.unitId != null) selectedUnitId = found.unitId;
+
+    final factor = currentConversionFactor;
+
+    // Detect if product was originally sold as full pack or loose
+    final lowerName = found.name.toLowerCase();
+    final unitName = selectedUnit?.name.toLowerCase() ?? '';
+    if (factor > 1 && (lowerName.contains('box') || lowerName.contains('pack') || (unitName.isNotEmpty && lowerName.contains(unitName)))) {
+      sellAsFullPack = true;
+    } else {
+      sellAsFullPack = false;
+    }
+
+    // Populate prices according to enterPriceAsPack mode so save doesn't re-divide
+    if (factor > 1 && enterPriceAsPack && !sellAsFullPack) {
+      final packSelling = (found.wholesalePrice != null && found.wholesalePrice! > found.sellingPrice)
+          ? found.wholesalePrice!
+          : (found.sellingPrice * factor);
+      sellingPriceController.text = packSelling.toStringAsFixed(0);
+
+      if (found.purchasePrice > 0) {
+        purchasePriceController.text = (found.purchasePrice * factor).toStringAsFixed(0);
+      }
+      if (found.mrp != null && found.mrp! > 0) {
+        mrpController.text = (found.mrp! * factor).toStringAsFixed(0);
+      }
+    } else {
+      if (found.purchasePrice > 0) {
+        purchasePriceController.text = found.purchasePrice.toStringAsFixed(0);
+      }
+      if (found.mrp != null && found.mrp! > 0) {
+        mrpController.text = found.mrp!.toStringAsFixed(0);
+      }
+      if (found.sellingPrice > 0) {
+        sellingPriceController.text = found.sellingPrice.toStringAsFixed(0);
+      }
+    }
+
+    if (found.wholesalePrice != null && found.wholesalePrice! > 0) {
+      isWholesaleEnabled = true;
+      wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
+      wholesaleMinQtyController.text = (found.wholesaleMinQty ?? 12).toString();
+    } else {
+      isWholesaleEnabled = false;
+      wholesalePriceController.clear();
+      wholesaleMinQtyController.text = '12';
+    }
+
+    selectedSupplierIds.clear();
+    if (found.supplierId != null && found.supplierId!.isNotEmpty) {
+      selectedSupplierIds.add(found.supplierId!);
+    }
+    if (found.description != null && found.description!.isNotEmpty) {
+      final sMatch = RegExp(r'<!--SUPPLIERS:(.*?)-->').firstMatch(found.description!);
+      if (sMatch != null && sMatch.group(1) != null) {
+        try {
+          final list = jsonDecode(sMatch.group(1)!) as List;
+          for (final item in list) {
+            final sId = item.toString();
+            if (!selectedSupplierIds.contains(sId)) {
+              selectedSupplierIds.add(sId);
+            }
+          }
+        } catch (_) {}
+      }
+      descriptionController.text = found.description!
+          .replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '')
+          .trim();
+    }
+
+    if (found.barcode != null && found.barcode!.isNotEmpty) {
+      barcodeController.text = found.barcode!;
+    }
+    if (found.sku != null && found.sku!.isNotEmpty) {
+      skuController.text = found.sku!;
+    }
+
+    populateStockForExistingProduct(found);
   }
 
   /// Clear name suggestions dropdown
@@ -481,9 +490,24 @@ class AddProductViewModel extends ChangeNotifier {
         hasAppliedFrontWhiteBg = false;
         isReplacingExistingImage = true;
 
+        if (autoWhiteBackground) {
+          try {
+            final whiteBytes = await WhiteBackgroundService.makeBackgroundPureWhite(
+              filePath: photo.path,
+              inputBytes: bytes,
+            );
+            frontImageBytes = whiteBytes;
+            hasAppliedFrontWhiteBg = true;
+          } catch (wErr) {
+            debugPrint('Auto front white bg notice: $wErr');
+          }
+        }
+
         HapticFeedback.mediumImpact();
         Fluttertoast.showToast(
-          msg: 'Front photo ready. Tap "Scan with Gemini AI" to auto-fill details.',
+          msg: hasAppliedFrontWhiteBg
+              ? 'Front photo ready (White BG applied ✨)'
+              : 'Front photo ready. Tap "Scan with Gemini AI" to auto-fill details.',
           backgroundColor: const Color(0xFF38BDF8),
           textColor: Colors.white,
         );
@@ -520,12 +544,29 @@ class AddProductViewModel extends ChangeNotifier {
         );
 
         final bytes = compressed ?? await File(photo.path).readAsBytes();
+        backOriginalBytes = bytes;
         backImageBytes = bytes;
         backImagePath = photo.path;
+        hasAppliedBackWhiteBg = false;
+
+        if (autoWhiteBackground) {
+          try {
+            final whiteBytes = await WhiteBackgroundService.makeBackgroundPureWhite(
+              filePath: photo.path,
+              inputBytes: bytes,
+            );
+            backImageBytes = whiteBytes;
+            hasAppliedBackWhiteBg = true;
+          } catch (wErr) {
+            debugPrint('Auto back white bg notice: $wErr');
+          }
+        }
 
         HapticFeedback.mediumImpact();
         Fluttertoast.showToast(
-          msg: 'Back photo added! Gemini will read ingredients, weight & MRP.',
+          msg: hasAppliedBackWhiteBg
+              ? 'Back photo ready (White BG applied ✨)'
+              : 'Back photo added! Gemini will read ingredients, weight & MRP.',
           backgroundColor: const Color(0xFF38BDF8),
           textColor: Colors.white,
         );
@@ -549,7 +590,9 @@ class AddProductViewModel extends ChangeNotifier {
 
   void removeBackImage() {
     backImageBytes = null;
+    backOriginalBytes = null;
     backImagePath = null;
+    hasAppliedBackWhiteBg = false;
     notifyListeners();
   }
 
@@ -605,6 +648,65 @@ class AddProductViewModel extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  /// Dedicated Manual Studio White Background Toggle for Back Photo
+  Future<void> toggleBackWhiteBackground() async {
+    if (backImageBytes == null) return;
+
+    if (!hasAppliedBackWhiteBg) {
+      isProcessingBackImage = true;
+      notifyListeners();
+
+      Fluttertoast.showToast(
+        msg: 'Applying Studio White Background to Back Photo...',
+        backgroundColor: const Color(0xFF38BDF8),
+        textColor: Colors.white,
+      );
+
+      try {
+        final whiteBytes = await WhiteBackgroundService.makeBackgroundPureWhite(
+          filePath: backImagePath,
+          inputBytes: backOriginalBytes ?? backImageBytes,
+        );
+        backImageBytes = whiteBytes;
+        hasAppliedBackWhiteBg = true;
+
+        HapticFeedback.heavyImpact();
+        Fluttertoast.showToast(
+          msg: '✓ Back Photo: Studio White #FFFFFF applied!',
+          backgroundColor: const Color(0xFF10B981),
+          textColor: Colors.white,
+        );
+      } catch (e) {
+        Fluttertoast.showToast(msg: 'Background removal error: $e');
+      } finally {
+        isProcessingBackImage = false;
+        notifyListeners();
+      }
+    } else {
+      // Revert to original photo
+      if (backOriginalBytes != null) {
+        backImageBytes = backOriginalBytes;
+        hasAppliedBackWhiteBg = false;
+        HapticFeedback.mediumImpact();
+        Fluttertoast.showToast(
+          msg: 'Restored original back photo',
+          backgroundColor: const Color(0xFF64748B),
+          textColor: Colors.white,
+        );
+        notifyListeners();
+      }
+    }
+  }
+
+  void toggleAutoWhiteBackground() {
+    autoWhiteBackground = !autoWhiteBackground;
+    Fluttertoast.showToast(
+      msg: autoWhiteBackground ? 'Auto White Background: ON' : 'Auto White Background: OFF',
+      backgroundColor: autoWhiteBackground ? const Color(0xFF10B981) : const Color(0xFF64748B),
+    );
+    notifyListeners();
   }
 
   /// Dedicated Manual Gemini Vision Scan (Reads Front + Back images simultaneously)
@@ -988,7 +1090,28 @@ class AddProductViewModel extends ChangeNotifier {
   }
 
   void setPriceEntryMode(bool asPack) {
+    if (enterPriceAsPack == asPack) return;
     enterPriceAsPack = asPack;
+    final factor = currentConversionFactor;
+    if (factor > 1) {
+      if (asPack) {
+        // Switched to pack mode: multiply values by factor
+        final pp = double.tryParse(purchasePriceController.text);
+        if (pp != null && pp > 0) purchasePriceController.text = (pp * factor).toStringAsFixed(0);
+        final sp = double.tryParse(sellingPriceController.text);
+        if (sp != null && sp > 0) sellingPriceController.text = (sp * factor).toStringAsFixed(0);
+        final mrp = double.tryParse(mrpController.text);
+        if (mrp != null && mrp > 0) mrpController.text = (mrp * factor).toStringAsFixed(0);
+      } else {
+        // Switched to piece mode: divide values by factor
+        final pp = double.tryParse(purchasePriceController.text);
+        if (pp != null && pp > 0) purchasePriceController.text = (pp / factor).toStringAsFixed(0);
+        final sp = double.tryParse(sellingPriceController.text);
+        if (sp != null && sp > 0) sellingPriceController.text = (sp / factor).toStringAsFixed(0);
+        final mrp = double.tryParse(mrpController.text);
+        if (mrp != null && mrp > 0) mrpController.text = (mrp / factor).toStringAsFixed(0);
+      }
+    }
     notifyListeners();
   }
 
@@ -1139,13 +1262,18 @@ class AddProductViewModel extends ChangeNotifier {
           if (enterPriceAsPack) {
             finalPurchasePrice = currentConversionFactor > 0 ? enteredPurchasePrice / currentConversionFactor : enteredPurchasePrice;
             finalSellingPrice = currentConversionFactor > 0 ? enteredSellingPrice / currentConversionFactor : enteredSellingPrice;
-            finalMrp = (enteredMrp != null && enteredMrp > 0) ? enteredMrp : null;
+            finalMrp = (enteredMrp != null && enteredMrp > 0) ? (currentConversionFactor > 0 ? enteredMrp / currentConversionFactor : enteredMrp) : null;
 
             // Pack selling price becomes the wholesale rate!
             if (finalWholesalePrice == null || finalWholesalePrice <= 0) {
               finalWholesalePrice = enteredSellingPrice;
               finalWholesaleMinQty = currentConversionFactor.round();
             }
+          } else {
+            // Entered as Piece Price directly
+            finalPurchasePrice = enteredPurchasePrice;
+            finalSellingPrice = enteredSellingPrice;
+            finalMrp = enteredMrp;
           }
         } else {
           // ── Case 2: Sealed Pack Selling ──
@@ -1153,7 +1281,7 @@ class AddProductViewModel extends ChangeNotifier {
             finalPurchasePrice = enteredPurchasePrice;
             finalSellingPrice = enteredSellingPrice;
             if (enteredMrp != null && enteredMrp > 0) {
-              finalMrp = enteredMrp * currentConversionFactor;
+              finalMrp = enteredMrp;
             }
           } else {
             // Entered as piece, selling as full pack

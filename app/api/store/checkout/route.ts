@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     const productIds = cart.map((it) => it.product.id);
     const { data: dbProducts, error: prodErr } = await supabase
       .from("products")
-      .select("id, name, selling_price, purchase_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp, online_price, is_online, description")
+      .select("id, name, selling_price, purchase_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp, online_price, is_online, description, unit:units(conversion_factor)")
       .in("id", productIds)
       .eq("shop_id", shopId);
 
@@ -231,16 +231,21 @@ export async function POST(req: NextRequest) {
       ]);
     }
 
-    // 6. Record stock movements
-    const stockMovements = verifiedItems.map((it) => ({
-      shop_id: shopId,
-      product_id: it.productId,
-      movement_type: "sale",
-      quantity_delta: -it.quantity,
-      reference_table: "sales",
-      reference_id: saleId,
-      notes: `Online Storefront Order #${invoiceNumber}`,
-    }));
+    // 6. Record stock movements (deducting base pieces for accurate multi-unit inventory)
+    const stockMovements = verifiedItems.map((it) => {
+      const dbProd = productMap.get(it.productId);
+      const conversionFactor = Number((dbProd as any)?.unit?.conversion_factor) || 1;
+      const baseDeduction = it.quantity * (conversionFactor > 0 ? conversionFactor : 1);
+      return {
+        shop_id: shopId,
+        product_id: it.productId,
+        movement_type: "sale",
+        quantity_delta: -baseDeduction,
+        reference_table: "sales",
+        reference_id: saleId,
+        notes: `Online Storefront Order #${invoiceNumber}${conversionFactor > 1 ? ` (${it.quantity} packs = ${baseDeduction} pcs)` : ""}`,
+      };
+    });
 
     await supabase.from("stock_movements").insert(stockMovements);
 
