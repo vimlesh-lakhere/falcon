@@ -69,6 +69,27 @@ export async function POST(req: NextRequest) {
 
       console.log(`[REAL OTP DISPATCH] ${identifier} -> Code: ${generatedOtp} (Channel: ${channel})`);
 
+      // Check if this phone number is already registered
+      let isRegistered = false;
+      let existingCustomerName = "";
+      if (cleanPhone && supabaseUrl && supabaseAnonKey) {
+        try {
+          const supabase = createClient(supabaseUrl, supabaseAnonKey);
+          const { data: existing } = await supabase
+            .from("customers")
+            .select("id, name, address")
+            .eq("phone", cleanPhone)
+            .maybeSingle();
+
+          if (existing && existing.name && !existing.name.startsWith("Customer ") && existing.address && existing.address !== "Town / Local Area") {
+            isRegistered = true;
+            existingCustomerName = existing.name;
+          }
+        } catch (dbErr) {
+          console.warn("Customer lookup notice:", dbErr);
+        }
+      }
+
       let deliveryStatus = "queued";
       let whatsappLink: string | undefined = undefined;
 
@@ -134,6 +155,8 @@ export async function POST(req: NextRequest) {
 
       const response = NextResponse.json({
         success: true,
+        isRegistered,
+        existingCustomerName,
         message: isGatewaySent
           ? `Real 6-Digit OTP sent to +91 ${cleanPhone}.`
           : `OTP sent for +91 ${cleanPhone}.`,
@@ -290,9 +313,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // A customer is new if they have no real profile name or address yet
+      const isNewCustomer = !customerRecord || !customerRecord.name || customerRecord.name.startsWith("Customer ") || !parsedAddress || !parsedAddress.villageOrColony;
+
       const response = NextResponse.json({
         success: true,
         message: "Mobile Verified Successfully!",
+        isNewCustomer,
         customer: {
           id: customerRecord?.id || undefined,
           name: customerRecord?.name || name || `Customer ${cleanPhone.slice(-4)}`,
@@ -313,6 +340,73 @@ export async function POST(req: NextRequest) {
 
       // Clear used OTP challenge cookie
       response.cookies.delete("falcon_otp_challenge");
+
+      return response;
+    }
+
+    // ACTION 3: SAVE CUSTOMER PROFILE WITH LIVE MAP LOCATION
+    if (action === "save_customer_profile") {
+      const { address: customerAddress, name: customerName } = body;
+      const targetShopId = body.shopId || body.shop_id || req.cookies.get("falcon_active_store_id")?.value || req.cookies.get("falcon_store_shop_id")?.value || SHOP_ID;
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+      const addressString = typeof customerAddress === "object" ? JSON.stringify(customerAddress) : (customerAddress || "");
+      let updatedRecord: any = null;
+
+      try {
+        const { data: existing } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("phone", cleanPhone)
+          .maybeSingle();
+
+        if (existing) {
+          const { data: updated } = await supabase
+            .from("customers")
+            .update({
+              name: customerName?.trim() || existing.name,
+              address: addressString,
+            })
+            .eq("id", existing.id)
+            .select("*")
+            .maybeSingle();
+          updatedRecord = updated || existing;
+        } else {
+          const { data: created } = await supabase
+            .from("customers")
+            .insert({
+              shop_id: targetShopId,
+              name: customerName?.trim() || `Customer ${cleanPhone.slice(-4)}`,
+              phone: cleanPhone,
+              address: addressString,
+            })
+            .select("*")
+            .single();
+          updatedRecord = created;
+        }
+      } catch (dbErr) {
+        console.warn("Save profile DB sync notice:", dbErr);
+      }
+
+      const response = NextResponse.json({
+        success: true,
+        message: "Profile and delivery location saved!",
+        customer: {
+          id: updatedRecord?.id,
+          name: customerName?.trim() || updatedRecord?.name || `Customer ${cleanPhone.slice(-4)}`,
+          phone: cleanPhone,
+          address: customerAddress,
+          isVerified: true,
+          authProvider: "otp",
+        },
+      });
+
+      // 10-year persistent customer session cookie
+      response.cookies.set("falcon_customer_phone", cleanPhone, {
+        maxAge: 315360000,
+        path: "/",
+        sameSite: "lax",
+      });
 
       return response;
     }

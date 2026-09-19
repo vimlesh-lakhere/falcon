@@ -24,6 +24,9 @@ interface AddressPayload {
   landmark?: string;
   pincode?: string;
   deliveryNotes?: string;
+  latitude?: number;
+  longitude?: number;
+  mapAddress?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -139,10 +142,10 @@ export async function POST(req: NextRequest) {
               shop_id: shopId,
               name: address.fullName.trim(),
               phone: cleanPhone,
-              address: fullAddressText,
+              address: JSON.stringify(address),
               total_spend: 0,
               outstanding_balance: 0,
-              notes: `Online Storefront Customer from ${address.villageOrColony}`,
+              notes: `Online Storefront Customer from ${address.villageOrColony}${address.latitude ? ` (GPS: ${address.latitude}, ${address.longitude})` : ""}`,
             },
           ])
           .select("id")
@@ -158,7 +161,10 @@ export async function POST(req: NextRequest) {
 
     // 3. Create Sale record
     const upiNoteStr = upiReference ? ` [UPI UTR/Ref: ${upiReference}]` : "";
-    const deliveryAddressNotes = `[Online Order - ${(paymentMethod || "COD").toUpperCase()}${upiNoteStr}] Deliver to: ${address.fullName}, Phone: ${address.mobileNumber}, Village/Colony: ${address.villageOrColony}, Tehsil: ${address.tehsilOrTown}, Landmark: ${address.landmark || "N/A"}, PIN: ${address.pincode || "483501"}. Customer Note: ${address.deliveryNotes || "None"}`;
+    const gpsNoteStr = (address.latitude && address.longitude)
+      ? ` | 🗺️ Live GPS: https://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude} (${address.latitude}, ${address.longitude})`
+      : "";
+    const deliveryAddressNotes = `[Online Order - ${(paymentMethod || "COD").toUpperCase()}${upiNoteStr}] Deliver to: ${address.fullName}, Phone: ${address.mobileNumber}, Village/Colony: ${address.villageOrColony}, Tehsil: ${address.tehsilOrTown}, Landmark: ${address.landmark || "N/A"}, PIN: ${address.pincode || "483501"}${gpsNoteStr}. Customer Note: ${address.deliveryNotes || "None"}`;
 
     const { data: newSale, error: saleError } = await supabase
       .from("sales")
@@ -238,13 +244,17 @@ export async function POST(req: NextRequest) {
       .map((it, idx) => `${idx + 1}. *${it.productName}* x ${it.quantity} = ₹${it.price * it.quantity}`)
       .join("\n");
 
+    const gpsWhatsappStr = (address.latitude && address.longitude)
+      ? `\n🗺️ *Live GPS Location (Google Maps):*\nhttps://www.google.com/maps/dir/?api=1&destination=${address.latitude},${address.longitude}`
+      : "";
+
     const payMode = paymentMethod === "upi" ? "📲 UPI Online" : "💵 Cash on Delivery (COD)";
     const whatsappMessage = `🛍️ *NEW ONLINE ORDER - ${currentShopName.toUpperCase()}*
 ━━━━━━━━━━━━━━━━━━━━
 📋 *Invoice:* #${invoiceNumber}
 👤 *Customer:* ${address.fullName}
 📱 *Phone:* +91 ${cleanPhone}
-📍 *Delivery Address:* ${address.villageOrColony}, ${address.tehsilOrTown} (PIN: ${address.pincode || "483501"})
+📍 *Delivery Address:* ${address.villageOrColony}, ${address.tehsilOrTown} (PIN: ${address.pincode || "483501"})${gpsWhatsappStr}
 💳 *Payment Mode:* ${payMode}
 ━━━━━━━━━━━━━━━━━━━━
 🛒 *Items Ordered:*

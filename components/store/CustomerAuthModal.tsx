@@ -15,11 +15,15 @@ import {
   AlertCircle,
   KeyRound,
   MessageCircle,
+  MapPin,
+  Home,
+  Building2,
 } from "lucide-react";
 import { useStoreCart, CustomerAddress } from "@/store/useStoreCart";
 import { createClient } from "@/lib/supabase/client";
 import { auth, isFirebaseConfigured } from "@/lib/firebase";
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
+import { LocationPicker } from "@/components/store/LocationPicker";
 
 interface CustomerAuthModalProps {
   isOpen: boolean;
@@ -34,14 +38,24 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   onClose,
   onSuccess,
   title = "Mobile Number Sign In",
-  subtitle = "Enter your 10-digit mobile number to verify your account, access saved orders & express checkout.",
+  subtitle = "Enter your 10-digit mobile number to verify your account & express checkout.",
 }) => {
   const { loginCustomer, addRecentOrder, setSavedAddress } = useStoreCart();
 
   const [mounted, setMounted] = useState(false);
-  const [step, setStep] = useState<"input" | "otp" | "success">("input");
+  const [step, setStep] = useState<"input" | "otp" | "onboarding" | "success">("input");
   const [phone, setPhone] = useState("");
+  const [isExistingCustomer, setIsExistingCustomer] = useState(false);
+  const [existingCustomerName, setExistingCustomerName] = useState("");
+
+  // Onboarding fields for new user:
   const [fullName, setFullName] = useState("");
+  const [villageOrColony, setVillageOrColony] = useState("");
+  const [tehsilOrTown, setTehsilOrTown] = useState("");
+  const [landmark, setLandmark] = useState("");
+  const [pincode, setPincode] = useState("483501");
+  const [coords, setCoords] = useState<{ latitude?: number; longitude?: number; mapAddress?: string }>({});
+
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -156,11 +170,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       return;
     }
 
-    if (!fullName.trim()) {
-      setErrorMessage("Please enter your Full Name.");
-      return;
-    }
-
     setIsSubmitting(true);
 
     // 1. Try Google Firebase Phone Auth if user explicitly chose SMS
@@ -179,15 +188,30 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         setOtpDigits(["", "", "", "", "", ""]);
         setSuccessMessage(`Google SMS sent with 6-digit OTP to +91 ${cleanPhone}`);
         setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
+
+        // Check if customer exists in background to personalize OTP screen
+        fetch("/api/auth/otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "send_otp", phone: cleanPhone, channel: "sms" }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.isRegistered && d.existingCustomerName) {
+              setIsExistingCustomer(true);
+              setExistingCustomerName(d.existingCustomerName);
+            }
+          })
+          .catch(() => {});
+
         setIsSubmitting(false);
         return;
       } catch (fbErr: any) {
         console.error("Firebase Phone Auth error:", fbErr);
         cleanupRecaptcha();
 
-        // If billing is not enabled, automatically fallback to WhatsApp OTP so the user is never blocked!
+        // If billing is not enabled, automatically fallback to WhatsApp OTP so user is never blocked!
         if (fbErr.code === "auth/billing-not-enabled" || fbErr.message?.includes("billing-not-enabled")) {
-          console.log("Firebase billing not enabled. Falling back to WhatsApp OTP automatically...");
           return handleSendOtp(undefined, "whatsapp");
         }
 
@@ -222,7 +246,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         body: JSON.stringify({
           action: "send_otp",
           phone: cleanPhone,
-          name: fullName.trim(),
           channel,
         }),
       });
@@ -230,13 +253,16 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       const data = await res.json();
 
       if (res.ok && data.success) {
+        if (data.isRegistered && data.existingCustomerName) {
+          setIsExistingCustomer(true);
+          setExistingCustomerName(data.existingCustomerName);
+        }
         setStep("otp");
         setCountdown(45);
         setCanResend(false);
         setOtpDigits(["", "", "", "", "", ""]);
         if (data.whatsappLink) {
           setWhatsappLink(data.whatsappLink);
-          // Try opening WhatsApp automatically
           try {
             window.open(data.whatsappLink, "_blank");
           } catch {}
@@ -313,7 +339,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           action: "verify_otp",
           phone: cleanPhone,
           otp: code,
-          name: fullName.trim(),
           isFirebaseVerified,
         }),
       });
@@ -323,33 +348,18 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       if (res.ok && data.success && data.customer) {
         const cust = data.customer;
 
-        let resolvedAddress: CustomerAddress | null = null;
-        if (cust.address) {
-          if (typeof cust.address === "object") {
-            resolvedAddress = {
-              fullName: cust.name || fullName.trim(),
-              mobileNumber: cleanPhone,
-              villageOrColony: cust.address.villageOrColony || cust.address.address || "",
-              tehsilOrTown: cust.address.tehsilOrTown || "Town Area",
-              landmark: cust.address.landmark || "",
-              pincode: cust.address.pincode || "483501",
-            };
-          } else {
-            resolvedAddress = {
-              fullName: cust.name || fullName.trim(),
-              mobileNumber: cleanPhone,
-              villageOrColony: cust.address,
-              tehsilOrTown: "Town Area",
-              landmark: "",
-              pincode: "483501",
-            };
-          }
+        // If this is a NEW customer without a saved address / name, transition to onboarding!
+        if (data.isNewCustomer) {
+          setStep("onboarding");
+          setIsSubmitting(false);
+          return;
         }
 
-        // Login into Zustand store & save permanently
+        // Existing customer: login immediately!
+        let resolvedAddress: CustomerAddress | null = cust.address || null;
         loginCustomer({
           id: cust.id,
-          name: cust.name || fullName.trim(),
+          name: cust.name,
           phone: cleanPhone,
           isVerified: true,
           authProvider: "phone",
@@ -388,7 +398,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     imageUrl: it.product?.image_url,
                   })) || [],
                 address: resolvedAddress || {
-                  fullName: sale.customer?.name || fullName,
+                  fullName: sale.customer?.name || cust.name,
                   mobileNumber: cleanPhone,
                   villageOrColony: sale.customer?.address || "Local Area",
                   tehsilOrTown: "Town Area",
@@ -403,16 +413,88 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           // Non-blocking
         }
 
+        setSuccessMessage(`Welcome back, ${cust.name}!`);
         setStep("success");
         setTimeout(() => {
           if (onSuccess) onSuccess();
           onClose();
         }, 1200);
       } else {
-        setErrorMessage(data.error || "Incorrect OTP code. Please enter the valid 6-digit code or use 123456.");
+        setErrorMessage(data.error || "Incorrect OTP code. Please enter the valid 6-digit code.");
       }
     } catch (err: any) {
       setErrorMessage(err.message || "Failed to verify OTP with server.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Step 4: Handle New Customer Profile & Address Onboarding
+  const handleSaveOnboarding = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName.trim()) {
+      setErrorMessage("Please enter your Full Name.");
+      return;
+    }
+    if (!villageOrColony.trim()) {
+      setErrorMessage("Please enter your Village, Mohalla, or Colony.");
+      return;
+    }
+    if (!tehsilOrTown.trim()) {
+      setErrorMessage("Please enter your Tehsil or Town.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    const cleanPhone = phone.replace(/[^0-9]/g, "").slice(-10);
+    const newAddress: CustomerAddress = {
+      fullName: fullName.trim(),
+      mobileNumber: cleanPhone,
+      villageOrColony: villageOrColony.trim(),
+      tehsilOrTown: tehsilOrTown.trim(),
+      landmark: landmark.trim(),
+      pincode: pincode.trim() || "483501",
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      mapAddress: coords.mapAddress,
+    };
+
+    try {
+      const res = await fetch("/api/auth/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_customer_profile",
+          phone: cleanPhone,
+          name: fullName.trim(),
+          address: newAddress,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.customer) {
+        loginCustomer({
+          id: data.customer.id,
+          name: fullName.trim(),
+          phone: cleanPhone,
+          isVerified: true,
+          authProvider: "phone",
+          address: newAddress,
+        });
+        setSavedAddress(newAddress);
+        setSuccessMessage(`Profile created successfully! Welcome, ${fullName.trim()}!`);
+        setStep("success");
+        setTimeout(() => {
+          if (onSuccess) onSuccess();
+          onClose();
+        }, 1200);
+      } else {
+        setErrorMessage(data.error || "Failed to save profile.");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Network error saving profile.");
     } finally {
       setIsSubmitting(false);
     }
@@ -446,9 +528,13 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             <ShieldCheck className="w-6 h-6 text-emerald-300" />
           </div>
 
-          <h3 className="text-lg font-black tracking-tight">{title}</h3>
+          <h3 className="text-lg font-black tracking-tight">
+            {step === "onboarding" ? "Complete Delivery Profile" : title}
+          </h3>
           <p className="text-xs text-purple-100 mt-1 max-w-xs mx-auto leading-relaxed">
-            {subtitle}
+            {step === "onboarding"
+              ? "Enter your name and delivery address with live GPS pin once for express checkout."
+              : subtitle}
           </p>
         </div>
 
@@ -461,27 +547,17 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             </div>
           )}
 
-          {/* STEP 1: PHONE & NAME INPUT (ONLY MOBILE NUMBER LOGIN) */}
+          {successMessage && step === "otp" && (
+            <div className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-800">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          {/* STEP 1: PHONE-ONLY INPUT (Zero Friction - No Name or Address required upfront) */}
           {step === "input" && (
             <div className="space-y-4">
               <form onSubmit={(e) => handleSendOtp(e, "sms")} className="space-y-3.5">
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
-                    Your Full Name <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Ramesh Sharma"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-100 transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
                     10-Digit Mobile Number <span className="text-rose-500">*</span>
@@ -493,20 +569,24 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     <input
                       type="tel"
                       required
+                      autoFocus
                       inputMode="numeric"
                       maxLength={10}
                       placeholder="Enter 10-digit number"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
-                      className="flex-1 min-w-0 px-3.5 py-2.5 bg-transparent text-xs font-bold text-gray-900 outline-none tracking-wider placeholder:text-gray-400 placeholder:font-normal"
+                      className="flex-1 min-w-0 px-3.5 py-3 bg-transparent text-sm font-bold text-gray-900 outline-none tracking-wider placeholder:text-gray-400 placeholder:font-normal"
                     />
                   </div>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    We will send a 6-digit verification code to confirm your mobile number.
+                  </p>
                 </div>
 
                 <div className="flex flex-col gap-2 pt-2">
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || phone.length !== 10}
                     className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-purple-500/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
                   >
                     <span>{isSubmitting ? "Sending Google SMS..." : "Send Verification OTP (SMS)"}</span>
@@ -516,7 +596,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   <button
                     type="button"
                     onClick={(e) => handleSendOtp(e, "whatsapp")}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || phone.length !== 10}
                     className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
                   >
                     <MessageCircle className="w-4 h-4 text-emerald-600" />
@@ -534,7 +614,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-2">
                   <KeyRound className="w-5 h-5" />
                 </div>
-                <h4 className="text-sm font-bold text-gray-900">Enter 6-Digit OTP</h4>
+                <h4 className="text-sm font-bold text-gray-900">
+                  {existingCustomerName ? `Welcome back, ${existingCustomerName}!` : "Enter 6-Digit OTP"}
+                </h4>
                 <p className="text-xs text-gray-500 mt-0.5">
                   Code sent to <span className="font-bold text-gray-800">+91 {phone}</span>
                 </p>
@@ -597,11 +679,11 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 {canResend ? (
                   <button
                     type="button"
-                    onClick={() => handleSendOtp(undefined, "whatsapp")}
-                    className="text-emerald-700 font-bold hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
+                    onClick={() => handleSendOtp(undefined, "sms")}
+                    className="text-purple-600 font-bold hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    Resend on WhatsApp
+                    Resend OTP
                   </button>
                 ) : (
                   <span className="text-gray-400 text-[11px]">
@@ -616,13 +698,123 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 disabled={isSubmitting || otpDigits.some((d) => !d)}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
               >
-                <span>{isSubmitting ? "Verifying..." : "Verify & Sign In"}</span>
+                <span>{isSubmitting ? "Verifying..." : "Verify & Continue"}</span>
                 <CheckCircle2 className="w-4 h-4" />
               </button>
             </div>
           )}
 
-          {/* STEP 3: SUCCESS CELEBRATION */}
+          {/* STEP 3: NEW CUSTOMER ONBOARDING (NAME, ADDRESS & LIVE GOOGLE MAP GPS PICKER) */}
+          {step === "onboarding" && (
+            <div className="space-y-4">
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-2xl flex items-center gap-2.5 text-xs text-purple-900">
+                <Sparkles className="w-5 h-5 text-purple-600 shrink-0" />
+                <span>
+                  <strong>Mobile Verified!</strong> Enter your delivery address once so our delivery rider can reach you.
+                </span>
+              </div>
+
+              <form onSubmit={handleSaveOnboarding} className="space-y-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Your Full Name (आपका नाम) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Ramesh Kumar"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-100 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Village / Mohalla / Colony (गाँव / मोहल्ला / कालोनी) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Home className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Village Pipariya / Shanti Nagar Colony"
+                      value={villageOrColony}
+                      onChange={(e) => setVillageOrColony(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-100 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                      Tehsil / Town <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Katni"
+                      value={tehsilOrTown}
+                      onChange={(e) => setTehsilOrTown(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-100 transition-all outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                      Pincode
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="483501"
+                      value={pincode}
+                      onChange={(e) => setPincode(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-100 transition-all outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Nearby Landmark (पहचान / लैंडमार्क)
+                  </label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="e.g. Near Primary School / Water Tank"
+                      value={landmark}
+                      onChange={(e) => setLandmark(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-100 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Live Google Map & GPS Coordinates Picker */}
+                <LocationPicker
+                  latitude={coords.latitude}
+                  longitude={coords.longitude}
+                  onChange={(c) => setCoords(c)}
+                />
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer mt-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isSubmitting ? "Saving Profile..." : "Save Profile & Start Shopping"}</span>
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* STEP 4: SUCCESS CELEBRATION */}
           {step === "success" && (
             <div className="py-6 text-center space-y-3">
               <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto animate-bounce">
@@ -630,7 +822,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               </div>
               <h4 className="text-base font-black text-gray-900">Verified Successfully!</h4>
               <p className="text-xs text-gray-500">
-                Welcome, <span className="font-bold text-gray-800">{fullName || "Customer"}</span>! Signed in as verified customer.
+                Welcome, <span className="font-bold text-gray-800">{fullName || existingCustomerName || "Customer"}</span>! Signed in as verified customer.
               </p>
             </div>
           )}

@@ -22,6 +22,7 @@ import {
 import { useStoreCart, CustomerAddress } from "@/store/useStoreCart";
 import { storeOrderService } from "@/lib/store/order-service";
 import { CustomerAuthModal } from "@/components/store/CustomerAuthModal";
+import { LocationPicker } from "@/components/store/LocationPicker";
 import { resolveActiveShopId } from "@/lib/tenant";
 
 const STORE_UPI_ID = "9340362381@ybl";
@@ -41,7 +42,10 @@ export default function StoreCheckoutPage() {
       tehsilOrTown: customerUser?.address?.tehsilOrTown || "",
       landmark: customerUser?.address?.landmark || "",
       pincode: customerUser?.address?.pincode || "483501",
-      deliveryNotes: "",
+      deliveryNotes: customerUser?.address?.deliveryNotes || "",
+      latitude: customerUser?.address?.latitude,
+      longitude: customerUser?.address?.longitude,
+      mapAddress: customerUser?.address?.mapAddress,
     }
   );
 
@@ -447,6 +451,25 @@ export default function StoreCheckoutPage() {
                   onChange={(e) => setAddress({ ...address, deliveryNotes: e.target.value })}
                   placeholder="e.g. Deliver in afternoon / Call before coming"
                   className="w-full text-xs sm:text-sm bg-gray-50 border border-gray-200 focus:border-purple-500 focus:bg-white rounded-xl px-3.5 py-2.5 focus:outline-none font-medium"
+                />
+              </div>
+
+              {/* Live Google Maps GPS Location Pin */}
+              <div className="sm:col-span-2 pt-2 border-t border-gray-100">
+                <LocationPicker
+                  value={{
+                    latitude: address.latitude,
+                    longitude: address.longitude,
+                    mapAddress: address.mapAddress,
+                  }}
+                  onChange={(loc) => {
+                    setAddress((prev) => ({
+                      ...prev,
+                      latitude: loc.latitude,
+                      longitude: loc.longitude,
+                      mapAddress: loc.mapAddress,
+                    }));
+                  }}
                 />
               </div>
             </div>

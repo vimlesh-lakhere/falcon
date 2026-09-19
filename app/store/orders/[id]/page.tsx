@@ -90,12 +90,16 @@ export default function OrderTrackingPage() {
     .map((it, idx) => `${idx + 1}. *${it.productName}* (${it.quantity}x) = ₹${it.price * it.quantity}`)
     .join("\n");
 
+  const gpsLocationStr = (order.address.latitude && order.address.longitude)
+    ? `\n🗺️ *Live Google Map Location:*\nhttps://www.google.com/maps/dir/?api=1&destination=${order.address.latitude},${order.address.longitude}`
+    : "";
+
   const whatsappMessage = `🛍️ *NEW ONLINE ORDER - AGS STORE*
 ━━━━━━━━━━━━━━━━━━━━
 📋 *Invoice:* #${order.invoiceNumber}
 👤 *Customer:* ${order.address.fullName}
 📱 *Phone:* +91 ${order.address.mobileNumber}
-📍 *Delivery Address:* ${order.address.villageOrColony}, ${order.address.tehsilOrTown} (PIN: ${order.address.pincode})
+📍 *Delivery Address:* ${order.address.villageOrColony}, ${order.address.tehsilOrTown} (PIN: ${order.address.pincode})${gpsLocationStr}
 💳 *Payment Mode:* ${order.paymentMethod === "upi" ? "📲 UPI Online (PhonePe)" : "💵 Cash on Delivery (COD)"}
 ━━━━━━━━━━━━━━━━━━━━
 🛒 *Items Ordered:*
@@ -197,6 +201,19 @@ ${itemsText}
               <div className="text-gray-500">Landmark: {order.address.landmark}</div>
             )}
             <div className="font-semibold text-purple-700 pt-1">Phone: +91 {order.address.mobileNumber}</div>
+            {order.address.latitude && order.address.longitude && (
+              <div className="pt-2 border-t border-gray-100">
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${order.address.latitude},${order.address.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>🗺️ Open in Google Maps</span>
+                </a>
+              </div>
+            )}
           </div>
         </div>
 

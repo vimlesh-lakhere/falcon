@@ -17,6 +17,9 @@ export interface CustomerAddress {
   landmark: string;
   pincode: string;
   deliveryNotes?: string;
+  latitude?: number;
+  longitude?: number;
+  mapAddress?: string;
 }
 
 export interface CustomerUser {

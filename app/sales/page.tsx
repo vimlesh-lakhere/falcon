@@ -39,6 +39,39 @@ import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelMo
 import { parseFreightCharge } from "@/lib/thermal-printer";
 import { useAuthStore } from "@/store/useAuthStore";
 
+function extractCustomerLocation(addressStr?: string | null, notes?: string | null): { lat?: number; lng?: number; addressText: string; mapUrl?: string } {
+  let addressText = addressStr || "";
+  let lat: number | undefined;
+  let lng: number | undefined;
+
+  if (addressStr) {
+    try {
+      if (addressStr.startsWith("{") && addressStr.endsWith("}")) {
+        const parsed = JSON.parse(addressStr);
+        if (parsed.latitude && parsed.longitude) {
+          lat = Number(parsed.latitude);
+          lng = Number(parsed.longitude);
+        }
+        addressText = [parsed.villageOrColony, parsed.tehsilOrTown, parsed.landmark ? `(Near: ${parsed.landmark})` : "", parsed.pincode ? `PIN: ${parsed.pincode}` : ""].filter(Boolean).join(", ");
+      }
+    } catch {
+      // not json
+    }
+  }
+
+  // Also check notes for coordinates if not found in address
+  if (!lat && notes) {
+    const mapMatch = notes.match(/destination=([0-9.-]+),([0-9.-]+)/);
+    if (mapMatch) {
+      lat = Number(mapMatch[1]);
+      lng = Number(mapMatch[2]);
+    }
+  }
+
+  const mapUrl = (lat && lng) ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` : undefined;
+  return { lat, lng, addressText, mapUrl };
+}
+
 function SalesHistoryContent() {
   const { currentStore, profile, fetchSession } = useAuthStore();
   const SHOP_ID = currentStore?.id || profile?.store_id || "";
@@ -377,11 +410,30 @@ function SalesHistoryContent() {
                               <span>{sale.customer.phone}</span>
                             </a>
                           )}
-                          {sale.customer?.address && (
-                            <div className="text-[10px] text-gray-500 truncate mt-0.5" title={sale.customer.address}>
-                              📍 {sale.customer.address}
-                            </div>
-                          )}
+                          {(() => {
+                            const loc = extractCustomerLocation(sale.customer?.address, sale.notes);
+                            return (
+                              <>
+                                {loc.addressText && (
+                                  <div className="text-[10px] text-gray-500 truncate mt-0.5" title={loc.addressText}>
+                                    📍 {loc.addressText}
+                                  </div>
+                                )}
+                                {loc.mapUrl && (
+                                  <a
+                                    href={loc.mapUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold mt-1 shadow-2xs"
+                                  >
+                                    <MapPin className="w-3 h-3 text-emerald-600" />
+                                    <span>Google Maps</span>
+                                  </a>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
 
                         <div className="text-right shrink-0">
@@ -598,11 +650,30 @@ function SalesHistoryContent() {
                                 <span>{sale.customer.phone}</span>
                               </div>
                             )}
-                            {sale.customer?.address && (
-                              <div className="text-[10px] text-gray-500 truncate max-w-xs mt-0.5" title={sale.customer.address}>
-                                📍 {sale.customer.address}
-                              </div>
-                            )}
+                            {(() => {
+                              const loc = extractCustomerLocation(sale.customer?.address, sale.notes);
+                              return (
+                                <>
+                                  {loc.addressText && (
+                                    <div className="text-[10px] text-gray-500 truncate max-w-xs mt-0.5" title={loc.addressText}>
+                                      📍 {loc.addressText}
+                                    </div>
+                                  )}
+                                  {loc.mapUrl && (
+                                    <a
+                                      href={loc.mapUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold mt-1 shadow-2xs"
+                                    >
+                                      <MapPin className="w-3 h-3 text-emerald-600" />
+                                      <span>Google Maps</span>
+                                    </a>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </td>
 
                           {/* Date */}
@@ -833,40 +904,56 @@ function SalesHistoryContent() {
               )}
 
               {/* Customer & Address Details */}
-              {selectedSale.customer && (
-                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 text-xs space-y-1.5">
-                  <div className="font-bold text-gray-900 text-sm flex items-center justify-between">
-                    <span>Customer: {selectedSale.customer.name}</span>
-                    {selectedSale.customer.phone && (
-                      <div className="flex items-center gap-2">
+              {selectedSale.customer && (() => {
+                const loc = extractCustomerLocation(selectedSale.customer.address, selectedSale.notes);
+                return (
+                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 text-xs space-y-2">
+                    <div className="font-bold text-gray-900 text-sm flex items-center justify-between">
+                      <span>Customer: {selectedSale.customer.name}</span>
+                      {selectedSale.customer.phone && (
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={`https://wa.me/91${selectedSale.customer.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+                              `Namaste ${selectedSale.customer.name}, updates on your AGS Store Order #${selectedSale.invoice_number}: Status is now ${selectedSale.status.toUpperCase()}. Total: ₹${selectedSale.total_amount}.`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[11px] font-bold flex items-center gap-1"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                          </a>
+                          <a
+                            href={`tel:${selectedSale.customer.phone}`}
+                            className="px-2.5 py-1 bg-gray-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1"
+                          >
+                            <Phone className="w-3.5 h-3.5" /> Call
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-gray-700">Phone: {selectedSale.customer.phone || "N/A"}</div>
+                    <div className="text-gray-700">Address: {loc.addressText || "Local Address"}</div>
+                    {loc.mapUrl && (
+                      <div className="pt-1">
                         <a
-                          href={`https://wa.me/91${selectedSale.customer.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
-                            `Namaste ${selectedSale.customer.name}, updates on your AGS Store Order #${selectedSale.invoice_number}: Status is now ${selectedSale.status.toUpperCase()}. Total: ₹${selectedSale.total_amount}.`
-                          )}`}
+                          href={loc.mapUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[11px] font-bold flex items-center gap-1"
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-all"
                         >
-                          <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                        </a>
-                        <a
-                          href={`tel:${selectedSale.customer.phone}`}
-                          className="px-2.5 py-1 bg-gray-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1"
-                        >
-                          <Phone className="w-3.5 h-3.5" /> Call
+                          <MapPin className="w-4 h-4 text-emerald-200" />
+                          <span>🗺️ Open in Google Maps (Live Navigation)</span>
                         </a>
                       </div>
                     )}
+                    {selectedSale.notes && (
+                      <div className="text-purple-800 font-medium pt-1 border-t border-gray-200">
+                        Notes: {selectedSale.notes}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-gray-700">Phone: {selectedSale.customer.phone || "N/A"}</div>
-                  <div className="text-gray-700">Address: {selectedSale.customer.address || "Local Address"}</div>
-                  {selectedSale.notes && (
-                    <div className="text-purple-800 font-medium pt-1 border-t border-gray-200">
-                      Notes: {selectedSale.notes}
-                    </div>
-                  )}
-                </div>
-              )}
+                );
+              })()}
 
               {/* Profit Breakdown Panel for this Bill */}
               {(() => {
