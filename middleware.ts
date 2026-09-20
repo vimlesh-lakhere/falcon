@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { CookieOptions } from "@supabase/ssr";
+import { DEFAULT_FALLBACK_SHOP_ID, ROOT_DOMAIN, getTenantSubdomain } from "@/lib/tenant";
 
 const PUBLIC_PATHS = [
   "/",
@@ -13,6 +14,7 @@ const PUBLIC_PATHS = [
   "/auth",
   "/trial-expired",
   "/pay",
+  "/store-not-found",
 ];
 
 const ERP_ROLES = new Set([
@@ -31,6 +33,37 @@ function isPublicPath(pathname: string) {
   );
 }
 
+// <slug>.falcon360.in -> the shop that owns that slug. Cached briefly per server instance.
+const tenantCache = new Map<string, { shopId: string | null; exp: number }>();
+const TENANT_TTL_MS = 60_000;
+
+async function resolveTenantShopId(sub: string): Promise<string | null> {
+  // The AGS store is the platform owner's own shop.
+  if (sub === "ags") return process.env.DEFAULT_SHOP_ID || DEFAULT_FALLBACK_SHOP_ID;
+
+  const hit = tenantCache.get(sub);
+  if (hit && hit.exp > Date.now()) return hit.shopId;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+
+  try {
+    // `sub` is validated against a strict [a-z0-9-] pattern by getTenantSubdomain().
+    const res = await fetch(
+      `${url}/rest/v1/shops?select=id&slug=eq.${encodeURIComponent(sub)}&is_active=eq.true&limit=1`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+    );
+    if (!res.ok) return null; // do not cache failures (e.g. slug column not created yet)
+    const rows = (await res.json()) as { id: string }[];
+    const shopId = rows[0]?.id ?? null;
+    tenantCache.set(sub, { shopId, exp: Date.now() + TENANT_TTL_MS });
+    return shopId;
+  } catch {
+    return null;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host") || "";
@@ -45,12 +78,48 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(canonicalUrl, 308);
   }
 
-  // 2. ags.falcon360.in is the AGS store's own online store: its home page IS the storefront.
-  //    (www.falcon360.in keeps the Falcon 360 marketing home page.)
-  if (host.startsWith("ags.") && pathname === "/") {
+  // 2. Old shared AGS link (www.../store?shop=<AGS id>) now lives on ags.falcon360.in.
+  const tenantSub = getTenantSubdomain(host);
+  const bareHost = host.toLowerCase().split(":")[0];
+  if (
+    !tenantSub &&
+    (bareHost === ROOT_DOMAIN || bareHost === `www.${ROOT_DOMAIN}`) &&
+    pathname.startsWith("/store") &&
+    request.nextUrl.searchParams.get("shop") === DEFAULT_FALLBACK_SHOP_ID
+  ) {
+    const agsUrl = request.nextUrl.clone();
+    agsUrl.host = `ags.${ROOT_DOMAIN}`;
+    agsUrl.protocol = "https";
+    agsUrl.port = "";
+    agsUrl.searchParams.delete("shop");
+    return NextResponse.redirect(agsUrl, 307);
+  }
+
+  // 3. Every shop gets its own store address: <slug>.falcon360.in (e.g. ags.falcon360.in).
+  //    The sub-domain's home page IS that shop's storefront; www.falcon360.in keeps the marketing page.
+  let tenantShopId: string | null = null;
+  if (tenantSub) {
+    tenantShopId = await resolveTenantShopId(tenantSub);
+    if (!tenantShopId && !pathname.startsWith("/api/") && pathname !== "/store-not-found") {
+      const missingUrl = request.nextUrl.clone();
+      missingUrl.pathname = "/store-not-found";
+      return NextResponse.rewrite(missingUrl, { status: 404 });
+    }
+  }
+  const tenantHeaders = tenantShopId ? new Headers(request.headers) : null;
+  if (tenantHeaders && tenantShopId) tenantHeaders.set("x-store-shop-id", tenantShopId);
+  const tenantInit = tenantHeaders ? { request: { headers: tenantHeaders } } : undefined;
+  const setTenantCookie = (res: NextResponse) => {
+    if (tenantShopId) {
+      res.cookies.set("falcon_store_shop_id", tenantShopId, { path: "/", maxAge: 2592000, sameSite: "lax" });
+    }
+    return res;
+  };
+
+  if (tenantShopId && pathname === "/") {
     const storeUrl = request.nextUrl.clone();
     storeUrl.pathname = "/store";
-    return NextResponse.rewrite(storeUrl);
+    return setTenantCookie(NextResponse.rewrite(storeUrl, tenantInit));
   }
 
   // Customer OTP, Storefront Checkout, Public Leads & Cron Maintenance are public endpoints.
@@ -66,9 +135,9 @@ export async function middleware(request: NextRequest) {
     ...(process.env.NODE_ENV === "development" ? ["/api/ai/remove-background", "/api/ai/analyze-product"] : []),
   ];
   if (PUBLIC_API_PATHS.includes(pathname) || isPublicPath(pathname)) {
-    const response = NextResponse.next();
+    const response = setTenantCookie(NextResponse.next(tenantInit));
     const shopParam = request.nextUrl.searchParams.get("shop");
-    if (shopParam && shopParam.trim() !== "") {
+    if (!tenantShopId && shopParam && shopParam.trim() !== "") {
       response.cookies.set("falcon_store_shop_id", shopParam.trim(), {
         path: "/",
         maxAge: 2592000,

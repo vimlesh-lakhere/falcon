@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/Button";
 import { PasswordStrengthMeter } from "@/components/auth/PasswordStrengthMeter";
 import { businessRegistrationSchema, BusinessRegistrationInput } from "@/lib/validation/auth";
 import { supabase } from "@/lib/supabase/client";
+import { insertShopWithSlug } from "@/lib/store-slug";
 import { useAuthStore } from "@/store/useAuthStore";
 
 export default function RegisterBusinessPage() {
@@ -139,35 +140,30 @@ export default function RegisterBusinessPage() {
 
       // 2. Create Shop in database (Multi-Tenant SaaS entity)
       const storeName = data.storeName || data.businessName;
-      const slugBase = storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "store";
-      const uniqueSlug = `${slugBase}-${Math.random().toString(36).substring(2, 6)}`;
       const fullAddress = [data.address, data.city, data.state, data.pincode].filter(Boolean).join(", ");
 
       const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
       const retentionUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      const { data: storeData, error: storeError } = await supabase
-        .from("shops")
-        .insert([
-          {
-            name: storeName,
-            slug: uniqueSlug,
-            business_type: data.businessType || "general",
-            phone: data.phone || null,
-            address: fullAddress || null,
-            gst_number: data.gstNumber || null,
-            currency: data.currency || "INR",
-            plan: "trial",
-            trial_ends_at: trialEndsAt,
-            data_retention_until: retentionUntil,
-            is_active: true,
-            status: "trial_active",
-            owner_name: data.ownerName,
-            owner_email: data.email,
-          },
-        ])
-        .select()
-        .single();
+      // Only real `shops` columns here; the store also gets its own address <slug>.falcon360.in
+      const { data: storeData, error: storeError } = await insertShopWithSlug(
+        supabase,
+        {
+          name: storeName,
+          phone: data.phone || null,
+          address: fullAddress || null,
+          gst_number: data.gstNumber || null,
+          currency: data.currency || "INR",
+          plan: "trial",
+          trial_ends_at: trialEndsAt,
+          data_retention_until: retentionUntil,
+          is_active: true,
+          status: "trial_active",
+          owner_name: data.ownerName,
+          owner_email: data.email,
+        },
+        storeName
+      );
 
       if (storeError) {
         console.warn("Shop creation warning", storeError);

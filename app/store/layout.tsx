@@ -24,13 +24,14 @@ export default async function StoreLayout({
   const shopCookie =
     cookieStore.get("falcon_active_store_id")?.value ||
     cookieStore.get("falcon_store_shop_id")?.value;
-  const host = headerList.get("host") || "";
 
-  // If host is ags.falcon360.in, use AGS Store
-  // Otherwise use cookie if available, or fallback to default
-  const targetShopId = host.startsWith("ags.")
-    ? (process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001")
-    : (shopCookie || process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001");
+  // middleware.ts resolves <slug>.falcon360.in to a shop and passes it on this header.
+  // Otherwise fall back to the cookie (?shop= links on www) and finally the default shop.
+  const targetShopId =
+    headerList.get("x-store-shop-id") ||
+    shopCookie ||
+    process.env.DEFAULT_SHOP_ID ||
+    "a0000000-0000-0000-0000-000000000001";
 
   let categories: any[] = [];
   let shop: any = null;

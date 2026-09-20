@@ -8,6 +8,55 @@ export const MASTER_OWNER_EMAILS = [
   "owner_1786762700828@agsstore.com",
 ];
 
+/** Root domain that tenant stores live under: <slug>.falcon360.in */
+export const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "falcon360.in";
+
+/** Sub-domains reserved for the platform itself; they can never be a store slug. */
+export const RESERVED_SUBDOMAINS = [
+  "www", "app", "api", "admin", "mail", "email", "ftp", "smtp", "ns1", "ns2",
+  "cdn", "static", "assets", "status", "support", "blog", "help", "docs",
+  "store", "shop", "pay", "login", "register", "dashboard", "pos",
+];
+
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/; // 3-40 chars
+
+export function isValidStoreSlug(slug: string): boolean {
+  return SLUG_RE.test(slug) && !RESERVED_SUBDOMAINS.includes(slug);
+}
+
+/**
+ * Returns the store sub-domain for hosts like "raj-store.falcon360.in"
+ * (or "raj-store.localhost:3000" for local testing), otherwise null.
+ */
+export function getTenantSubdomain(host: string | null | undefined): string | null {
+  if (!host) return null;
+  const bare = host.toLowerCase().split(":")[0];
+  for (const root of [ROOT_DOMAIN, "localhost"]) {
+    const suffix = `.${root}`;
+    if (bare.endsWith(suffix)) {
+      const sub = bare.slice(0, -suffix.length);
+      return isValidStoreSlug(sub) ? sub : null;
+    }
+  }
+  return null;
+}
+
+/** "Raj's Kirana Store" -> "rajs-kirana-store" (max 30 chars, URL safe). */
+export function slugifyStoreName(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30)
+    .replace(/-+$/g, "");
+  return isValidStoreSlug(base) ? base : `store-${base || "new"}`.slice(0, 30);
+}
+
+export function randomSlugSuffix(): string {
+  return Math.random().toString(36).slice(2, 6);
+}
+
 export function isUuid(str?: string | null): boolean {
   if (!str) return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());

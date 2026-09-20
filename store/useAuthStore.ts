@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { Profile, Store, Branch, UserSession } from "@/types/auth";
 import { supabase } from "@/lib/supabase/client";
+import { insertShopWithSlug } from "@/lib/store-slug";
 
 interface AuthState {
   user: any | null;
@@ -92,7 +93,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const retentionUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
         // 1. Create dedicated record in both shops and stores
-        await supabase.from("shops").insert([
+        await insertShopWithSlug(
+          supabase,
           {
             id: newStoreId,
             name: storeName,
@@ -105,7 +107,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             owner_name: userName,
             owner_email: session.user.email || null,
           },
-        ]);
+          storeName
+        );
 
         await supabase.from("stores").insert([
           {
