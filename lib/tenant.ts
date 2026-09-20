@@ -80,13 +80,28 @@ export function getPublicShopId(): string {
       }
     } catch {}
 
-    // 2. Check local storage active store
+    // 2. Storefront pages: the shop of the ADDRESS wins. middleware.ts puts it in the
+    //    falcon_store_shop_id cookie (for <slug>.falcon360.in and ?shop= links). This must beat a
+    //    stale ERP login / test registration left in this browser's localStorage, otherwise the
+    //    store of the address (e.g. ags.falcon360.in) would show another shop's empty catalog.
+    try {
+      const isStorefront =
+        window.location.pathname.startsWith("/store") ||
+        (window.location.pathname === "/" && getTenantSubdomain(window.location.host) !== null);
+      if (isStorefront) {
+        const m = document.cookie.match(/(?:^|;\s*)falcon_store_shop_id=([^;]+)/);
+        const fromAddress = m ? decodeURIComponent(m[1]).trim() : "";
+        if (isUuid(fromAddress)) return fromAddress;
+      }
+    } catch {}
+
+    // 3. Check local storage active store (ERP)
     try {
       const stored = localStorage.getItem("falcon_active_store_id");
       if (stored && stored.trim() !== "" && isUuid(stored)) return stored.trim();
     } catch {}
 
-    // 3. Check cookies
+    // 4. Check cookies
     try {
       const cookies = document.cookie.split(";");
       for (const c of cookies) {

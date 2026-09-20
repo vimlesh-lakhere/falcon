@@ -21,9 +21,10 @@ export default async function StoreLayout({
   const cookieStore = cookies();
   const headerList = headers();
 
+  // The shop chosen by the address (falcon_store_shop_id) beats the ERP's active-store cookie.
   const shopCookie =
-    cookieStore.get("falcon_active_store_id")?.value ||
-    cookieStore.get("falcon_store_shop_id")?.value;
+    cookieStore.get("falcon_store_shop_id")?.value ||
+    cookieStore.get("falcon_active_store_id")?.value;
 
   // middleware.ts resolves <slug>.falcon360.in to a shop and passes it on this header.
   // Otherwise fall back to the cookie (?shop= links on www) and finally the default shop.
