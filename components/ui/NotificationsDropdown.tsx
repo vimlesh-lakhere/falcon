@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Bell, Check, AlertTriangle, AlertCircle, ShoppingBag, Clock } from "lucide-react";
 import { notificationsRepository } from "@/repositories/notifications.repo";
 import { Notification } from "@/types/database";
@@ -11,20 +11,49 @@ export function NotificationsDropdown({ shopId }: { shopId: string }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
       const data = await notificationsRepository.getAll(shopId);
       setNotifications(data);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [shopId]);
 
   useEffect(() => {
     loadNotifications();
-    const interval = setInterval(loadNotifications, 15000);
-    return () => clearInterval(interval);
-  }, [shopId]);
+
+    // Poll infrequently, and only while this tab is actually visible. This keeps a
+    // background/idle ERP tab from making thousands of pointless Supabase reads a day
+    // (free-tier friendly); opening the bell below always refreshes immediately.
+    const POLL_MS = 90000;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const start = () => {
+      if (timer === null) timer = setInterval(loadNotifications, POLL_MS);
+    };
+    const stop = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        loadNotifications();
+        start();
+      }
+    };
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [loadNotifications]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -61,7 +90,11 @@ export function NotificationsDropdown({ shopId }: { shopId: string }) {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          const next = !isOpen;
+          setIsOpen(next);
+          if (next) loadNotifications();
+        }}
         className="relative p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors focus:outline-none"
         title="Notifications"
       >
