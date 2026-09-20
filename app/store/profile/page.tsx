@@ -184,9 +184,9 @@ export default function CustomerProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "save_customer_profile",
-          customerPhone: currentPhone,
-          customerName: fullName.trim(),
-          customerAddress: updatedAddress,
+          phone: currentPhone,
+          name: fullName.trim(),
+          address: updatedAddress,
         }),
       });
 
@@ -328,8 +328,13 @@ export default function CustomerProfilePage() {
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to sign out from your customer account?")) {
       logoutCustomer();
-      document.cookie = "falcon_customer_phone=; path=/; max-age=0";
-      router.push("/store");
+      fetch("/api/auth/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "logout" }),
+      })
+        .catch(() => {})
+        .finally(() => router.push("/store"));
     }
   };
 

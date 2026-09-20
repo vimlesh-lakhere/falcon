@@ -1,515 +1,324 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
+import {
+  CUSTOMER_SESSION_COOKIE,
+  CUSTOMER_SESSION_MAX_AGE_S,
+  isSessionConfigured,
+  readCustomerSession,
+  signCustomerSession,
+  verifyFirebasePhoneToken,
+} from "@/lib/customer-session";
+import { isUuid } from "@/lib/tenant";
+
+/**
+ * Store-customer login.
+ *
+ * The one-time code is sent and checked by Firebase Phone Auth (Google). The browser then sends the
+ * resulting Firebase ID token here; we ask Google to validate it and only then trust that the
+ * customer owns the mobile number. We never generate, log or hand out OTP codes ourselves, and
+ * there is no WhatsApp OTP.
+ *
+ * After verification the browser gets a signed, httpOnly session cookie. Everything that changes a
+ * customer's data requires that cookie.
+ */
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
+const DEFAULT_SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
-// Fast2SMS / 2Factor / Twilio Gateway Keys (if configured in environment)
-const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY;
-const TWO_FACTOR_API_KEY = process.env.TWO_FACTOR_API_KEY;
+const cleanDigits = (value: unknown) => (typeof value === "string" ? value.replace(/[^0-9]/g, "").slice(-10) : "");
 
-// Real In-memory & Supabase OTP registry (Identifier -> { otp, expiresAt, attempts, name })
-const otpStore = new Map<string, { otp: string; expiresAt: number; attempts: number; name?: string }>();
-const MAX_OTP_ATTEMPTS = 5;
-
-const OTP_SECRET = process.env.NEXTAUTH_SECRET || process.env.SUPABASE_JWT_SECRET || "falcon_otp_secure_hmac_secret_key_2026";
-
-function signOtpChallenge(identifier: string, otp: string, expiresAt: number): string {
-  const hash = crypto.createHmac("sha256", OTP_SECRET).update(`${identifier}:${otp}:${expiresAt}`).digest("hex");
-  return `${identifier}.${expiresAt}.${hash}`;
+function resolveShopId(req: NextRequest, body: Record<string, unknown>): string {
+  const candidates = [
+    req.headers.get("x-store-shop-id"), // set by middleware for <slug>.falcon360.in
+    typeof body.shopId === "string" ? body.shopId : null,
+    typeof body.shop_id === "string" ? body.shop_id : null,
+    req.cookies.get("falcon_store_shop_id")?.value,
+    req.cookies.get("falcon_active_store_id")?.value,
+  ];
+  return candidates.find((c): c is string => !!c && isUuid(c)) || DEFAULT_SHOP_ID;
 }
 
-function verifyOtpChallenge(identifier: string, otp: string, challengeCookie: string | undefined): boolean {
-  if (!challengeCookie) return false;
-  const parts = challengeCookie.split(".");
-  if (parts.length !== 3) return false;
-  const [cookieIdent, expiresAtStr, cookieHash] = parts;
-  if (cookieIdent !== identifier) return false;
-  const expiresAt = parseInt(expiresAtStr, 10);
-  if (isNaN(expiresAt) || Date.now() > expiresAt) return false;
+type CustomerRow = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+};
 
-  const expectedHash = crypto.createHmac("sha256", OTP_SECRET).update(`${identifier}:${otp}:${expiresAt}`).digest("hex");
+function parseAddress(row: CustomerRow | null, phone: string, fallbackName?: string) {
+  if (!row?.address || row.address === "Town / Local Area") return null;
   try {
-    return crypto.timingSafeEqual(Buffer.from(cookieHash), Buffer.from(expectedHash));
+    return JSON.parse(row.address);
   } catch {
-    return false;
+    return {
+      fullName: row.name || fallbackName,
+      mobileNumber: phone,
+      villageOrColony: row.address,
+      tehsilOrTown: "Town Area",
+      landmark: "",
+      pincode: "483501",
+    };
   }
+}
+
+function withSession(res: NextResponse, phone: string): NextResponse {
+  const token = signCustomerSession(phone);
+  if (token) {
+    res.cookies.set(CUSTOMER_SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: CUSTOMER_SESSION_MAX_AGE_S,
+    });
+  }
+  // Old, unsigned cookie from earlier versions: never trusted, always removed.
+  res.cookies.delete("falcon_customer_phone");
+  res.cookies.delete("falcon_otp_challenge");
+  return res;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { action, phone, email, otp, name, channel = "whatsapp" } = body;
+    const body = (await req.json()) as Record<string, unknown>;
+    const action = body.action;
+    const cleanPhone = cleanDigits(body.phone ?? body.customerPhone);
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const shopId = resolveShopId(req, body);
 
-    const cleanPhone = phone ? phone.replace(/[^0-9]/g, "").slice(-10) : "";
-    const cleanEmail = email ? (email || "").toLowerCase().trim() : "";
-    const identifier = cleanPhone || cleanEmail;
+    // --- Restore the logged-in customer from the signed session cookie ---
+    if (action === "session") {
+      const phone = readCustomerSession(req.cookies.get(CUSTOMER_SESSION_COOKIE)?.value);
+      // Visitors who are simply not logged in are the normal case: answer 200 so no error shows up in the console.
+      if (!phone) return NextResponse.json({ success: false });
 
-    if (!identifier) {
-      return NextResponse.json(
-        { success: false, error: "Valid 10-digit mobile number or email is required." },
-        { status: 400 }
-      );
-    }
+      const { data } = await supabase
+        .from("customers")
+        .select("id, name, phone, email, address")
+        .eq("phone", phone)
+        .eq("shop_id", shopId)
+        .maybeSingle();
+      if (!data) return NextResponse.json({ success: false });
 
-    // ACTION 1: SEND REAL OTP
-    if (action === "send_otp") {
-      // Generate cryptographically secure 6-digit real OTP
-      const generatedOtp = crypto.randomInt(100000, 1000000).toString();
-      const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
-
-      otpStore.set(identifier, {
-        otp: generatedOtp,
-        expiresAt,
-        attempts: 0,
-        name: name?.trim(),
-      });
-
-      console.log(`[REAL OTP DISPATCH] ${identifier} -> Code: ${generatedOtp} (Channel: ${channel})`);
-
-      // Check if this phone number is already registered
-      let isRegistered = false;
-      let existingCustomerName = "";
-      if (cleanPhone && supabaseUrl && supabaseAnonKey) {
-        try {
-          const supabase = createClient(supabaseUrl, supabaseAnonKey);
-          const { data: existing } = await supabase
-            .from("customers")
-            .select("id, name, address")
-            .eq("phone", cleanPhone)
-            .maybeSingle();
-
-          if (existing && existing.name && !existing.name.startsWith("Customer ") && existing.address && existing.address !== "Town / Local Area") {
-            isRegistered = true;
-            existingCustomerName = existing.name;
-          }
-        } catch (dbErr) {
-          console.warn("Customer lookup notice:", dbErr);
-        }
-      }
-
-      let deliveryStatus = "queued";
-      let whatsappLink: string | undefined = undefined;
-
-      // 1. WhatsApp OTP Delivery URL
-      if (cleanPhone) {
-        const waMessage = `*AGS Store & Cosmetics Verification Code*\n\nYour 6-digit verification code is: *${generatedOtp}*\n\nValid for 10 minutes. Do not share this OTP with anyone.`;
-        whatsappLink = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(waMessage)}`;
-      }
-
-      // 2. Dispatch via Fast2SMS Gateway (if key available)
-      if (cleanPhone && FAST2SMS_API_KEY) {
-        try {
-          const fast2smsRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
-            method: "POST",
-            headers: {
-              authorization: FAST2SMS_API_KEY,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              route: "otp",
-              variables_values: generatedOtp,
-              numbers: cleanPhone,
-            }),
-          });
-          const fast2smsData = await fast2smsRes.json().catch(() => ({}));
-          if (fast2smsData.return) {
-            deliveryStatus = "sms_sent";
-          }
-        } catch (smsErr) {
-          console.warn("Fast2SMS gateway error:", smsErr);
-        }
-      }
-
-      // 3. Dispatch via 2Factor.in Gateway (if key available)
-      if (cleanPhone && TWO_FACTOR_API_KEY && deliveryStatus !== "sms_sent") {
-        try {
-          await fetch(`https://2factor.in/API/V1/${TWO_FACTOR_API_KEY}/SMS/${cleanPhone}/${generatedOtp}/AGSSTORE`);
-          deliveryStatus = "sms_sent";
-        } catch (tfErr) {
-          console.warn("2Factor gateway error:", tfErr);
-        }
-      }
-
-      // 4. Dispatch via Supabase Native Phone / Email OTP
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
-      if (cleanPhone) {
-        try {
-          await supabase.auth.signInWithOtp({
-            phone: `+91${cleanPhone}`,
-          }).catch(() => {});
-        } catch {}
-      } else if (cleanEmail) {
-        try {
-          await supabase.auth.signInWithOtp({
-            email: cleanEmail,
-          }).catch(() => {});
-        } catch {}
-      }
-
-      // If no SMS gateway delivered successfully, return demoOtp for instant frictionless verification
-      const isGatewaySent = deliveryStatus === "sms_sent";
-      const challenge = signOtpChallenge(identifier, generatedOtp, expiresAt);
-
-      const response = NextResponse.json({
+      return NextResponse.json({
         success: true,
-        isRegistered,
-        existingCustomerName,
-        message: isGatewaySent
-          ? `Real 6-Digit OTP sent to +91 ${cleanPhone}.`
-          : `OTP sent for +91 ${cleanPhone}.`,
-        whatsappLink,
-        expiresInSeconds: 600,
+        customer: {
+          id: data.id,
+          name: data.name,
+          phone,
+          address: parseAddress(data as CustomerRow, phone),
+          isVerified: true,
+          authProvider: "phone",
+        },
       });
-
-      response.cookies.set("falcon_otp_challenge", challenge, {
-        maxAge: 600,
-        path: "/",
-        httpOnly: true,
-        sameSite: "lax",
-      });
-
-      return response;
     }
 
-    // ACTION 2: VERIFY REAL OTP
+    // --- Log out: drop the session cookie ---
+    if (action === "logout") {
+      const res = NextResponse.json({ success: true });
+      res.cookies.delete(CUSTOMER_SESSION_COOKIE);
+      res.cookies.delete("falcon_customer_phone");
+      return res;
+    }
+
+    // --- Mobile-number verification: proof comes from Firebase (Google), never from the browser's word ---
     if (action === "verify_otp") {
-      if (!otp) {
+      if (cleanPhone.length !== 10) {
+        return NextResponse.json({ success: false, error: "Valid 10-digit mobile number is required." }, { status: 400 });
+      }
+      if (!isSessionConfigured()) {
+        return NextResponse.json({ success: false, error: "Login is not available right now. Please try later." }, { status: 503 });
+      }
+
+      let verified = false;
+      if (typeof body.firebaseIdToken === "string" && body.firebaseIdToken) {
+        const tokenPhone = await verifyFirebasePhoneToken(body.firebaseIdToken);
+        verified = tokenPhone === `+91${cleanPhone}`;
+      } else if (process.env.NODE_ENV === "development" && String(body.otp ?? "") === "123456") {
+        verified = true; // local development shortcut only, never in production
+      }
+
+      if (!verified) {
         return NextResponse.json(
-          { success: false, error: "Please enter the 6-digit OTP code." },
-          { status: 400 }
+          { success: false, error: "We could not verify this mobile number. Please request a new OTP." },
+          { status: 401 }
         );
       }
 
-      const cleanOtp = otp.toString().trim();
-      const storedData = otpStore.get(identifier);
-
-      if (storedData) {
-        storedData.attempts = (storedData.attempts || 0) + 1;
-        if (storedData.attempts > MAX_OTP_ATTEMPTS) {
-          otpStore.delete(identifier);
-          return NextResponse.json(
-            { success: false, error: "Too many failed attempts. Please request a new OTP." },
-            { status: 429 }
-          );
-        }
-      }
-
-      let isOtpValid = false;
-
-      // 1. Verify against cryptographic signed challenge cookie (Stateless & 100% resilient across serverless lambdas)
-      const challengeCookie = req.cookies.get("falcon_otp_challenge")?.value;
-      if (verifyOtpChallenge(identifier, cleanOtp, challengeCookie)) {
-        isOtpValid = true;
-      }
-
-      // 2. Verify against in-memory storage, Firebase confirmation, or universal master OTP (123456 / 000000)
-      if (!isOtpValid) {
-        if (body.isFirebaseVerified || cleanOtp === "123456" || cleanOtp === "000000") {
-          isOtpValid = true;
-        } else if (storedData && storedData.otp === cleanOtp) {
-          if (Date.now() <= storedData.expiresAt) {
-            isOtpValid = true;
-          } else {
-            otpStore.delete(identifier);
-            return NextResponse.json(
-              { success: false, error: "OTP has expired. Please request a new OTP." },
-              { status: 400 }
-            );
-          }
-        }
-      }
-
-      // 2. Fallback check with Supabase verifyOtp
-      if (!isOtpValid && supabaseUrl && supabaseAnonKey && cleanPhone) {
-        try {
-          const supabase = createClient(supabaseUrl, supabaseAnonKey);
-          const { data: supaVerify, error: supaErr } = await supabase.auth.verifyOtp({
-            phone: `+91${cleanPhone}`,
-            token: cleanOtp,
-            type: "sms",
-          });
-          if (!supaErr && supaVerify?.session) {
-            isOtpValid = true;
-          }
-        } catch {}
-      }
-
-      if (!isOtpValid) {
-        const attemptsLeft = storedData ? Math.max(0, MAX_OTP_ATTEMPTS - storedData.attempts) : 0;
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: attemptsLeft > 0 
-              ? `Invalid OTP code. ${attemptsLeft} attempts remaining.` 
-              : "Invalid OTP code. Please enter the correct 6-digit code or use 123456." 
-          },
-          { status: 400 }
-        );
-      }
-
-      // Clear used OTP from memory
-      otpStore.delete(identifier);
-
-      // Create or update Customer in Supabase
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
-      let customerRecord: any = null;
-
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      let record: CustomerRow | null = null;
       try {
         const { data: existing } = await supabase
           .from("customers")
           .select("*")
           .eq("phone", cleanPhone)
+          .eq("shop_id", shopId)
           .maybeSingle();
 
         if (existing) {
-          customerRecord = existing;
-          if (name && name.trim() && (!existing.name || existing.name.startsWith("Customer "))) {
-            const { data: updated } = await supabase
-              .from("customers")
-              .update({ name: name.trim() })
-              .eq("id", existing.id)
-              .select("*")
-              .maybeSingle();
-            if (updated) customerRecord = updated;
-          }
+          record = existing as CustomerRow;
         } else {
-          const targetShopId = body.shopId || body.shop_id || req.cookies.get("falcon_active_store_id")?.value || req.cookies.get("falcon_store_shop_id")?.value || SHOP_ID;
-          const { data: newCustomer, error: insertErr } = await supabase
+          const { data: created } = await supabase
             .from("customers")
             .insert({
-              shop_id: targetShopId,
-              name: name?.trim() || `Customer ${cleanPhone.slice(-4)}`,
+              shop_id: shopId,
+              name: name || `Customer ${cleanPhone.slice(-4)}`,
               phone: cleanPhone,
               address: "Town / Local Area",
             })
             .select("*")
             .single();
-
-          if (!insertErr && newCustomer) {
-            customerRecord = newCustomer;
-          }
+          record = (created as CustomerRow | null) ?? null;
         }
       } catch (dbErr) {
         console.warn("Customer DB sync notice:", dbErr);
       }
 
-      // Parse saved address if available
-      let parsedAddress: any = null;
-      if (customerRecord?.address && customerRecord.address !== "Town / Local Area") {
-        try {
-          parsedAddress = JSON.parse(customerRecord.address);
-        } catch {
-          parsedAddress = {
-            fullName: customerRecord.name || name,
-            mobileNumber: cleanPhone,
-            villageOrColony: customerRecord.address,
-            tehsilOrTown: "Town Area",
-            landmark: "",
-            pincode: "483501",
-          };
-        }
-      }
+      const address = parseAddress(record, cleanPhone, name);
+      const isNewCustomer =
+        !record || !record.name || record.name.startsWith("Customer ") || !address || !address.villageOrColony;
 
-      // A customer is new if they have no real profile name or address yet
-      const isNewCustomer = !customerRecord || !customerRecord.name || customerRecord.name.startsWith("Customer ") || !parsedAddress || !parsedAddress.villageOrColony;
-
-      const response = NextResponse.json({
-        success: true,
-        message: "Mobile Verified Successfully!",
-        isNewCustomer,
-        customer: {
-          id: customerRecord?.id || undefined,
-          name: customerRecord?.name || name || `Customer ${cleanPhone.slice(-4)}`,
-          phone: cleanPhone,
-          email: customerRecord?.email || "",
-          address: parsedAddress,
-          isVerified: true,
-          authProvider: "otp",
-        },
-      });
-
-      // 10-year persistent customer session cookie
-      response.cookies.set("falcon_customer_phone", cleanPhone, {
-        maxAge: 315360000,
-        path: "/",
-        sameSite: "lax",
-      });
-
-      // Clear used OTP challenge cookie
-      response.cookies.delete("falcon_otp_challenge");
-
-      return response;
+      return withSession(
+        NextResponse.json({
+          success: true,
+          message: "Mobile Verified Successfully!",
+          isNewCustomer,
+          customer: {
+            id: record?.id || undefined,
+            name: record?.name || name || `Customer ${cleanPhone.slice(-4)}`,
+            phone: cleanPhone,
+            email: record?.email || "",
+            address,
+            isVerified: true,
+            authProvider: "phone",
+          },
+        }),
+        cleanPhone
+      );
     }
 
-    // ACTION 3: SAVE CUSTOMER PROFILE WITH LIVE MAP LOCATION
+    // --- Save profile & delivery address: only for the number this browser has verified ---
     if (action === "save_customer_profile") {
-      const { address: customerAddress, name: customerName } = body;
-      const targetShopId = body.shopId || body.shop_id || req.cookies.get("falcon_active_store_id")?.value || req.cookies.get("falcon_store_shop_id")?.value || SHOP_ID;
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      const sessionPhone = readCustomerSession(req.cookies.get(CUSTOMER_SESSION_COOKIE)?.value);
+      if (!cleanPhone || sessionPhone !== cleanPhone) {
+        return NextResponse.json(
+          { success: false, error: "Please sign in again with your mobile number to continue." },
+          { status: 401 }
+        );
+      }
 
-      const addressString = typeof customerAddress === "object" ? JSON.stringify(customerAddress) : (customerAddress || "");
-      let updatedRecord: any = null;
+      const customerName = String(body.name ?? body.customerName ?? "").trim();
+      const rawAddress = body.address ?? body.customerAddress;
+      const addressString = typeof rawAddress === "object" && rawAddress ? JSON.stringify(rawAddress) : String(rawAddress ?? "");
 
+      let updated: CustomerRow | null = null;
       try {
         const { data: existing } = await supabase
           .from("customers")
           .select("*")
           .eq("phone", cleanPhone)
+          .eq("shop_id", shopId)
           .maybeSingle();
 
         if (existing) {
-          const { data: updated } = await supabase
+          const { data } = await supabase
             .from("customers")
-            .update({
-              name: customerName?.trim() || existing.name,
-              address: addressString,
-            })
+            .update({ name: customerName || existing.name, address: addressString })
             .eq("id", existing.id)
             .select("*")
             .maybeSingle();
-          updatedRecord = updated || existing;
+          updated = (data as CustomerRow | null) ?? (existing as CustomerRow);
         } else {
-          const { data: created } = await supabase
+          const { data } = await supabase
             .from("customers")
             .insert({
-              shop_id: targetShopId,
-              name: customerName?.trim() || `Customer ${cleanPhone.slice(-4)}`,
+              shop_id: shopId,
+              name: customerName || `Customer ${cleanPhone.slice(-4)}`,
               phone: cleanPhone,
               address: addressString,
             })
             .select("*")
             .single();
-          updatedRecord = created;
+          updated = (data as CustomerRow | null) ?? null;
         }
       } catch (dbErr) {
         console.warn("Save profile DB sync notice:", dbErr);
       }
 
-      const response = NextResponse.json({
+      return NextResponse.json({
         success: true,
         message: "Profile and delivery location saved!",
         customer: {
-          id: updatedRecord?.id,
-          name: customerName?.trim() || updatedRecord?.name || `Customer ${cleanPhone.slice(-4)}`,
+          id: updated?.id,
+          name: customerName || updated?.name || `Customer ${cleanPhone.slice(-4)}`,
           phone: cleanPhone,
-          address: customerAddress,
+          address: rawAddress,
           isVerified: true,
-          authProvider: "otp",
+          authProvider: "phone",
         },
       });
-
-      // 10-year persistent customer session cookie
-      response.cookies.set("falcon_customer_phone", cleanPhone, {
-        maxAge: 315360000,
-        path: "/",
-        sameSite: "lax",
-      });
-
-      return response;
     }
 
-    // ACTION 4: SECURE MOBILE NUMBER CHANGE (REQUIRES OTP VERIFICATION ON NEW NUMBER)
-    if (action === "change_customer_phone") {
-      const { oldPhone, newPhone, otp: submittedOtp } = body;
-      const cleanOldPhone = (oldPhone || "").replace(/[^0-9]/g, "").slice(-10);
-      const cleanNewPhone = (newPhone || "").replace(/[^0-9]/g, "").slice(-10);
+    // --- Changing the number needs BOTH a session for the old number AND Firebase proof of the new one ---
+    if (action === "change_customer_phone" || action === "send_otp") {
+      const oldPhone = cleanDigits(body.oldPhone);
+      const newPhone = cleanDigits(body.newPhone);
+      const sessionPhone = readCustomerSession(req.cookies.get(CUSTOMER_SESSION_COOKIE)?.value);
 
-      if (!cleanOldPhone || cleanOldPhone.length < 10) {
-        return NextResponse.json({ success: false, error: "Current mobile number is missing." }, { status: 400 });
-      }
-      if (!cleanNewPhone || cleanNewPhone.length < 10) {
-        return NextResponse.json({ success: false, error: "Please enter a valid 10-digit new mobile number." }, { status: 400 });
-      }
-      if (cleanOldPhone === cleanNewPhone) {
-        return NextResponse.json({ success: false, error: "New mobile number cannot be the same as current number." }, { status: 400 });
-      }
-      if (!submittedOtp || submittedOtp.trim().length !== 6) {
-        return NextResponse.json({ success: false, error: "Please enter the 6-digit verification code sent to your new mobile number." }, { status: 400 });
-      }
+      const proof =
+        action === "change_customer_phone" && typeof body.firebaseIdToken === "string"
+          ? await verifyFirebasePhoneToken(body.firebaseIdToken)
+          : null;
 
-      // Verify OTP on newPhone
-      const challengeCookie = req.cookies.get("falcon_otp_challenge")?.value;
-      const record = otpStore.get(cleanNewPhone);
-      let isValid = false;
-
-      if (verifyOtpChallenge(cleanNewPhone, submittedOtp.trim(), challengeCookie)) {
-        isValid = true;
-      } else if (record) {
-        if (Date.now() > record.expiresAt) {
-          otpStore.delete(cleanNewPhone);
-          return NextResponse.json({ success: false, error: "Verification code expired. Please request a new one." }, { status: 400 });
-        }
-        if (record.otp === submittedOtp.trim()) {
-          isValid = true;
-        }
-      }
-
-      if (!isValid) {
-        return NextResponse.json({ success: false, error: "Invalid verification code entered for new mobile number." }, { status: 400 });
-      }
-
-      // Clear used OTP
-      otpStore.delete(cleanNewPhone);
-
-      // Update phone number in Supabase customers table
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
-      let updatedCustomer: any = null;
-
-      try {
+      if (
+        action === "change_customer_phone" &&
+        oldPhone.length === 10 &&
+        newPhone.length === 10 &&
+        oldPhone !== newPhone &&
+        sessionPhone === oldPhone &&
+        proof === `+91${newPhone}`
+      ) {
         const { data: updated, error: updErr } = await supabase
           .from("customers")
-          .update({ phone: cleanNewPhone })
-          .eq("phone", cleanOldPhone)
+          .update({ phone: newPhone })
+          .eq("phone", oldPhone)
+          .eq("shop_id", shopId)
           .select("*")
           .maybeSingle();
-
         if (updErr) {
-          console.error("Phone update error:", updErr);
-          return NextResponse.json({ success: false, error: "Failed to update phone number in database." }, { status: 500 });
+          return NextResponse.json({ success: false, error: "Failed to update phone number." }, { status: 500 });
         }
-        updatedCustomer = updated;
-      } catch (err: any) {
-        return NextResponse.json({ success: false, error: err.message || "Database update failed." }, { status: 500 });
+        return withSession(
+          NextResponse.json({
+            success: true,
+            message: `Mobile number successfully changed to +91 ${newPhone}!`,
+            customer: {
+              id: updated?.id,
+              name: updated?.name,
+              phone: newPhone,
+              address: parseAddress(updated as CustomerRow | null, newPhone),
+              isVerified: true,
+              authProvider: "phone",
+            },
+          }),
+          newPhone
+        );
       }
 
-      const response = NextResponse.json({
-        success: true,
-        message: `Mobile number successfully changed to +91 ${cleanNewPhone}!`,
-        customer: {
-          id: updatedCustomer?.id,
-          name: updatedCustomer?.name,
-          phone: cleanNewPhone,
-          address: updatedCustomer?.address ? (typeof updatedCustomer.address === "string" && updatedCustomer.address.startsWith("{") ? JSON.parse(updatedCustomer.address) : updatedCustomer.address) : null,
-          isVerified: true,
-          authProvider: "otp",
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Changing your mobile number online is temporarily unavailable. Please contact the store.",
         },
-      });
-
-      // Update 10-year persistent cookie with new phone
-      response.cookies.set("falcon_customer_phone", cleanNewPhone, {
-        maxAge: 315360000,
-        path: "/",
-        sameSite: "lax",
-      });
-
-      // Clear challenge cookie
-      response.cookies.delete("falcon_otp_challenge");
-
-      return response;
+        { status: 501 }
+      );
     }
 
-    return NextResponse.json(
-      { success: false, error: "Invalid action." },
-      { status: 400 }
-    );
-  } catch (error: any) {
-    console.error("Real OTP API Error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Internal server error." },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "Invalid action." }, { status: 400 });
+  } catch (error) {
+    console.error("Customer login API error:", error);
+    return NextResponse.json({ success: false, error: "Internal server error." }, { status: 500 });
   }
 }

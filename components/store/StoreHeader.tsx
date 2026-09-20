@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { useStoreCart } from "@/store/useStoreCart";
 import { CustomerAuthModal } from "@/components/store/CustomerAuthModal";
-import { createClient } from "@/lib/supabase/client";
 import { Category } from "@/types/database";
 
 interface StoreHeaderProps {
@@ -53,47 +52,29 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
 
-    // Auto-restore customer session from persistent cookie if available
-    try {
-      const match = document.cookie.match(/(?:^|;\s*)falcon_customer_phone=([^;]+)/);
-      const savedPhone = match ? decodeURIComponent(match[1]) : null;
-      if (savedPhone && !customerUser) {
-        const supabase = createClient();
-        supabase
-          .from("customers")
-          .select("*")
-          .eq("phone", savedPhone)
-          .maybeSingle()
-          .then(({ data }: any) => {
-            if (data) {
-              let parsedAddr: any = null;
-              if (data.address && data.address !== "Town / Local Area") {
-                try {
-                  parsedAddr = JSON.parse(data.address);
-                } catch {
-                  parsedAddr = {
-                    fullName: data.name,
-                    mobileNumber: data.phone,
-                    villageOrColony: data.address,
-                    tehsilOrTown: "Town Area",
-                    landmark: "",
-                    pincode: "483501",
-                  };
-                }
-              }
-              loginCustomer({
-                id: data.id,
-                name: data.name,
-                phone: data.phone,
-                isVerified: true,
-                authProvider: "phone",
-                address: parsedAddr,
-              });
-            }
-          });
-      }
-    } catch {
-      // Non-blocking
+    // Restore the customer's login from the signed, httpOnly session cookie (verified on the server)
+    if (!customerUser) {
+      fetch("/api/auth/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "session" }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.success && d.customer) {
+            loginCustomer({
+              id: d.customer.id,
+              name: d.customer.name,
+              phone: d.customer.phone,
+              isVerified: true,
+              authProvider: "phone",
+              address: d.customer.address,
+            });
+          }
+        })
+        .catch(() => {
+          // Non-blocking
+        });
     }
 
     return () => window.removeEventListener("scroll", handleScroll);
@@ -241,9 +222,17 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 </Link>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     logoutCustomer();
-                    document.cookie = "falcon_customer_phone=; path=/; max-age=0";
+                    try {
+                      await fetch("/api/auth/otp", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "logout" }),
+                      });
+                    } catch {
+                      // Signed out locally either way
+                    }
                     window.location.reload();
                   }}
                   className="p-1 text-gray-400 hover:text-red-600 rounded ml-0.5 cursor-pointer"
@@ -377,9 +366,17 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
                 </Link>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     logoutCustomer();
-                    document.cookie = "falcon_customer_phone=; path=/; max-age=0";
+                    try {
+                      await fetch("/api/auth/otp", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "logout" }),
+                      });
+                    } catch {
+                      // Signed out locally either way
+                    }
                     window.location.reload();
                   }}
                   className="px-2.5 py-1 text-rose-600 bg-white rounded-lg border border-rose-200 text-xs font-bold cursor-pointer"

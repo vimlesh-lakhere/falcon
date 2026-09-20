@@ -14,7 +14,6 @@ import {
   RotateCcw,
   AlertCircle,
   KeyRound,
-  MessageCircle,
   MapPin,
   Home,
   Building2,
@@ -22,6 +21,7 @@ import {
 import { useStoreCart, CustomerAddress } from "@/store/useStoreCart";
 import { createClient } from "@/lib/supabase/client";
 import { auth, isFirebaseConfigured } from "@/lib/firebase";
+import { getPublicShopId } from "@/lib/tenant";
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 import { LocationPicker } from "@/components/store/LocationPicker";
 
@@ -45,8 +45,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<"input" | "otp" | "onboarding" | "success">("input");
   const [phone, setPhone] = useState("");
-  const [isExistingCustomer, setIsExistingCustomer] = useState(false);
-  const [existingCustomerName, setExistingCustomerName] = useState("");
 
   // Onboarding fields for new user:
   const [fullName, setFullName] = useState("");
@@ -62,7 +60,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(45);
   const [canResend, setCanResend] = useState(false);
-  const [whatsappLink, setWhatsappLink] = useState<string | null>(null);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
 
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -124,6 +121,17 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     };
   }, []);
 
+  // Load the invisible reCAPTCHA as soon as the modal opens, so "Send OTP" does not wait for it.
+  useEffect(() => {
+    if (!isOpen || !mounted) return;
+    try {
+      void getOrCreateRecaptchaVerifier()?.render().catch(() => cleanupRecaptcha());
+    } catch {
+      // Non-blocking: it is created again on demand when the customer taps "Send OTP".
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, mounted]);
+
   // Reset recaptcha when modal is closed
   useEffect(() => {
     if (!isOpen) {
@@ -159,8 +167,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     return () => clearInterval(timer);
   }, [step, countdown]);
 
-  // Step 1: Send Real / Fallback OTP (Default: SMS via Firebase Blaze Plan)
-  const handleSendOtp = async (e?: React.FormEvent, channel = "sms") => {
+  // Step 1: Send the OTP by SMS through Firebase Phone Auth (Google sends and checks the code).
+  const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
 
@@ -170,110 +178,50 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       return;
     }
 
-    setIsSubmitting(true);
-
-    // 1. Try Google Firebase Phone Auth if user explicitly chose SMS
-    if (channel === "sms" && isFirebaseConfigured && auth) {
-      try {
-        const verifier = getOrCreateRecaptchaVerifier();
-        if (!verifier) {
-          throw new Error("Unable to initialize reCAPTCHA. Please try again or use WhatsApp.");
-        }
-
-        const confirmation = await signInWithPhoneNumber(auth, `+91${cleanPhone}`, verifier);
-        setConfirmationResult(confirmation);
-        setStep("otp");
-        setCountdown(45);
-        setCanResend(false);
-        setOtpDigits(["", "", "", "", "", ""]);
-        setSuccessMessage(`Google SMS sent with 6-digit OTP to +91 ${cleanPhone}`);
-        setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
-
-        // Check if customer exists in background to personalize OTP screen
-        fetch("/api/auth/otp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "send_otp", phone: cleanPhone, channel: "sms" }),
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.isRegistered && d.existingCustomerName) {
-              setIsExistingCustomer(true);
-              setExistingCustomerName(d.existingCustomerName);
-            }
-          })
-          .catch(() => {});
-
-        setIsSubmitting(false);
-        return;
-      } catch (fbErr: any) {
-        console.error("Firebase Phone Auth error:", fbErr);
-        cleanupRecaptcha();
-
-        // If billing is not enabled, automatically fallback to WhatsApp OTP so user is never blocked!
-        if (fbErr.code === "auth/billing-not-enabled" || fbErr.message?.includes("billing-not-enabled")) {
-          return handleSendOtp(undefined, "whatsapp");
-        }
-
-        let msg = fbErr.message || "Failed to send SMS via Firebase.";
-        const code = fbErr.code || "";
-
-        if (code === "auth/unauthorized-domain") {
-          msg = "Domain unauthorized: Please add 'falcon360.in' and 'www.falcon360.in' to Firebase Console -> Authentication -> Settings -> Authorized domains.";
-        } else if (code === "auth/operation-not-allowed") {
-          msg = "Phone sign-in is disabled in Firebase Console. Go to Authentication -> Sign-in method and enable 'Phone'.";
-        } else if (code === "auth/quota-exceeded") {
-          msg = "Firebase SMS daily quota exceeded. Please try WhatsApp or try again later.";
-        } else if (code === "auth/invalid-phone-number") {
-          msg = "Invalid mobile number. Please check the 10-digit number.";
-        } else if (code === "auth/captcha-check-failed" || fbErr.message?.includes("reCAPTCHA")) {
-          msg = "reCAPTCHA verification reset. Please tap 'Send Verification OTP' again.";
-        } else if (code === "auth/too-many-requests") {
-          msg = "Too many SMS requests. Please wait a few minutes before trying again.";
-        }
-
-        setErrorMessage(msg);
-        setIsSubmitting(false);
-        return;
-      }
+    if (!isFirebaseConfigured || !auth) {
+      setErrorMessage("SMS login is not available right now. Please try again later.");
+      return;
     }
 
-    // 2. Server route (Instant WhatsApp OTP - Zero Billing & Free)
+    setIsSubmitting(true);
     try {
-      const res = await fetch("/api/auth/otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "send_otp",
-          phone: cleanPhone,
-          channel,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        if (data.isRegistered && data.existingCustomerName) {
-          setIsExistingCustomer(true);
-          setExistingCustomerName(data.existingCustomerName);
-        }
-        setStep("otp");
-        setCountdown(45);
-        setCanResend(false);
-        setOtpDigits(["", "", "", "", "", ""]);
-        if (data.whatsappLink) {
-          setWhatsappLink(data.whatsappLink);
-          try {
-            window.open(data.whatsappLink, "_blank");
-          } catch {}
-        }
-        setSuccessMessage(`OTP code sent for +91 ${cleanPhone}`);
-        setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
-      } else {
-        setErrorMessage(data.error || "Failed to send OTP code.");
+      const verifier = getOrCreateRecaptchaVerifier();
+      if (!verifier) {
+        throw new Error("Unable to initialize reCAPTCHA. Please try again.");
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || "Failed to contact OTP gateway.");
+
+      const confirmation = await signInWithPhoneNumber(auth, `+91${cleanPhone}`, verifier);
+      setConfirmationResult(confirmation);
+      setStep("otp");
+      setCountdown(45);
+      setCanResend(false);
+      setOtpDigits(["", "", "", "", "", ""]);
+      setSuccessMessage(`SMS sent with a 6-digit OTP to +91 ${cleanPhone}`);
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
+    } catch (fbErr: any) {
+      console.error("Firebase Phone Auth error:", fbErr);
+      cleanupRecaptcha();
+
+      let msg = fbErr.message || "Failed to send SMS.";
+      const code = fbErr.code || "";
+
+      if (code === "auth/billing-not-enabled" || fbErr.message?.includes("billing-not-enabled")) {
+        msg = "SMS OTP is temporarily unavailable. Please try again later.";
+      } else if (code === "auth/unauthorized-domain") {
+        msg = "This store address is not enabled for SMS login yet. Please contact the store.";
+      } else if (code === "auth/operation-not-allowed") {
+        msg = "SMS login is not enabled. Please contact the store.";
+      } else if (code === "auth/quota-exceeded") {
+        msg = "SMS limit reached for today. Please try again later.";
+      } else if (code === "auth/invalid-phone-number") {
+        msg = "Invalid mobile number. Please check the 10-digit number.";
+      } else if (code === "auth/captcha-check-failed" || fbErr.message?.includes("reCAPTCHA")) {
+        msg = "Verification was reset. Please tap 'Send Verification OTP' again.";
+      } else if (code === "auth/too-many-requests") {
+        msg = "Too many SMS requests. Please wait a few minutes before trying again.";
+      }
+
+      setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -317,18 +265,20 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    let isFirebaseVerified = false;
-    if (confirmationResult) {
-      try {
-        await confirmationResult.confirm(code);
-        isFirebaseVerified = true;
-      } catch (confirmErr: any) {
-        if (code !== "123456" && code !== "000000") {
-          setErrorMessage(confirmErr.message || "Incorrect OTP code. Please try again.");
-          setIsSubmitting(false);
-          return;
-        }
-      }
+    if (!confirmationResult) {
+      setErrorMessage("Please request a new OTP.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    let firebaseIdToken = "";
+    try {
+      const credential = await confirmationResult.confirm(code);
+      firebaseIdToken = await credential.user.getIdToken();
+    } catch (confirmErr: any) {
+      setErrorMessage(confirmErr.message || "Incorrect OTP code. Please try again.");
+      setIsSubmitting(false);
+      return;
     }
 
     try {
@@ -338,8 +288,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         body: JSON.stringify({
           action: "verify_otp",
           phone: cleanPhone,
-          otp: code,
-          isFirebaseVerified,
+          firebaseIdToken,
+          shopId: getPublicShopId(),
         }),
       });
 
@@ -557,7 +507,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           {/* STEP 1: PHONE-ONLY INPUT (Zero Friction - No Name or Address required upfront) */}
           {step === "input" && (
             <div className="space-y-4">
-              <form onSubmit={(e) => handleSendOtp(e, "sms")} className="space-y-3.5">
+              <form onSubmit={(e) => handleSendOtp(e)} className="space-y-3.5">
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
                     10-Digit Mobile Number <span className="text-rose-500">*</span>
@@ -589,19 +539,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     disabled={isSubmitting || phone.length !== 10}
                     className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-purple-500/20 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
                   >
-                    <span>{isSubmitting ? "Sending Google SMS..." : "Send Verification OTP (SMS)"}</span>
+                    <span>{isSubmitting ? "Sending SMS..." : "Send Verification OTP (SMS)"}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={(e) => handleSendOtp(e, "whatsapp")}
-                    disabled={isSubmitting || phone.length !== 10}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                  >
-                    <MessageCircle className="w-4 h-4 text-emerald-600" />
-                    <span>Or Get OTP on WhatsApp</span>
-                  </button>
                 </div>
               </form>
             </div>
@@ -615,38 +556,12 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   <KeyRound className="w-5 h-5" />
                 </div>
                 <h4 className="text-sm font-bold text-gray-900">
-                  {existingCustomerName ? `Welcome back, ${existingCustomerName}!` : "Enter 6-Digit OTP"}
+                  Enter 6-Digit OTP
                 </h4>
                 <p className="text-xs text-gray-500 mt-0.5">
                   Code sent to <span className="font-bold text-gray-800">+91 {phone}</span>
                 </p>
               </div>
-
-              {whatsappLink && (
-                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-left space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-emerald-900 text-xs font-bold">
-                      <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>WhatsApp Verification Code</span>
-                    </div>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                      Free & Instant
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-emerald-700">
-                    Tap below to open WhatsApp and get your 6-digit code, then enter it here:
-                  </p>
-                  <a
-                    href={whatsappLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Open WhatsApp for OTP</span>
-                  </a>
-                </div>
-              )}
 
               {/* 6 Digit Input Boxes */}
               <div className="flex items-center justify-center gap-2">
@@ -679,7 +594,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                 {canResend ? (
                   <button
                     type="button"
-                    onClick={() => handleSendOtp(undefined, "sms")}
+                    onClick={() => handleSendOtp()}
                     className="text-purple-600 font-bold hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
@@ -822,7 +737,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               </div>
               <h4 className="text-base font-black text-gray-900">Verified Successfully!</h4>
               <p className="text-xs text-gray-500">
-                Welcome, <span className="font-bold text-gray-800">{fullName || existingCustomerName || "Customer"}</span>! Signed in as verified customer.
+                Welcome, <span className="font-bold text-gray-800">{fullName || "Customer"}</span>! Signed in as verified customer.
               </p>
             </div>
           )}
