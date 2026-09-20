@@ -36,7 +36,8 @@ export async function middleware(request: NextRequest) {
   const host = request.headers.get("host") || "";
 
   // 1. Enforce canonical domain (Never expose vercel.app URL to user)
-  if (host.includes(".vercel.app")) {
+  // (Vercel preview builds are exempt so branch previews can be reviewed before going live.)
+  if (host.includes(".vercel.app") && process.env.VERCEL_ENV !== "preview") {
     const canonicalUrl = request.nextUrl.clone();
     canonicalUrl.host = "www.falcon360.in";
     canonicalUrl.protocol = "https";
