@@ -1284,7 +1284,9 @@ export default function PosBillingPage() {
           product_id: it.product.id,
           quantity: it.quantity,
           unit_price: it.unitPrice,
-          cost_price: Number(it.product.purchase_price || 0),
+          // purchase_price is per single piece; scale to the selling unit (pack/ladi/box) so it
+          // matches unit_price's granularity, otherwise profit = (unit_price - cost) * qty is wrong.
+          cost_price: Number(it.product.purchase_price || 0) * (Number(it.unitMultiplier) || 1),
           unit_name: it.unitName,
           unit_multiplier: it.unitMultiplier,
           base_quantity: getBaseQuantity(it.quantity, it.unit, it.unitMultiplier, it.product, units),
