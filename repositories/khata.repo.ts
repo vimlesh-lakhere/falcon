@@ -57,11 +57,17 @@ export const khataRepository = {
    * Get overall summary stats for store Khata dashboard (Total Market Udhaar, Collections, Payables)
    */
   async getShopKhataStats(shopId: string): Promise<ShopKhataStats> {
-    // 1. Customer balances
-    const { data: customersData, error: custError } = await supabase
-      .from("customers")
-      .select("id, outstanding_balance")
-      .eq("shop_id", shopId);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    // These three reads are independent — run them together so the Khata page opens faster.
+    const [{ data: customersData, error: custError }, { data: paymentsData, error: payError }, { data: suppliersData }] =
+      await Promise.all([
+        supabase.from("customers").select("id, outstanding_balance").eq("shop_id", shopId),
+        supabase.from("customer_payments").select("amount, payment_date").eq("shop_id", shopId).gte("payment_date", startOfMonth),
+        supabase.from("suppliers").select("id, outstanding_balance").eq("shop_id", shopId),
+      ]);
 
     if (custError) throw custError;
 
@@ -77,17 +83,6 @@ export const khataRepository = {
       }
     });
 
-    // 2. Collections today and this month
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-    const { data: paymentsData, error: payError } = await supabase
-      .from("customer_payments")
-      .select("amount, payment_date")
-      .eq("shop_id", shopId)
-      .gte("payment_date", startOfMonth);
-
     let todayCollections = 0;
     let thisMonthCollections = 0;
 
@@ -100,12 +95,6 @@ export const khataRepository = {
         }
       });
     }
-
-    // 3. Supplier payables
-    const { data: suppliersData } = await supabase
-      .from("suppliers")
-      .select("id, outstanding_balance")
-      .eq("shop_id", shopId);
 
     let totalSupplierPayable = 0;
     let dueSuppliersCount = 0;
@@ -132,40 +121,26 @@ export const khataRepository = {
    * Fetch full date-wise ledger statement for a customer (Sales debits, Payments credits, Returns)
    */
   async getCustomerLedger(customerId: string): Promise<CustomerKhataSummary> {
-    // 1. Customer info
-    const { data: customerData, error: custErr } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("id", customerId)
-      .single();
+    // Customer info + their sales + their repayments are independent reads — fetch together.
+    const [{ data: customerData, error: custErr }, { data: salesData, error: salesErr }, { data: paymentsData, error: payErr }] =
+      await Promise.all([
+        supabase.from("customers").select("*").eq("id", customerId).single(),
+        supabase
+          .from("sales")
+          .select("*, payments:payments(*), items:sale_items(quantity, unit_price, product:products(name))")
+          .eq("customer_id", customerId)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("customer_payments")
+          .select("*")
+          .eq("customer_id", customerId)
+          .order("payment_date", { ascending: true }),
+      ]);
 
     if (custErr || !customerData) throw custErr || new Error("Customer not found");
     const customer = customerData as Customer;
-
-    // 2. Fetch sales with payments & items
-    const { data: salesData, error: salesErr } = await supabase
-      .from("sales")
-      .select("*, payments:payments(*), items:sale_items(quantity, unit_price, product:products(name))")
-      .eq("customer_id", customerId)
-      .order("created_at", { ascending: true });
-
     if (salesErr) throw salesErr;
-
-    // 3. Fetch customer repayments (khata collections)
-    const { data: paymentsData, error: payErr } = await supabase
-      .from("customer_payments")
-      .select("*")
-      .eq("customer_id", customerId)
-      .order("payment_date", { ascending: true });
-
     if (payErr) throw payErr;
-
-    // 4. Fetch returns (if any)
-    const { data: returnsData } = await supabase
-      .from("returns")
-      .select("*, sale:sales(invoice_number)")
-      .eq("shop_id", customer.shop_id)
-      .order("created_at", { ascending: true });
 
     const rawEntries: Array<{
       id: string;
@@ -325,7 +300,7 @@ export const khataRepository = {
 
     if (payError) throw payError;
 
-    // 2. Fetch current customer balance
+    // customer_payments has no balance trigger, so lower the customer's outstanding balance here.
     const { data: currentCust, error: fetchErr } = await supabase
       .from("customers")
       .select("outstanding_balance")
@@ -337,7 +312,6 @@ export const khataRepository = {
     const currentBal = Number(currentCust?.outstanding_balance) || 0;
     const newBalance = Math.max(0, currentBal - payload.amount);
 
-    // 3. Update customer outstanding balance
     const { error: updateErr } = await supabase
       .from("customers")
       .update({ outstanding_balance: newBalance })
@@ -439,7 +413,9 @@ export const khataRepository = {
 
     if (payError) throw payError;
 
-    // 2. Fetch current balance
+    // The DB trigger `recompute_supplier_balance_on_payment` already lowered
+    // suppliers.outstanding_balance by this amount when the row was inserted. Do NOT subtract it
+    // again here (that was a double-deduction). Just read back the balance the trigger set.
     const { data: currSupplier, error: fetchErr } = await supabase
       .from("suppliers")
       .select("outstanding_balance")
@@ -448,16 +424,7 @@ export const khataRepository = {
 
     if (fetchErr) throw fetchErr;
 
-    const currentBal = Number(currSupplier?.outstanding_balance) || 0;
-    const newBalance = Math.max(0, currentBal - payload.amount);
-
-    // 3. Update supplier outstanding balance
-    const { error: updateErr } = await supabase
-      .from("suppliers")
-      .update({ outstanding_balance: newBalance })
-      .eq("id", payload.supplier_id);
-
-    if (updateErr) throw updateErr;
+    const newBalance = Math.max(0, Number(currSupplier?.outstanding_balance) || 0);
 
     return {
       payment: paymentData as SupplierPayment,

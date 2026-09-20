@@ -22,13 +22,48 @@ export const dashboardRepository = {
     today.setHours(0, 0, 0, 0);
     const todayIso = today.toISOString();
 
-    // 1. Fetch today's sales
-    const { data: salesData } = await supabase
-      .from("sales")
-      .select("*, items:sale_items(*, product:products(*)), customer:customers(*)")
-      .eq("shop_id", shopId)
-      .gte("created_at", todayIso)
-      .order("created_at", { ascending: false });
+    // These five reads are independent, so fire them together instead of one after another
+    // (same number of Supabase calls, but the dashboard opens far faster).
+    const [
+      { data: salesData },
+      { data: productsData },
+      { count: pendingRequestsCount },
+      { count: pendingPurchasesCount },
+      { data: recentSalesData },
+    ] = await Promise.all([
+      // 1. Today's sales (for totals, profit and top products)
+      supabase
+        .from("sales")
+        .select("*, items:sale_items(*, product:products(*)), customer:customers(*)")
+        .eq("shop_id", shopId)
+        .gte("created_at", todayIso)
+        .order("created_at", { ascending: false }),
+      // 2. Low-stock check (light columns only)
+      supabase
+        .from("products")
+        .select("id, current_stock, minimum_stock")
+        .eq("shop_id", shopId)
+        .eq("is_active", true),
+      // 3. Pending requests count
+      supabase
+        .from("product_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .in("status", ["requested", "searching", "ordered_from_supplier"]),
+      // 4. Pending purchases count
+      supabase
+        .from("purchase_orders")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .in("status", ["draft", "partially_received"]),
+      // 5. Recent sales (all-time, latest 6)
+      supabase
+        .from("sales")
+        .select("*, customer:customers(*), items:sale_items(*)")
+        .eq("shop_id", shopId)
+        .order("created_at", { ascending: false })
+        .limit(6),
+    ]);
 
     const todaySales = (salesData as Sale[]) || [];
     const todaySalesTotal = todaySales.reduce((sum, s) => sum + Number(s.total_amount || 0), 0);
@@ -43,37 +78,8 @@ export const dashboardRepository = {
       });
     });
 
-    // 2. Fetch low stock items count efficiently without heavy joins
-    const { data: productsData } = await supabase
-      .from("products")
-      .select("id, current_stock, minimum_stock")
-      .eq("shop_id", shopId)
-      .eq("is_active", true);
-
     const products = productsData || [];
     const lowStockCount = products.filter((p) => Number(p.current_stock) <= Number(p.minimum_stock)).length;
-
-    // 3. Fetch pending requests
-    const { count: pendingRequestsCount } = await supabase
-      .from("product_requests")
-      .select("*", { count: "exact", head: true })
-      .eq("shop_id", shopId)
-      .in("status", ["requested", "searching", "ordered_from_supplier"]);
-
-    // 4. Fetch pending purchases
-    const { count: pendingPurchasesCount } = await supabase
-      .from("purchase_orders")
-      .select("*", { count: "exact", head: true })
-      .eq("shop_id", shopId)
-      .in("status", ["draft", "partially_received"]);
-
-    // 5. Recent sales (all time recent 5)
-    const { data: recentSalesData } = await supabase
-      .from("sales")
-      .select("*, customer:customers(*), items:sale_items(*)")
-      .eq("shop_id", shopId)
-      .order("created_at", { ascending: false })
-      .limit(6);
 
     // Top products aggregation
     const productStats: Record<string, { product: Product; totalQuantity: number; totalRevenue: number }> = {};
