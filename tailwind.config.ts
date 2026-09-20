@@ -34,6 +34,26 @@ const config: Config = {
       fontFamily: {
         sans: ["Inter", "sans-serif"],
         mono: ["IBM Plex Mono", "monospace"],
+        display: ["var(--font-sora)", "Inter", "sans-serif"],
+      },
+      keyframes: {
+        floaty: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "200% 0" },
+          "100%": { backgroundPosition: "-200% 0" },
+        },
+        scanline: {
+          "0%, 100%": { top: "8%" },
+          "50%": { top: "88%" },
+        },
+      },
+      animation: {
+        floaty: "floaty 6s ease-in-out infinite",
+        shimmer: "shimmer 6s linear infinite",
+        scanline: "scanline 2.4s ease-in-out infinite",
       },
       borderRadius: {
         xs: "4px",
