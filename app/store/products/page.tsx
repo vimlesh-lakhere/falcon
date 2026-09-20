@@ -18,7 +18,7 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product, Category } from "@/types/database";
 import { resolveActiveShopId } from "@/lib/tenant";
-import { isProductOnline, getProductEffectiveOnlinePrice } from "@/lib/product-online";
+import { isProductOnline, getProductEffectiveOnlinePrice, STORE_PRODUCT_SELECT} from "@/lib/product-online";
 
 function AllProductsCatalogContent() {
   const searchParams = useSearchParams();
@@ -42,7 +42,7 @@ function AllProductsCatalogContent() {
         const [{ data: prodList }, { data: catList }] = await Promise.all([
           supabase
             .from("products")
-            .select("*, category:categories(*)")
+            .select(STORE_PRODUCT_SELECT)
             .eq("shop_id", targetShopId)
             .eq("is_active", true)
             .order("created_at", { ascending: false }),
@@ -55,7 +55,7 @@ function AllProductsCatalogContent() {
         ]);
 
         const onlineOnly = (prodList || []).filter(isProductOnline);
-        setProducts(onlineOnly);
+        setProducts(onlineOnly as unknown as Product[]);
         setCategories(catList || []);
       } catch (err) {
         console.error("Failed to load catalog products:", err);

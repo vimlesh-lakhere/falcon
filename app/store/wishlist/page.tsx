@@ -7,6 +7,7 @@ import { ArrowLeft, Heart, ShoppingBag, Trash2 } from "lucide-react";
 import { ProductCard } from "@/components/store/ProductCard";
 import { useStoreCart } from "@/store/useStoreCart";
 import { createClient } from "@/lib/supabase/client";
+import { STORE_PRODUCT_SELECT } from "@/lib/product-online";
 import { Product } from "@/types/database";
 
 function WishlistLoadingSkeleton() {
@@ -41,10 +42,10 @@ function WishlistContent() {
         const supabase = createClient();
         const { data } = await supabase
           .from("products")
-          .select("*, category:categories(*)")
+          .select(STORE_PRODUCT_SELECT)
           .in("id", wishlist);
 
-        setFavoriteProducts(data || []);
+        setFavoriteProducts((data || []) as unknown as Product[]);
       } catch (err) {
         console.error("Failed to load wishlist items:", err);
       } finally {

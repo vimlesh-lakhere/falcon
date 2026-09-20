@@ -27,7 +27,7 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product, Category } from "@/types/database";
 import { resolveActiveShopId, DEFAULT_FALLBACK_SHOP_ID } from "@/lib/tenant";
-import { isProductOnline, getProductOnlineConfig } from "@/lib/product-online";
+import { isProductOnline, getProductOnlineConfig, STORE_PRODUCT_SELECT} from "@/lib/product-online";
 import { useStoreCart } from "@/store/useStoreCart";
 
 function StoreHomeContent() {
@@ -56,7 +56,7 @@ function StoreHomeContent() {
         const [{ data: prodList }, { data: catList }] = await Promise.all([
           supabase
             .from("products")
-            .select("*, category:categories(*)")
+            .select(STORE_PRODUCT_SELECT)
             .eq("shop_id", targetShopId)
             .eq("is_active", true)
             .order("created_at", { ascending: false })
@@ -70,7 +70,7 @@ function StoreHomeContent() {
         ]);
 
         const onlineOnly = (prodList || []).filter(isProductOnline);
-        setProducts(onlineOnly);
+        setProducts(onlineOnly as unknown as Product[]);
         setCategories(catList || []);
       } catch (err) {
         console.error("Failed to load storefront products:", err);

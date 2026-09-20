@@ -36,8 +36,7 @@ import { resolveActiveShopId } from "@/lib/tenant";
 import {
   isProductOnline,
   getProductOnlineConfig,
-  getProductEffectiveOnlinePrice,
-} from "@/lib/product-online";
+  getProductEffectiveOnlinePrice, STORE_PRODUCT_SELECT} from "@/lib/product-online";
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -63,14 +62,14 @@ export default function ProductDetailPage() {
         // 1. Fetch Product
         const { data: prod } = await supabase
           .from("products")
-          .select("*, category:categories(*)")
+          .select(STORE_PRODUCT_SELECT)
           .eq("id", productId)
           .maybeSingle();
 
-        setProduct(prod);
+        setProduct(prod as unknown as Product);
 
         if (prod) {
-          const vars = extractProductVariants(prod);
+          const vars = extractProductVariants(prod as unknown as Product);
           if (vars.length > 1) {
             setSelectedVariant(vars[0]);
           } else {
@@ -83,14 +82,14 @@ export default function ProductDetailPage() {
           const targetShop = prod.shop_id || resolveActiveShopId();
           const { data: simList } = await supabase
             .from("products")
-            .select("*, category:categories(*)")
+            .select(STORE_PRODUCT_SELECT)
             .eq("shop_id", targetShop)
             .eq("category_id", prod.category_id)
             .neq("id", productId)
             .eq("is_active", true)
             .limit(4);
 
-          setSimilarProducts((simList || []).filter(isProductOnline));
+          setSimilarProducts((simList || []).filter(isProductOnline) as unknown as Product[]);
         }
       } catch (err) {
         console.error("Failed to load product detail:", err);

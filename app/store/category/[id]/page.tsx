@@ -8,7 +8,7 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { createClient } from "@/lib/supabase/client";
 import { Product, Category } from "@/types/database";
 import { resolveActiveShopId } from "@/lib/tenant";
-import { isProductOnline } from "@/lib/product-online";
+import { isProductOnline, STORE_PRODUCT_SELECT} from "@/lib/product-online";
 
 export default function CategoryCatalogPage() {
   const params = useParams();
@@ -40,13 +40,13 @@ export default function CategoryCatalogPage() {
         const targetShopId = resolveActiveShopId(shopParam || cat?.shop_id);
         const { data: prods } = await supabase
           .from("products")
-          .select("*, category:categories(*)")
+          .select(STORE_PRODUCT_SELECT)
           .eq("shop_id", targetShopId)
           .eq("category_id", categoryId)
           .eq("is_active", true)
           .order("created_at", { ascending: false });
 
-        setProducts((prods || []).filter(isProductOnline));
+        setProducts((prods || []).filter(isProductOnline) as unknown as Product[]);
       } catch (err) {
         console.error("Failed to load category catalog:", err);
       } finally {

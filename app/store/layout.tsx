@@ -45,7 +45,7 @@ export default async function StoreLayout({
         .eq("shop_id", targetShopId)
         .eq("is_active", true)
         .order("name", { ascending: true }),
-      supabase.from("shops").select("*").eq("id", targetShopId).maybeSingle(),
+      supabase.from("shops").select("name, phone, address, logo_url").eq("id", targetShopId).maybeSingle(),
     ]);
 
     categories = cats || [];

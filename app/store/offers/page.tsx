@@ -9,7 +9,7 @@ import { Product } from "@/types/database";
 
 import { useSearchParams } from "next/navigation";
 import { resolveActiveShopId } from "@/lib/tenant";
-import { isProductOnline, getProductOnlineConfig } from "@/lib/product-online";
+import { isProductOnline, getProductOnlineConfig, STORE_PRODUCT_SELECT} from "@/lib/product-online";
 
 export default function StoreOffersPage() {
   const searchParams = useSearchParams();
@@ -25,11 +25,11 @@ export default function StoreOffersPage() {
         const supabase = createClient();
         const { data } = await supabase
           .from("products")
-          .select("*, category:categories(*)")
+          .select(STORE_PRODUCT_SELECT)
           .eq("shop_id", targetShopId)
           .eq("is_active", true);
 
-        const list = (data || []).filter(isProductOnline);
+        const list = (data || []).filter(isProductOnline) as unknown as Product[];
         // Filter products with discounts or special deals
         const filtered = list.filter((p) => {
           const cfg = getProductOnlineConfig(p);

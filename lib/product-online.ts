@@ -1,5 +1,16 @@
 import { Product } from "@/types/database";
 
+/**
+ * Column list for PUBLIC storefront product queries.
+ *
+ * Deliberately excludes cost/margin and internal fields (purchase_price,
+ * minimum_selling_price, minimum_stock, supplier_id) so they are never sent to a customer's
+ * browser, and trims egress on every catalog load. Use this instead of select("*") anywhere the
+ * public store reads products.
+ */
+export const STORE_PRODUCT_SELECT =
+  "id, shop_id, category_id, name, name_hindi, sku, barcode, brand, unit_id, selling_price, wholesale_price, wholesale_min_qty, mrp, online_price, is_online, current_stock, image_url, back_image_url, description, is_active, created_at, category:categories(*)";
+
 export interface ProductOnlineConfig {
   isOnline: boolean;
   onlinePrice?: number | null;

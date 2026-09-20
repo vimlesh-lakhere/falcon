@@ -9,7 +9,7 @@ import { storeSearchEngine } from "@/lib/store/search-engine";
 import { createClient } from "@/lib/supabase/client";
 import { Product } from "@/types/database";
 import { resolveActiveShopId } from "@/lib/tenant";
-import { isProductOnline } from "@/lib/product-online";
+import { isProductOnline, STORE_PRODUCT_SELECT } from "@/lib/product-online";
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -29,11 +29,11 @@ function SearchContent() {
         const supabase = createClient();
         const { data } = await supabase
           .from("products")
-          .select("*, category:categories(*)")
+          .select(STORE_PRODUCT_SELECT)
           .eq("shop_id", targetShopId)
           .eq("is_active", true);
 
-        const list = (data || []).filter(isProductOnline);
+        const list = (data || []).filter(isProductOnline) as unknown as Product[];
         setAllProducts(list);
         setFilteredProducts(storeSearchEngine.searchProducts(query, list));
       } catch (err) {
