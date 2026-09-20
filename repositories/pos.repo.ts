@@ -58,6 +58,34 @@ export interface UpdateSalePayload {
 
 export const posRepository = {
   async checkout(payload: CheckoutPayload): Promise<Sale> {
+    // Preferred path: one atomic Postgres transaction (sale + items + payments + stock + balance)
+    // via the pos_checkout() function. This is a single round-trip, cannot leave an orphan sale or
+    // un-deducted stock, and keeps Supabase usage low. Falls back to the legacy multi-call path if
+    // the function is not installed yet (migration 012), so billing never breaks mid-rollout.
+    const { data: rpcData, error: rpcError } = await supabase.rpc("pos_checkout", {
+      payload: payload as unknown as Record<string, unknown>,
+    });
+
+    if (!rpcError && rpcData && (rpcData as any).id) {
+      return await this.getSaleById((rpcData as any).id as string);
+    }
+
+    const functionMissing =
+      !!rpcError &&
+      ((rpcError as any).code === "42883" ||
+        (rpcError as any).code === "PGRST202" ||
+        /pos_checkout|could not find the function|does not exist/i.test(rpcError.message || ""));
+
+    // A real failure inside the transaction rolled everything back — surface it, do NOT re-run the
+    // legacy path (that would risk a double write). Only fall back when the function is absent.
+    if (rpcError && !functionMissing) {
+      throw rpcError;
+    }
+
+    return await this.legacyCheckout(payload);
+  },
+
+  async legacyCheckout(payload: CheckoutPayload): Promise<Sale> {
     // Generate invoice number
     const timestamp = Date.now().toString().slice(-6);
     const invoice_number = `INV-${new Date().getFullYear()}-${timestamp}`;
@@ -146,6 +174,11 @@ export const posRepository = {
     });
 
     const { error: stockError } = await supabase.from("stock_movements").insert(stockMovements);
+    if (stockError) {
+      // Do not fail silently: without this insert the sale exists but stock was never deducted,
+      // which desyncs inventory. Surface it loudly so it can be reconciled.
+      console.error("POS checkout: stock movement insert FAILED (stock not deducted)", stockError);
+    }
     // 5. Fetch and return the fully joined sale object with products and customer
     const { data: fullSale, error: fetchError } = await supabase
       .from("sales")
