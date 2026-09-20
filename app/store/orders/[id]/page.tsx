@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { OrderStatusTracker, OrderStatus } from "@/components/store/OrderStatusTracker";
 import { useStoreCart, StoredOrderSummary } from "@/store/useStoreCart";
-import { createClient } from "@/lib/supabase/client";
 
 const SHOP_OWNER_WHATSAPP = "919340362381";
 
@@ -32,52 +31,27 @@ export default function OrderTrackingPage() {
 
   useEffect(() => {
     const fetchSale = async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("sales")
-        .select("*, customer:customers(*), items:sale_items(*, product:products(*))")
-        .or(`id.eq.${orderId},invoice_number.eq.${orderId}`)
-        .maybeSingle();
-
       const local = recentOrders.find((o) => o.orderId === orderId || o.invoiceNumber === orderId);
-
-      if (data) {
-        const isOnline =
-          data.invoice_number?.startsWith("ORD-") ||
-          (data.notes && data.notes.includes("[Online Order"));
-        const orderType: "online" | "in_store" = isOnline ? "online" : "in_store";
-        const finalStatus = !isOnline
-          ? "delivered"
-          : ((data.status as any) || local?.status || "received");
-
-        setOrder({
-          orderId: data.id,
-          invoiceNumber: data.invoice_number,
-          createdAt: data.created_at,
-          totalAmount: data.total_amount,
-          itemCount: data.items?.length || local?.itemCount || 1,
-          status: finalStatus,
-          orderType,
-          items: data.items?.map((it: any) => ({
-            productId: it.product_id,
-            productName: it.product?.name || "Product",
-            quantity: it.quantity,
-            price: it.unit_price,
-            imageUrl: it.product?.image_url,
-          })) || local?.items || [],
-          address: local?.address || {
-            fullName: data.customer?.name || "Customer",
-            mobileNumber: data.customer?.phone || "N/A",
-            villageOrColony: data.customer?.address || "Local Address",
-            tehsilOrTown: "Town Area",
-            landmark: "",
-            pincode: "483501",
-          },
-          paymentMethod: (local?.paymentMethod || (data.notes?.includes("UPI") ? "upi" : "cash")) as any,
+      try {
+        // Server returns the order only if it belongs to the logged-in (verified) customer.
+        const res = await fetch("/api/store/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "detail", orderId }),
         });
-      } else if (local) {
-        setOrder(local);
+        const data = await res.json();
+        if (data?.success && data.order) {
+          setOrder({
+            ...data.order,
+            address: local?.address || data.order.address,
+            paymentMethod: local?.paymentMethod || data.order.paymentMethod,
+          });
+          return;
+        }
+      } catch {
+        // fall through to local cache
       }
+      if (local) setOrder(local);
     };
 
     fetchSale();

@@ -19,7 +19,6 @@ import {
   Building2,
 } from "lucide-react";
 import { useStoreCart, CustomerAddress } from "@/store/useStoreCart";
-import { createClient } from "@/lib/supabase/client";
 import { auth, isFirebaseConfigured } from "@/lib/firebase";
 import { getPublicShopId } from "@/lib/tenant";
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
@@ -320,45 +319,15 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           setSavedAddress(resolvedAddress);
         }
 
-        // Sync past orders from Supabase sales
+        // Sync past orders for this now-verified customer (server route, session-gated).
         try {
-          const supabase = createClient();
-          const { data: pastSales } = await supabase
-            .from("sales")
-            .select("*, customer:customers(*), items:sale_items(*, product:products(*))")
-            .eq("customer_id", cust.id)
-            .order("created_at", { ascending: false })
-            .limit(10);
-
-          if (pastSales && pastSales.length > 0) {
-            pastSales.forEach((sale) => {
-              addRecentOrder({
-                orderId: sale.id,
-                invoiceNumber: sale.invoice_number,
-                createdAt: sale.created_at,
-                totalAmount: sale.total_amount,
-                itemCount: sale.items?.length || 1,
-                status: sale.status as any,
-                items:
-                  sale.items?.map((it: any) => ({
-                    productId: it.product_id,
-                    productName: it.product?.name || "Product",
-                    quantity: it.quantity,
-                    price: it.unit_price,
-                    imageUrl: it.product?.image_url,
-                  })) || [],
-                address: resolvedAddress || {
-                  fullName: sale.customer?.name || cust.name,
-                  mobileNumber: cleanPhone,
-                  villageOrColony: sale.customer?.address || "Local Area",
-                  tehsilOrTown: "Town Area",
-                  landmark: "",
-                  pincode: "483501",
-                },
-                paymentMethod: "cod",
-              });
-            });
-          }
+          const ordRes = await fetch("/api/store/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "list" }),
+          });
+          const ordData = await ordRes.json();
+          (ordData?.orders || []).forEach((ord: any) => addRecentOrder(ord));
         } catch {
           // Non-blocking
         }
