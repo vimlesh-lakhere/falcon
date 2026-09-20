@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getAdminSupabaseClient } from "@/lib/supabase/admin";
 import { getEffectiveItemPrice } from "@/lib/units-pricing";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SHOP_OWNER_WHATSAPP = process.env.NEXT_PUBLIC_SHOP_WHATSAPP || "919340362381";
 
 interface CartItemPayload {
@@ -31,16 +29,8 @@ interface AddressPayload {
 }
 
 export async function POST(req: NextRequest) {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.json(
-      { success: false, error: "Database service is not configured." },
-      { status: 500 }
-    );
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
   try {
+    const supabase = getAdminSupabaseClient();
     const body = await req.json();
     const { shopId, cart, address, paymentMethod, upiReference, notes } = body as {
       shopId: string;
@@ -150,6 +140,12 @@ export async function POST(req: NextRequest) {
 
       if (existingCust) {
         customerId = existingCust.id;
+        // Save the latest delivery name/address for this returning customer (replaces the old
+        // client-side update that ran with the public anon key).
+        await supabase
+          .from("customers")
+          .update({ name: address.fullName.trim(), address: JSON.stringify(address) })
+          .eq("id", existingCust.id);
       } else {
         const fullAddressText = `${address.villageOrColony}, ${address.tehsilOrTown}${address.landmark ? ` (Near: ${address.landmark})` : ""} - PIN: ${address.pincode || "483501"}`;
         const { data: newCust } = await supabase

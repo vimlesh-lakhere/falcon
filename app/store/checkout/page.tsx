@@ -88,60 +88,9 @@ export default function StoreCheckoutPage() {
     }
   }, [customerUser]);
 
-  // Handle phone blur auto lookup
-  const handlePhoneBlur = async () => {
-    const cleanPhone = address.mobileNumber.replace(/[^0-9]/g, "");
-    if (cleanPhone.length === 10 && !customerUser) {
-      try {
-        const { createClient } = await import("@/lib/supabase/client");
-        const supabase = createClient();
-        const { data } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("phone", cleanPhone)
-          .maybeSingle();
-
-        if (data) {
-          setFoundExistingCustomer(true);
-          let parsedAddr: any = null;
-          if (data.address && data.address !== "Town / Local Area") {
-            try {
-              parsedAddr = JSON.parse(data.address);
-            } catch {
-              parsedAddr = {
-                fullName: data.name,
-                mobileNumber: cleanPhone,
-                villageOrColony: data.address,
-                tehsilOrTown: "Town Area",
-                landmark: "",
-                pincode: "483501",
-              };
-            }
-          }
-          if (parsedAddr) {
-            setAddress((prev) => ({ ...prev, ...parsedAddr }));
-            setSavedAddress(parsedAddr);
-          } else {
-            setAddress((prev) => ({
-              ...prev,
-              fullName: prev.fullName || data.name || "",
-              villageOrColony: prev.villageOrColony || data.address || "",
-            }));
-          }
-          loginCustomer({
-            id: data.id,
-            name: data.name || "Customer",
-            phone: cleanPhone,
-            isVerified: true,
-            authProvider: "phone",
-            address: parsedAddr,
-          });
-        }
-      } catch (err) {
-        // Non-blocking
-      }
-    }
-  };
+  // Returning customers get their saved address by signing in (verified OTP session), not by
+  // typing a number — this no longer silently looks up or logs in as whoever's phone is entered.
+  const handlePhoneBlur = async () => {};
 
   if (!mounted) {
     return (
@@ -198,20 +147,7 @@ export default function StoreCheckoutPage() {
           address,
         });
 
-        // Persist to Supabase customers table permanently
-        try {
-          const { createClient } = await import("@/lib/supabase/client");
-          const supabase = createClient();
-          await supabase
-            .from("customers")
-            .update({
-              name: address.fullName,
-              address: JSON.stringify(address),
-            })
-            .eq("phone", address.mobileNumber.replace(/[^0-9]/g, "").slice(-10));
-        } catch (dbErr) {
-          console.warn("Address persist notice:", dbErr);
-        }
+        // The checkout API saves the latest name/address for this customer server-side.
       }
 
       const res = await storeOrderService.placeOrder({

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getAdminSupabaseClient } from "@/lib/supabase/admin";
 import {
   CUSTOMER_SESSION_COOKIE,
   CUSTOMER_SESSION_MAX_AGE_S,
@@ -22,8 +22,6 @@ import { isUuid } from "@/lib/tenant";
  * customer's data requires that cookie.
  */
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const DEFAULT_SHOP_ID = process.env.DEFAULT_SHOP_ID || "a0000000-0000-0000-0000-000000000001";
 
 const cleanDigits = (value: unknown) => (typeof value === "string" ? value.replace(/[^0-9]/g, "").slice(-10) : "");
@@ -85,7 +83,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as Record<string, unknown>;
     const action = body.action;
     const cleanPhone = cleanDigits(body.phone ?? body.customerPhone);
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = getAdminSupabaseClient();
     const shopId = resolveShopId(req, body);
 
     // --- Restore the logged-in customer from the signed session cookie ---

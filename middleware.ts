@@ -126,6 +126,7 @@ export async function middleware(request: NextRequest) {
   const PUBLIC_API_PATHS = [
     "/api/auth/otp",
     "/api/store/checkout",
+    "/api/store/orders",
     "/api/leads",
     "/api/cron/trials-maintenance",
     "/api/billing/razorpay/order",

@@ -87,108 +87,23 @@ function MyOrdersContent() {
       try {
         setIsLoading(true);
         setSearchFeedback(null);
-        const supabase = createClient();
 
-        // 1. Find all customer IDs matching this phone number
-        const { data: custList } = await supabase
-          .from("customers")
-          .select("id, name, address")
-          .eq("phone", cleanPhone);
+        // Order history comes from the server for the LOGGED-IN customer's verified phone only
+        // (no more "type any phone to see someone's orders").
+        const res = await fetch("/api/store/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "list" }),
+        });
+        const data = await res.json();
+        const mapped: any[] = data?.orders || [];
 
-        const customerIds = (custList || []).map((c) => c.id);
-
-        let salesQuery = supabase
-          .from("sales")
-          .select("*, customer:customers(*), items:sale_items(*, product:products(*))")
-          .order("created_at", { ascending: false });
-
-        // Query by customer IDs or order IDs from local cache
-        const localOrderIds = recentOrders.map((o) => o.orderId).filter(Boolean);
-
-        if (customerIds.length > 0 && localOrderIds.length > 0) {
-          salesQuery = salesQuery.or(
-            `customer_id.in.(${customerIds.join(",")}),id.in.(${localOrderIds.join(",")})`
-          );
-        } else if (customerIds.length > 0) {
-          salesQuery = salesQuery.in("customer_id", customerIds);
-        } else if (localOrderIds.length > 0) {
-          salesQuery = salesQuery.in("id", localOrderIds);
-        } else {
-          setSearchFeedback(`No orders found in database for +91 ${cleanPhone}`);
-          setIsLoading(false);
-          return;
-        }
-
-        const { data: sales, error: salesErr } = await salesQuery;
-
-        if (salesErr) {
-          console.warn("Error fetching sales from database:", salesErr);
-        }
-
-        if (sales && sales.length > 0) {
-          const mapped = sales.map((sale) => {
-            const isOnline =
-              sale.invoice_number?.startsWith("ORD-") ||
-              (sale.notes && sale.notes.includes("[Online Order"));
-            const orderType: "online" | "in_store" = isOnline ? "online" : "in_store";
-
-            // Parse delivery note if available
-            let village = sale.customer?.address || "Local Address";
-            let town = "Town Area";
-            let landmark = "";
-            let pincode = "483501";
-            let customerName = sale.customer?.name || "Customer";
-
-            if (sale.notes && sale.notes.includes("Deliver to:")) {
-              try {
-                const parts = sale.notes.split("Deliver to:")[1]?.split(",") || [];
-                if (parts[0]) customerName = parts[0].trim();
-              } catch {}
-            }
-
-            // In-store purchase is ALWAYS delivered / completed on the spot at the counter!
-            const finalStatus = !isOnline
-              ? "delivered"
-              : ((sale.status || "received") as any);
-
-            return {
-              orderId: sale.id,
-              invoiceNumber: sale.invoice_number,
-              createdAt: sale.created_at,
-              totalAmount: Number(sale.total_amount) || 0,
-              itemCount: sale.items?.length || 1,
-              status: finalStatus,
-              orderType,
-              items:
-                sale.items?.map((it: any) => ({
-                  productId: it.product_id,
-                  productName: it.product?.name || "Product Item",
-                  quantity: it.quantity,
-                  price: Number(it.unit_price) || 0,
-                  imageUrl: it.product?.image_url,
-                })) || [],
-              address: {
-                fullName: customerName,
-                mobileNumber: cleanPhone,
-                villageOrColony: village,
-                tehsilOrTown: town,
-                landmark,
-                pincode,
-              },
-              paymentMethod: (sale.payments?.[0]?.method || (sale.notes?.includes("UPI") ? "upi" : "cash")) as any,
-            };
-          });
-
+        if (mapped.length > 0) {
           setDbOrders(mapped);
-          setSearchFeedback(`Found ${mapped.length} orders for +91 ${cleanPhone}`);
+          setSearchFeedback(`Found ${mapped.length} orders`);
+          mapped.forEach((ord) => addRecentOrder(ord));
 
-          // Also persist in local cache so user never loses them
-          mapped.forEach((ord) => {
-            addRecentOrder(ord);
-          });
-
-          // Save address phone
-          if (!savedAddress?.mobileNumber) {
+          if (!savedAddress?.mobileNumber && mapped[0]?.address) {
             setSavedAddress({
               fullName: mapped[0].address.fullName,
               mobileNumber: cleanPhone,
@@ -198,8 +113,10 @@ function MyOrdersContent() {
               pincode: "483501",
             });
           }
+        } else if (data?.success === false) {
+          setSearchFeedback("Please sign in with your mobile number to see your saved orders.");
         } else {
-          setSearchFeedback(`No orders found in database for +91 ${cleanPhone}`);
+          setSearchFeedback("No orders found yet.");
         }
       } catch (err) {
         console.warn("Failed to load customer orders:", err);
@@ -207,7 +124,7 @@ function MyOrdersContent() {
         setIsLoading(false);
       }
     },
-    [recentOrders, addRecentOrder, savedAddress, setSavedAddress]
+    [addRecentOrder, savedAddress, setSavedAddress]
   );
 
   // Auto-fetch on mount if customer phone or active orders exist

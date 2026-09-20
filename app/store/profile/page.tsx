@@ -114,21 +114,14 @@ export default function CustomerProfilePage() {
 
     const fetchOrderStats = async () => {
       try {
-        const supabase = createClient();
-        const { data: custList } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("phone", currentPhone);
-
-        const customerIds = (custList || []).map((c) => c.id);
-        if (customerIds.length > 0) {
-          const { count } = await supabase
-            .from("sales")
-            .select("id", { count: "exact", head: true })
-            .in("customer_id", customerIds);
-
-          setDbOrdersCount(count || 0);
-        }
+        // Server route returns the count for the logged-in customer only (verified session).
+        const res = await fetch("/api/store/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "count" }),
+        });
+        const data = await res.json();
+        if (data?.success) setDbOrdersCount(data.count || 0);
       } catch {
         // Non-blocking
       }
