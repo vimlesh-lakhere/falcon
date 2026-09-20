@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
 import '../models/product_model.dart';
 import '../models/catalog_models.dart';
+import 'session_service.dart';
 
 class SupabaseService {
   final SupabaseClient? _clientInstance;
@@ -14,12 +15,12 @@ class SupabaseService {
   SupabaseClient get client => _client;
 
   // 1. Fetch Categories
-  Future<List<CategoryModel>> getCategories({String shopId = AppConstants.defaultShopId}) async {
+  Future<List<CategoryModel>> getCategories({String? shopId}) async {
     try {
       final res = await _client
           .from('categories')
           .select()
-          .eq('shop_id', shopId)
+          .eq('shop_id', shopId ?? SessionService.instance.shopId)
           .eq('is_active', true)
           .order('name', ascending: true);
 
@@ -33,12 +34,12 @@ class SupabaseService {
   }
 
   // 2. Fetch Units
-  Future<List<UnitModel>> getUnits({String shopId = AppConstants.defaultShopId}) async {
+  Future<List<UnitModel>> getUnits({String? shopId}) async {
     try {
       final res = await _client
           .from('units')
           .select()
-          .eq('shop_id', shopId)
+          .eq('shop_id', shopId ?? SessionService.instance.shopId)
           .order('name', ascending: true);
 
       return (res as List)
@@ -53,13 +54,13 @@ class SupabaseService {
   Future<UnitModel> createUnit({
     required String name,
     double conversionFactor = 1.0,
-    String shopId = AppConstants.defaultShopId,
+    String? shopId,
   }) async {
     final cleanName = name.trim();
     final res = await _client
         .from('units')
         .insert({
-          'shop_id': shopId,
+          'shop_id': shopId ?? SessionService.instance.shopId,
           'name': cleanName,
           'conversion_factor': conversionFactor > 0 ? conversionFactor : 1.0,
         })
@@ -70,12 +71,12 @@ class SupabaseService {
   }
 
   // 3. Fetch Suppliers
-  Future<List<SupplierModel>> getSuppliers({String shopId = AppConstants.defaultShopId}) async {
+  Future<List<SupplierModel>> getSuppliers({String? shopId}) async {
     try {
       final res = await _client
           .from('suppliers')
           .select()
-          .eq('shop_id', shopId)
+          .eq('shop_id', shopId ?? SessionService.instance.shopId)
           .eq('is_active', true)
           .order('name', ascending: true);
 
@@ -92,14 +93,14 @@ class SupabaseService {
     required String name,
     String? phone,
     String? address,
-    String shopId = AppConstants.defaultShopId,
+    String? shopId,
   }) async {
     final cleanName = name.trim();
     final cleanPhone = phone?.trim();
     final cleanAddress = address?.trim();
 
     final payload = <String, dynamic>{
-      'shop_id': shopId,
+      'shop_id': shopId ?? SessionService.instance.shopId,
       'name': cleanName,
       'is_active': true,
     };
@@ -121,7 +122,7 @@ class SupabaseService {
 
 
   // 4. Quick Barcode Lookup
-  Future<ProductModel?> findProductByBarcode(String barcode, {String shopId = AppConstants.defaultShopId}) async {
+  Future<ProductModel?> findProductByBarcode(String barcode, {String? shopId}) async {
     try {
       final cleanBarcode = barcode.trim();
       if (cleanBarcode.isEmpty) return null;
@@ -129,7 +130,7 @@ class SupabaseService {
       final res = await _client
           .from('products')
           .select()
-          .eq('shop_id', shopId)
+          .eq('shop_id', shopId ?? SessionService.instance.shopId)
           .eq('barcode', cleanBarcode)
           .maybeSingle();
 
@@ -145,7 +146,7 @@ class SupabaseService {
   // 4b. Search Products by Name, Hindi Name or Brand (Live Auto-Suggest)
   Future<List<ProductModel>> searchProductsByName(
     String query, {
-    String shopId = AppConstants.defaultShopId,
+    String? shopId,
     int limit = 8,
   }) async {
     try {
@@ -155,7 +156,7 @@ class SupabaseService {
       final res = await _client
           .from('products')
           .select()
-          .eq('shop_id', shopId)
+          .eq('shop_id', shopId ?? SessionService.instance.shopId)
           .or('name.ilike.%$clean%,name_hindi.ilike.%$clean%,brand.ilike.%$clean%')
           .order('name', ascending: true)
           .limit(limit);
@@ -272,14 +273,14 @@ class SupabaseService {
 
   // 8. Fetch Recent Added Products
   Future<List<ProductModel>> getRecentProducts({
-    String shopId = AppConstants.defaultShopId,
+    String? shopId,
     int limit = 10,
   }) async {
     try {
       final res = await _client
           .from('products')
           .select()
-          .eq('shop_id', shopId)
+          .eq('shop_id', shopId ?? SessionService.instance.shopId)
           .order('created_at', ascending: false)
           .limit(limit);
       return (res as List)

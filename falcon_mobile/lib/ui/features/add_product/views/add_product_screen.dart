@@ -8,6 +8,7 @@ import '../../../../data/models/product_model.dart';
 import '../../../../data/models/catalog_models.dart';
 import '../../../../data/services/product_scanner_service.dart';
 import '../../../../data/services/white_background_service.dart';
+import '../../../../data/services/session_service.dart';
 import '../view_models/add_product_view_model.dart';
 import '../../barcode_scanner/views/barcode_scanner_screen.dart';
 
@@ -47,6 +48,26 @@ class AddProductScreen extends StatelessWidget {
               ],
             ),
             actions: [
+              // Sign out
+              IconButton(
+                icon: const Icon(Icons.logout, color: AppTheme.textMuted, size: 20),
+                tooltip: 'Sign out',
+                onPressed: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: AppTheme.surface,
+                      title: const Text('Sign out?'),
+                      content: const Text('You will need to sign in again to add products.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign out')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) await SessionService.instance.signOut();
+                },
+              ),
               // AI Settings Shortcut
               IconButton(
                 icon: const Icon(Icons.auto_awesome, color: AppTheme.primaryLight, size: 20),

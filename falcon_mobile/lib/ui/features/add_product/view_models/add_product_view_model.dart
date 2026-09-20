@@ -7,10 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import '../../../../config/constants.dart';
 import '../../../../data/models/product_model.dart';
 import '../../../../data/models/catalog_models.dart';
 import '../../../../data/services/supabase_service.dart';
+import '../../../../data/services/session_service.dart';
 import '../../../../data/services/product_scanner_service.dart';
 import '../../../../data/services/white_background_service.dart';
 
@@ -1310,7 +1310,7 @@ class AddProductViewModel extends ChangeNotifier {
       }
 
       final newProduct = ProductModel(
-        shopId: AppConstants.defaultShopId,
+        shopId: SessionService.instance.shopId,
         name: finalName,
         nameHindi: nameHindiController.text.trim().isEmpty ? null : nameHindiController.text.trim(),
         barcode: barcodeController.text.trim().isEmpty ? null : barcodeController.text.trim(),
