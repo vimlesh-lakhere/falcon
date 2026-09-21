@@ -12,6 +12,9 @@ class ProductModel {
   final double purchasePrice;
   final double? mrp;
   final double sellingPrice;
+  /// 'piece' (default) or 'pack': whether the money fields are entered per single piece or per
+  /// full pack (box/ladi). The website + POS read this so prices match everywhere.
+  final String priceBasis;
   final double? wholesalePrice;
   final int? wholesaleMinQty;
   final double? minimumSellingPrice;
@@ -39,6 +42,7 @@ class ProductModel {
     required this.purchasePrice,
     this.mrp,
     required this.sellingPrice,
+    this.priceBasis = 'piece',
     this.wholesalePrice,
     this.wholesaleMinQty = 12,
     this.minimumSellingPrice,
@@ -59,6 +63,7 @@ class ProductModel {
       'name': name.trim(),
       'purchase_price': purchasePrice,
       'selling_price': sellingPrice,
+      'price_basis': priceBasis,
       'current_stock': currentStock,
       'minimum_stock': minimumStock,
       'is_active': isActive,
@@ -129,6 +134,7 @@ class ProductModel {
       purchasePrice: (json['purchase_price'] as num?)?.toDouble() ?? 0.0,
       mrp: (json['mrp'] as num?)?.toDouble(),
       sellingPrice: (json['selling_price'] as num?)?.toDouble() ?? 0.0,
+      priceBasis: (json['price_basis'] as String?) == 'pack' ? 'pack' : 'piece',
       wholesalePrice: (json['wholesale_price'] as num?)?.toDouble(),
       wholesaleMinQty: (json['wholesale_min_qty'] as num?)?.toInt(),
       minimumSellingPrice: (json['minimum_selling_price'] as num?)?.toDouble(),

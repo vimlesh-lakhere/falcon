@@ -279,14 +279,10 @@ class AddProductViewModel extends ChangeNotifier {
 
     final factor = currentConversionFactor;
 
-    // Detect if product was originally sold as full pack or loose
-    final lowerName = found.name.toLowerCase();
-    final unitName = selectedUnit?.name.toLowerCase() ?? '';
-    if (factor > 1 && (lowerName.contains('box') || lowerName.contains('pack') || (unitName.isNotEmpty && lowerName.contains(unitName)))) {
-      sellAsFullPack = true;
-    } else {
-      sellAsFullPack = false;
-    }
+    // Whether this product's prices are stored per full pack is the stored basis, not a name guess.
+    sellAsFullPack = factor > 1 && found.priceBasis == 'pack';
+    // Keep the entry mode aligned with the basis so the populated values save back unchanged.
+    enterPriceAsPack = sellAsFullPack;
 
     // Populate prices according to enterPriceAsPack mode so save doesn't re-divide
     if (factor > 1 && enterPriceAsPack && !sellAsFullPack) {
@@ -1309,6 +1305,10 @@ class AddProductViewModel extends ChangeNotifier {
             : supTag;
       }
 
+      // A multi-unit product sold as a sealed pack stores its prices per PACK; everything else is
+      // per piece. This is the exact same flag the website reads (products.price_basis).
+      final priceBasis = (isMultiUnit && sellAsFullPack) ? 'pack' : 'piece';
+
       final newProduct = ProductModel(
         shopId: SessionService.instance.shopId,
         name: finalName,
@@ -1322,6 +1322,7 @@ class AddProductViewModel extends ChangeNotifier {
         purchasePrice: finalPurchasePrice,
         mrp: finalMrp,
         sellingPrice: finalSellingPrice,
+        priceBasis: priceBasis,
         wholesalePrice: finalWholesalePrice,
         wholesaleMinQty: finalWholesaleMinQty,
         currentStock: stock,
