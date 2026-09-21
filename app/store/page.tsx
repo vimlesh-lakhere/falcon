@@ -24,10 +24,10 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { CategoryGrid } from "@/components/store/CategoryGrid";
 import { ProductCard } from "@/components/store/ProductCard";
-import { createClient } from "@/lib/supabase/client";
+import { getStoreCatalog } from "@/lib/store-catalog";
 import { Product, Category } from "@/types/database";
 import { resolveActiveShopId, DEFAULT_FALLBACK_SHOP_ID } from "@/lib/tenant";
-import { isProductOnline, getProductOnlineConfig, STORE_PRODUCT_SELECT} from "@/lib/product-online";
+import { getProductOnlineConfig } from "@/lib/product-online";
 import { useStoreCart } from "@/store/useStoreCart";
 
 function StoreHomeContent() {
@@ -46,40 +46,31 @@ function StoreHomeContent() {
   }, []);
 
   useEffect(() => {
+    let active = true;
     async function loadStorefrontData() {
       try {
         setLoading(true);
-        const supabase = createClient();
-
         const targetShopId = resolveActiveShopId(shopParam);
-
-        const [{ data: prodList }, { data: catList }] = await Promise.all([
-          supabase
-            .from("products")
-            .select(STORE_PRODUCT_SELECT)
-            .eq("shop_id", targetShopId)
-            .eq("is_active", true)
-            .order("created_at", { ascending: false })
-            .limit(40),
-          supabase
-            .from("categories")
-            .select("*")
-            .eq("shop_id", targetShopId)
-            .eq("is_active", true)
-            .order("name", { ascending: true }),
-        ]);
-
-        const onlineOnly = (prodList || []).filter(isProductOnline);
-        setProducts(onlineOnly as unknown as Product[]);
-        setCategories(catList || []);
+        // Session-cached catalog shared with the other store pages; landing shows the 40 newest.
+        const { products, categories } = await getStoreCatalog(targetShopId, (fresh) => {
+          if (!active) return;
+          setProducts(fresh.products.slice(0, 40) as unknown as Product[]);
+          setCategories(fresh.categories);
+        });
+        if (!active) return;
+        setProducts(products.slice(0, 40) as unknown as Product[]);
+        setCategories(categories);
       } catch (err) {
         console.error("Failed to load storefront products:", err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     loadStorefrontData();
+    return () => {
+      active = false;
+    };
   }, [shopParam]);
 
   // Personalization 1: Active Order Tracking Banner

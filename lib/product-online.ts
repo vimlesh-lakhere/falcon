@@ -8,8 +8,10 @@ import { Product } from "@/types/database";
  * browser, and trims egress on every catalog load. Use this instead of select("*") anywhere the
  * public store reads products.
  */
+// Only the category NAME is shown on the storefront, so embed just id+name instead of the whole
+// category row — trims JSON egress on every catalog load (the storefront reads this table most).
 export const STORE_PRODUCT_SELECT =
-  "id, shop_id, category_id, name, name_hindi, sku, barcode, brand, unit_id, selling_price, wholesale_price, wholesale_min_qty, mrp, price_basis, online_price, is_online, current_stock, image_url, back_image_url, description, is_active, created_at, category:categories(*)";
+  "id, shop_id, category_id, name, name_hindi, sku, barcode, brand, unit_id, selling_price, wholesale_price, wholesale_min_qty, mrp, price_basis, online_price, is_online, current_stock, image_url, back_image_url, description, is_active, created_at, category:categories(id,name)";
 
 export interface ProductOnlineConfig {
   isOnline: boolean;

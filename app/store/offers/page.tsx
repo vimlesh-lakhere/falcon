@@ -4,12 +4,12 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Tag, Sparkles, ShoppingBag, Zap } from "lucide-react";
 import { ProductCard } from "@/components/store/ProductCard";
-import { createClient } from "@/lib/supabase/client";
+import { getStoreCatalog } from "@/lib/store-catalog";
 import { Product } from "@/types/database";
 
 import { useSearchParams } from "next/navigation";
 import { resolveActiveShopId } from "@/lib/tenant";
-import { isProductOnline, getProductOnlineConfig, STORE_PRODUCT_SELECT} from "@/lib/product-online";
+import { getProductOnlineConfig } from "@/lib/product-online";
 
 export default function StoreOffersPage() {
   const searchParams = useSearchParams();
@@ -18,34 +18,35 @@ export default function StoreOffersPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+    const pickDeals = (list: Product[]) => {
+      const filtered = list.filter((p) => {
+        const cfg = getProductOnlineConfig(p);
+        const hasOnlineDeal = typeof cfg.onlinePrice === "number" && cfg.onlinePrice < (Number(p.selling_price) || 0);
+        const hasMrpDiscount = Number((p as any).mrp) > Number(p.selling_price);
+        return hasOnlineDeal || hasMrpDiscount;
+      });
+      return filtered.length > 0 ? filtered : list.slice(0, 12);
+    };
     const loadOffers = async () => {
       try {
         setLoading(true);
         const targetShopId = resolveActiveShopId(shopParam);
-        const supabase = createClient();
-        const { data } = await supabase
-          .from("products")
-          .select(STORE_PRODUCT_SELECT)
-          .eq("shop_id", targetShopId)
-          .eq("is_active", true);
-
-        const list = (data || []).filter(isProductOnline) as unknown as Product[];
-        // Filter products with discounts or special deals
-        const filtered = list.filter((p) => {
-          const cfg = getProductOnlineConfig(p);
-          const hasOnlineDeal = typeof cfg.onlinePrice === "number" && cfg.onlinePrice < (Number(p.selling_price) || 0);
-          const hasMrpDiscount = Number((p as any).mrp) > Number(p.selling_price);
-          return hasOnlineDeal || hasMrpDiscount;
+        const { products } = await getStoreCatalog(targetShopId, (fresh) => {
+          if (active) setDiscountProducts(pickDeals(fresh.products));
         });
-        setDiscountProducts(filtered.length > 0 ? filtered : list.slice(0, 12));
+        if (active) setDiscountProducts(pickDeals(products));
       } catch (err) {
         console.error("Failed to load offers:", err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     loadOffers();
+    return () => {
+      active = false;
+    };
   }, [shopParam]);
 
   return (

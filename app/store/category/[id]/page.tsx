@@ -5,10 +5,9 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShoppingBag, Sparkles, Filter } from "lucide-react";
 import { ProductCard } from "@/components/store/ProductCard";
-import { createClient } from "@/lib/supabase/client";
+import { getStoreCatalog } from "@/lib/store-catalog";
 import { Product, Category } from "@/types/database";
 import { resolveActiveShopId } from "@/lib/tenant";
-import { isProductOnline, STORE_PRODUCT_SELECT} from "@/lib/product-online";
 
 export default function CategoryCatalogPage() {
   const params = useParams();
@@ -21,40 +20,32 @@ export default function CategoryCatalogPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!categoryId) return;
+    let active = true;
+    const apply = (c: { products: Product[]; categories: any[] }) => {
+      setCategory(c.categories.find((x) => x.id === categoryId) || null);
+      setProducts(c.products.filter((p) => p.category_id === categoryId));
+    };
     async function loadCategoryData() {
-      if (!categoryId) return;
       try {
         setLoading(true);
-        const supabase = createClient();
-
-        // 1. Fetch category info
-        const { data: cat } = await supabase
-          .from("categories")
-          .select("*")
-          .eq("id", categoryId)
-          .maybeSingle();
-
-        setCategory(cat);
-
-        // 2. Fetch products in this category
-        const targetShopId = resolveActiveShopId(shopParam || cat?.shop_id);
-        const { data: prods } = await supabase
-          .from("products")
-          .select(STORE_PRODUCT_SELECT)
-          .eq("shop_id", targetShopId)
-          .eq("category_id", categoryId)
-          .eq("is_active", true)
-          .order("created_at", { ascending: false });
-
-        setProducts((prods || []).filter(isProductOnline) as unknown as Product[]);
+        const targetShopId = resolveActiveShopId(shopParam);
+        // Served from the session catalog cache — no per-category Supabase read.
+        const catalog = await getStoreCatalog(targetShopId, (fresh) => {
+          if (active) apply(fresh);
+        });
+        if (active) apply(catalog);
       } catch (err) {
         console.error("Failed to load category catalog:", err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     loadCategoryData();
+    return () => {
+      active = false;
+    };
   }, [categoryId, shopParam]);
 
   const categoryName = category?.name || "Category Products";

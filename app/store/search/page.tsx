@@ -6,10 +6,9 @@ import Link from "next/link";
 import { Search, Sparkles, ShoppingBag, ArrowLeft, Filter } from "lucide-react";
 import { ProductCard } from "@/components/store/ProductCard";
 import { storeSearchEngine } from "@/lib/store/search-engine";
-import { createClient } from "@/lib/supabase/client";
+import { getStoreCatalog } from "@/lib/store-catalog";
 import { Product } from "@/types/database";
 import { resolveActiveShopId } from "@/lib/tenant";
-import { isProductOnline, STORE_PRODUCT_SELECT } from "@/lib/product-online";
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -22,28 +21,31 @@ function SearchContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     async function loadData() {
       try {
         setLoading(true);
         const targetShopId = resolveActiveShopId(shopParam);
-        const supabase = createClient();
-        const { data } = await supabase
-          .from("products")
-          .select(STORE_PRODUCT_SELECT)
-          .eq("shop_id", targetShopId)
-          .eq("is_active", true);
-
-        const list = (data || []).filter(isProductOnline) as unknown as Product[];
-        setAllProducts(list);
-        setFilteredProducts(storeSearchEngine.searchProducts(query, list));
+        // Cached catalog: typing a new query re-filters in memory instead of re-reading Supabase.
+        const { products } = await getStoreCatalog(targetShopId, (fresh) => {
+          if (!active) return;
+          setAllProducts(fresh.products);
+          setFilteredProducts(storeSearchEngine.searchProducts(query, fresh.products));
+        });
+        if (!active) return;
+        setAllProducts(products);
+        setFilteredProducts(storeSearchEngine.searchProducts(query, products));
       } catch (err) {
         console.error("Search fetch failed:", err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     loadData();
+    return () => {
+      active = false;
+    };
   }, [query, shopParam]);
 
   const handleSearch = (e: React.FormEvent) => {

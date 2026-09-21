@@ -15,10 +15,10 @@ import {
   Filter,
 } from "lucide-react";
 import { ProductCard } from "@/components/store/ProductCard";
-import { createClient } from "@/lib/supabase/client";
 import { Product, Category } from "@/types/database";
 import { resolveActiveShopId } from "@/lib/tenant";
-import { isProductOnline, getProductEffectiveOnlinePrice, STORE_PRODUCT_SELECT} from "@/lib/product-online";
+import { getProductEffectiveOnlinePrice } from "@/lib/product-online";
+import { getStoreCatalog } from "@/lib/store-catalog";
 
 function AllProductsCatalogContent() {
   const searchParams = useSearchParams();
@@ -33,38 +33,31 @@ function AllProductsCatalogContent() {
   const [sortBy, setSortBy] = useState<"newest" | "price_asc" | "price_desc" | "discount">("newest");
 
   useEffect(() => {
+    let active = true;
     async function loadCatalog() {
       try {
         setLoading(true);
         const targetShopId = resolveActiveShopId(shopParam);
-        const supabase = createClient();
-
-        const [{ data: prodList }, { data: catList }] = await Promise.all([
-          supabase
-            .from("products")
-            .select(STORE_PRODUCT_SELECT)
-            .eq("shop_id", targetShopId)
-            .eq("is_active", true)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("categories")
-            .select("*")
-            .eq("shop_id", targetShopId)
-            .eq("is_active", true)
-            .order("name", { ascending: true }),
-        ]);
-
-        const onlineOnly = (prodList || []).filter(isProductOnline);
-        setProducts(onlineOnly as unknown as Product[]);
-        setCategories(catList || []);
+        // Session-cached catalog: one Supabase read serves every store page in the visit.
+        const { products, categories } = await getStoreCatalog(targetShopId, (fresh) => {
+          if (!active) return;
+          setProducts(fresh.products);
+          setCategories(fresh.categories);
+        });
+        if (!active) return;
+        setProducts(products);
+        setCategories(categories);
       } catch (err) {
         console.error("Failed to load catalog products:", err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     loadCatalog();
+    return () => {
+      active = false;
+    };
   }, [shopParam]);
 
   // Update selected category if URL query changes
