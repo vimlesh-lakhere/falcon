@@ -142,8 +142,9 @@ A Windows Task Scheduler job named **"Falcon Weekly Backup"** runs every **Sunda
 catches up if the PC was off). It runs `scripts/weekly-backup.bat`, which:
 - exports the full data backup (`backups/falcon_backup_*.json`),
 - downloads all product images (`backups/products-images/`),
-- **mirrors the whole `backups` folder to `OneDrive\Falcon_Backups`** — so it goes off this PC to
-  the cloud automatically (OneDrive syncs it).
+- **mirrors the whole `backups` folder to `<Google Drive>\Falcon_Backups`** (auto-detected) — so it
+  goes off this PC to the cloud automatically once **Google Drive for Desktop** is installed and
+  signed in. Until then, backups are kept LOCAL only (see `backups\backup-log.txt`).
 
 Manage it:
 - **Run now:** open *Task Scheduler* → find *Falcon Weekly Backup* → Run. (Or the app's Settings → Backup.)
