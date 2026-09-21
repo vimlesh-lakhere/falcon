@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     const productIds = cart.map((it) => it.product.id);
     const { data: dbProducts, error: prodErr } = await supabase
       .from("products")
-      .select("id, name, selling_price, purchase_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp, online_price, is_online, description, unit:units(conversion_factor)")
+      .select("id, name, selling_price, purchase_price, current_stock, image_url, is_active, wholesale_price, wholesale_min_qty, mrp, price_basis, online_price, is_online, description, unit:units(conversion_factor)")
       .in("id", productIds)
       .eq("shop_id", shopId);
 

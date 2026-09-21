@@ -9,7 +9,7 @@ import { Product } from "@/types/database";
  * public store reads products.
  */
 export const STORE_PRODUCT_SELECT =
-  "id, shop_id, category_id, name, name_hindi, sku, barcode, brand, unit_id, selling_price, wholesale_price, wholesale_min_qty, mrp, online_price, is_online, current_stock, image_url, back_image_url, description, is_active, created_at, category:categories(*)";
+  "id, shop_id, category_id, name, name_hindi, sku, barcode, brand, unit_id, selling_price, wholesale_price, wholesale_min_qty, mrp, price_basis, online_price, is_online, current_stock, image_url, back_image_url, description, is_active, created_at, category:categories(*)";
 
 export interface ProductOnlineConfig {
   isOnline: boolean;

@@ -224,9 +224,89 @@ export function getAvailableUnitsForProduct(
   return units;
 }
 
+/** Round to 2 decimals (paise). */
+const round2 = (n: number): number => Math.round((Number(n) || 0) * 100) / 100;
+
+export interface PerPiecePrices {
+  conversionFactor: number;
+  /** Effective selling price per single piece (online_price overrides selling_price when set). */
+  sellingPerPiece: number;
+  /** selling_price per piece, ignoring any online discount — used for the struck-through "was" price. */
+  listSellingPerPiece: number;
+  /** MRP per piece, 0 if none. */
+  mrpPerPiece: number;
+  /** Purchase/cost per piece, 0 if none. */
+  purchasePerPiece: number;
+  /** Wholesale rate per piece, 0 if none. */
+  wholesalePerPiece: number;
+}
+
 /**
- * Resolves piece price and full-pack price for a product.
- * Handles loose-piece retail price vs wholesale pack price seamlessly.
+ * The single source of truth for pricing. Every stored money field
+ * (selling_price / online_price / mrp / purchase_price / wholesale_price) is entered either
+ * PER PIECE or PER PACK, as recorded in `product.price_basis` ('piece' by default). This resolves
+ * them all to a per-single-piece value, so the rest of the app is just `perPiece × multiplier`.
+ * No guessing from price ratios — the website and the APK apply the exact same rule.
+ */
+export function resolvePerPiecePrices(product: Product, unitCatalog?: Unit[]): PerPiecePrices {
+  const { conversionFactor } = resolveProductUnitDetails(product, unitCatalog);
+  const factor = conversionFactor > 0 ? conversionFactor : 1;
+  // Only meaningful to divide when the product actually comes in packs (factor > 1).
+  const isPack = (product as any).price_basis === "pack" && factor > 1;
+  const toPerPiece = (v: number) => (isPack ? v / factor : v);
+
+  const onlineRaw =
+    (product as any).online_price !== undefined &&
+    (product as any).online_price !== null &&
+    Number((product as any).online_price) > 0
+      ? Number((product as any).online_price)
+      : null;
+
+  const rawListSelling = Number(product.selling_price) || 0;
+  const rawSelling = onlineRaw !== null ? onlineRaw : rawListSelling;
+  const rawMrp = Number(product.mrp) || 0;
+  const rawPurchase = Number(product.purchase_price) || 0;
+  const rawWholesale = Number(product.wholesale_price) || 0;
+
+  // Selling price is the source of truth and follows the flag exactly — it drives the bill.
+  const sellingPerPiece = toPerPiece(rawSelling);
+  const listSellingPerPiece = toPerPiece(rawListSelling);
+
+  // MRP, wholesale and cost are sometimes entered in the *other* basis than selling (legacy mixed
+  // data). Rather than trust the flag blindly for these, we normalise them by the natural
+  // invariants — MRP ≥ price, wholesale ≤ price, cost ≤ price — choosing the per-piece vs per-pack
+  // reading that satisfies the invariant. `pick()` returns the reading closest to the selling price
+  // among the valid ones, so a clean same-basis value is unchanged.
+  const pickPerPiece = (raw: number, kind: "ceiling" | "floor"): number => {
+    if (!(raw > 0)) return 0;
+    const asIs = toPerPiece(raw); // what the flag says
+    if (factor <= 1 || !(sellingPerPiece > 0)) return asIs;
+    const alt = isPack ? raw : raw / factor; // the opposite basis
+    const ok = (v: number) => (kind === "ceiling" ? v >= sellingPerPiece : v <= sellingPerPiece);
+    const asIsOk = ok(asIs);
+    const altOk = ok(alt);
+    if (asIsOk && altOk) return kind === "ceiling" ? Math.min(asIs, alt) : Math.max(asIs, alt);
+    if (altOk && !asIsOk) return alt;
+    return asIs;
+  };
+
+  const mrpPerPiece = pickPerPiece(rawMrp, "ceiling");
+  const purchasePerPiece = pickPerPiece(rawPurchase, "floor");
+  const wholesalePerPiece = pickPerPiece(rawWholesale, "floor");
+
+  return {
+    conversionFactor: factor,
+    sellingPerPiece: round2(sellingPerPiece),
+    listSellingPerPiece: round2(listSellingPerPiece),
+    mrpPerPiece: round2(mrpPerPiece),
+    purchasePerPiece: round2(purchasePerPiece),
+    wholesalePerPiece: round2(wholesalePerPiece),
+  };
+}
+
+/**
+ * Resolves piece price and full-pack price for a product, plus the price for a chosen multiplier.
+ * Deterministic: piece = per-piece selling, pack = per-piece × conversionFactor.
  */
 export function getProductUnitPricing(
   product: Product,
@@ -238,75 +318,13 @@ export function getProductUnitPricing(
   conversionFactor: number;
   unitPrice: number;
 } {
-  const { conversionFactor } = resolveProductUnitDetails(product, unitCatalog);
-  const onlinePrice =
-    (product as any).online_price !== undefined &&
-    (product as any).online_price !== null &&
-    Number((product as any).online_price) > 0
-      ? Number((product as any).online_price)
-      : null;
-  const rawSelling = onlinePrice !== null ? onlinePrice : (Number(product.selling_price) || 0);
-  const rawWholesale = Number(product.wholesale_price) || 0;
-  const rawMrp = Number(product.mrp) || 0;
-
-  let piecePrice = rawSelling;
-  let packPrice = rawSelling;
-
-  if (conversionFactor <= 1) {
-    piecePrice = rawSelling;
-    packPrice = rawSelling;
-    return {
-      piecePrice,
-      packPrice,
-      conversionFactor: 1,
-      unitPrice: Math.round(piecePrice * unitMultiplier),
-    };
-  }
-
-  // Multi-pack product pricing logic
-  if (rawWholesale > 0) {
-    if (rawWholesale > rawSelling) {
-      // rawSelling is piece price (e.g. ₹10), rawWholesale is pack price (e.g. ₹200 for box of 24)
-      piecePrice = rawSelling;
-      packPrice = rawWholesale;
-    } else if (rawSelling >= conversionFactor * 2 && rawWholesale >= conversionFactor * 1.5) {
-      // Both are pack prices (e.g. Selling ₹240/pack, Wholesale ₹200/pack)
-      packPrice = rawWholesale;
-      piecePrice = Math.round((rawSelling / conversionFactor) * 100) / 100;
-    } else {
-      // rawWholesale is wholesale per-piece rate (e.g. ₹8/pc vs ₹10/pc retail)
-      piecePrice = rawSelling;
-      packPrice = Math.round(rawWholesale * conversionFactor);
-    }
-  } else if (rawMrp > 0 && rawMrp < rawSelling * 0.5) {
-    // rawSelling is pack price, rawMrp is single piece rate
-    piecePrice = rawMrp;
-    packPrice = rawSelling;
-  } else {
-    // Standard: rawSelling is piece price, packPrice is rawSelling * conversionFactor
-    piecePrice = rawSelling;
-    packPrice = Math.round(rawSelling * conversionFactor);
-  }
-
-  let unitPrice = packPrice;
-  if (unitMultiplier === 1) {
-    unitPrice = piecePrice;
-  } else if (unitMultiplier === conversionFactor) {
-    unitPrice = packPrice;
-  } else if (unitMultiplier < conversionFactor) {
-    // Half pack or partial pack
-    unitPrice = Math.round((packPrice / conversionFactor) * unitMultiplier);
-  } else {
-    // Bulk pack (extra 5% bulk discount for 10 packs)
-    const discount = unitMultiplier >= conversionFactor * 10 ? 0.95 : 1.0;
-    unitPrice = Math.round((packPrice / conversionFactor) * unitMultiplier * discount);
-  }
-
+  const { conversionFactor, sellingPerPiece } = resolvePerPiecePrices(product, unitCatalog);
+  const mult = Number(unitMultiplier) > 0 ? Number(unitMultiplier) : 1;
   return {
-    piecePrice,
-    packPrice,
+    piecePrice: round2(sellingPerPiece),
+    packPrice: round2(sellingPerPiece * conversionFactor),
     conversionFactor,
-    unitPrice,
+    unitPrice: round2(sellingPerPiece * mult),
   };
 }
 
@@ -364,21 +382,17 @@ export function getBaseMultiplier(
  * Returns formatted summary of pricing for display in catalog cards.
  */
 export function getProductPricingSummary(product: Product, unitCatalog?: Unit[]) {
-  const pricing = getProductUnitPricing(product, 1, unitCatalog);
-  const wholesaleRaw = Number(product.wholesale_price) || 0;
-  const wholesaleMinQty = Number(product.wholesale_min_qty) || pricing.conversionFactor || 12;
-  const rawMrp = Number(product.mrp) || 0;
-  const pieceMrp = pricing.conversionFactor > 1 && rawMrp > pricing.piecePrice * 2
-    ? Math.round((rawMrp / pricing.conversionFactor) * 100) / 100
-    : (rawMrp || pricing.piecePrice);
+  const { conversionFactor, sellingPerPiece, mrpPerPiece, wholesalePerPiece } =
+    resolvePerPiecePrices(product, unitCatalog);
+  const wholesaleMinQty = Number(product.wholesale_min_qty) || conversionFactor || 12;
 
   return {
-    piecePrice: pricing.piecePrice,
-    packPrice: pricing.packPrice,
-    conversionFactor: pricing.conversionFactor,
-    mrp: pieceMrp,
-    packMrp: rawMrp || Math.round(pieceMrp * pricing.conversionFactor),
-    wholesalePerPiece: wholesaleRaw > 0 && wholesaleRaw < pricing.piecePrice * 2 ? wholesaleRaw : Math.round(pricing.packPrice / pricing.conversionFactor),
+    piecePrice: round2(sellingPerPiece),
+    packPrice: round2(sellingPerPiece * conversionFactor),
+    conversionFactor,
+    mrp: mrpPerPiece > 0 ? round2(mrpPerPiece) : round2(sellingPerPiece),
+    packMrp: mrpPerPiece > 0 ? round2(mrpPerPiece * conversionFactor) : round2(sellingPerPiece * conversionFactor),
+    wholesalePerPiece: wholesalePerPiece > 0 ? round2(wholesalePerPiece) : round2(sellingPerPiece),
     wholesaleMinQty,
   };
 }
@@ -401,55 +415,35 @@ export function getEffectiveItemPrice(
 } {
   const multiplier = getBaseMultiplier(unitKey, customMultiplier, product, unitCatalog);
   const totalPieces = quantity * multiplier;
-  const regularUnitPrice = calculateDefaultUnitPrice(product, unitKey, multiplier, unitCatalog);
-  const wholesaleRaw = Number(product.wholesale_price) || 0;
-  const wholesaleMinQty = Number(product.wholesale_min_qty) || (product.unit?.conversion_factor ? Number(product.unit.conversion_factor) : 12);
+  const { conversionFactor, sellingPerPiece, listSellingPerPiece, mrpPerPiece, wholesalePerPiece } =
+    resolvePerPiecePrices(product, unitCatalog);
 
-  // If wholesale price is configured and total base pieces reach wholesale trigger
-  if (wholesaleRaw > 0 && totalPieces >= wholesaleMinQty) {
-    const { conversionFactor, piecePrice, packPrice } = getProductUnitPricing(product, multiplier, unitCatalog);
-    let wholesalePerPiece = 0;
+  const regularUnitPrice = round2(sellingPerPiece * multiplier);
+  // The struck-through "was" price: the higher of MRP, undiscounted selling, and the live price.
+  const originalPerPiece = Math.max(mrpPerPiece, listSellingPerPiece, sellingPerPiece);
+  const originalPrice = round2(originalPerPiece * multiplier);
 
-    if (wholesaleRaw > piecePrice) {
-      // wholesaleRaw is pack price
-      wholesalePerPiece = wholesaleRaw / conversionFactor;
-    } else {
-      // wholesaleRaw is per-piece price
-      wholesalePerPiece = wholesaleRaw;
-    }
+  const wholesaleMinQty = Number(product.wholesale_min_qty) || conversionFactor || 12;
 
-    let wholesaleUnitPrice = regularUnitPrice;
-    if (multiplier === 1) {
-      wholesaleUnitPrice = wholesalePerPiece;
-    } else if (multiplier === conversionFactor) {
-      wholesaleUnitPrice = wholesaleRaw > piecePrice * 2 ? wholesaleRaw : wholesalePerPiece * conversionFactor;
-    } else {
-      const discount = multiplier >= conversionFactor * 10 ? 0.95 : 1.0;
-      wholesaleUnitPrice = wholesalePerPiece * multiplier * discount;
-    }
-
-    const finalWholesalePrice = Number(wholesaleUnitPrice.toFixed(2));
-    const savings = Math.max(0, regularUnitPrice - finalWholesalePrice);
-
+  // Wholesale kicks in once the total base pieces reach the threshold.
+  if (wholesalePerPiece > 0 && totalPieces >= wholesaleMinQty) {
+    const wholesaleUnitPrice = round2(wholesalePerPiece * multiplier);
+    const savings = Math.max(0, regularUnitPrice - wholesaleUnitPrice);
     return {
-      unitPrice: finalWholesalePrice,
-      originalPrice: regularUnitPrice,
+      unitPrice: wholesaleUnitPrice,
+      originalPrice: Math.max(originalPrice, regularUnitPrice),
       isWholesaleTriggered: true,
       totalPieces,
-      savingsPerUnit: Number(savings.toFixed(2)),
+      savingsPerUnit: round2(savings),
     };
   }
 
-  const baseSellingPrice = Number(product.selling_price) || regularUnitPrice;
-  const baseOriginalPrice = baseSellingPrice > regularUnitPrice ? baseSellingPrice : regularUnitPrice;
-  const onlineSavings = Math.max(0, baseOriginalPrice - regularUnitPrice);
-
   return {
     unitPrice: regularUnitPrice,
-    originalPrice: baseOriginalPrice,
+    originalPrice,
     isWholesaleTriggered: false,
     totalPieces,
-    savingsPerUnit: Number(onlineSavings.toFixed(2)),
+    savingsPerUnit: round2(Math.max(0, originalPrice - regularUnitPrice)),
   };
 }
 

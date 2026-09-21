@@ -121,6 +121,12 @@ export interface Product {
   selling_price: number;
   wholesale_price: number | null;
   wholesale_min_qty?: number | null;
+  /**
+   * Whether selling_price / mrp / purchase_price / wholesale_price are entered
+   * PER PIECE (default) or PER PACK (a "ladi"/box of `conversion_factor` pieces).
+   * The website and the APK both read this so the same product shows one price.
+   */
+  price_basis?: 'piece' | 'pack';
   minimum_selling_price: number | null;
   current_stock: number;
   minimum_stock: number;
