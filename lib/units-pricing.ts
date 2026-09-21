@@ -294,13 +294,15 @@ export function resolvePerPiecePrices(product: Product, unitCatalog?: Unit[]): P
   const purchasePerPiece = pickPerPiece(rawPurchase, "floor");
   const wholesalePerPiece = pickPerPiece(rawWholesale, "floor");
 
+  // Kept at FULL precision (not rounded to paise). Callers round only their final price, so a pack
+  // price is exact — e.g. (100/12) × 12 rounds to ₹100, not ₹99.96 from a pre-rounded ₹8.33/pc.
   return {
     conversionFactor: factor,
-    sellingPerPiece: round2(sellingPerPiece),
-    listSellingPerPiece: round2(listSellingPerPiece),
-    mrpPerPiece: round2(mrpPerPiece),
-    purchasePerPiece: round2(purchasePerPiece),
-    wholesalePerPiece: round2(wholesalePerPiece),
+    sellingPerPiece,
+    listSellingPerPiece,
+    mrpPerPiece,
+    purchasePerPiece,
+    wholesalePerPiece,
   };
 }
 
