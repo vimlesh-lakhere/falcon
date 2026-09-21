@@ -53,6 +53,7 @@ import { PosCustomerSelector } from "@/components/pos/PosCustomerSelector";
 import { CollectPaymentModal } from "@/components/khata/CollectPaymentModal";
 import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 import { CameraBarcodeScanner, ScanFeedback } from "@/components/pos/CameraBarcodeScanner";
+import { UpiQrCode } from "@/components/pos/UpiQrCode";
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
 import { PosFastCalculatorModal } from "@/components/pos/PosFastCalculatorModal";
 import { QuickDemandPadModal } from "@/components/dashboard/QuickDemandPadModal";
@@ -117,6 +118,7 @@ interface HeldBill {
 export default function PosBillingPage() {
   const { currentStore, profile, fetchSession } = useAuthStore();
   const SHOP_ID = currentStore?.id || profile?.store_id || "";
+  const printerConfig = React.useMemo(() => getPrinterConfig(SHOP_ID), [SHOP_ID]);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -125,6 +127,9 @@ export default function PosBillingPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  // Editable name shown on THIS bill only (display override — the customer's saved record & khata are
+  // never changed). Kept in sync with the selected customer below.
+  const [billCustomerName, setBillCustomerName] = useState("");
   const [customerPrices, setCustomerPrices] = useState<Record<string, number>>({});
 
   // Online / Offline & Sync state
@@ -360,6 +365,12 @@ export default function PosBillingPage() {
       console.warn("Failed to auto-save POS customer:", e);
     }
   }, [selectedCustomer]);
+
+  // Keep the "name on bill" in sync whenever the selected customer changes (covers dropdown, search,
+  // and contact-picker selection). The shopkeeper can then edit it per bill without altering the record.
+  useEffect(() => {
+    setBillCustomerName(selectedCustomer?.name || "");
+  }, [selectedCustomer?.id]);
 
   // 4. Auto-save Discount to LocalStorage
   useEffect(() => {
@@ -1361,9 +1372,16 @@ export default function PosBillingPage() {
         };
       });
 
+      // Per-bill display name override: show the edited name on the receipt/WhatsApp bill without
+      // touching the saved customer (khata stays linked to the real customer_id).
+      const billName = billCustomerName.trim();
+      const receiptCustomer: Customer | undefined = resolvedCustomer
+        ? (billName && billName !== resolvedCustomer.name ? { ...resolvedCustomer, name: billName } : resolvedCustomer)
+        : (billName ? ({ id: "", shop_id: SHOP_ID, name: billName } as unknown as Customer) : undefined);
+
       const enrichedSale: Sale = {
         ...sale,
-        customer: resolvedCustomer || undefined,
+        customer: receiptCustomer,
         items: rawItems.map((saleItem, idx) => {
           const cartMatch = cart[idx] || cart.find((c) => c.product.id === saleItem.product_id);
           return {
@@ -1714,15 +1732,18 @@ export default function PosBillingPage() {
                       }`}
                       autoFocus
                     />
-                    {searchQuery.trim() ? (
+                    {searchQuery ? (
                       <button
                         type="button"
-                        onClick={addTopSearchResult}
-                        className="absolute right-1.5 top-1.5 p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-md active:scale-95 transition-all cursor-pointer"
-                        title="Add top result to bill"
-                        aria-label="Add top result to bill"
+                        onClick={() => {
+                          setSearchQuery("");
+                          searchInputRef.current?.focus();
+                        }}
+                        className="absolute right-1.5 top-1.5 p-1.5 bg-gray-200 hover:bg-rose-500 hover:text-white text-gray-600 rounded-lg active:scale-95 transition-all cursor-pointer"
+                        title="Clear search"
+                        aria-label="Clear search"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
+                        <X className="w-4 h-4" />
                       </button>
                     ) : (
                       <Barcode className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
@@ -2245,6 +2266,8 @@ export default function PosBillingPage() {
             }}
             onCollectPayment={() => setIsCollectPaymentOpen(true)}
             shopId={SHOP_ID}
+            billName={billCustomerName}
+            onBillNameChange={setBillCustomerName}
           />
 
           {/* Cart Items List */}
@@ -2596,11 +2619,10 @@ export default function PosBillingPage() {
         <div className="space-y-4">
 
           {/* ─── Payment Mode Selector ─── */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {([
               { key: "cash", icon: <Banknote className="w-5 h-5" />, label: "नकद (Cash)", color: "emerald" },
               { key: "upi",  icon: <QrCode className="w-5 h-5" />,  label: "UPI / QR",   color: "blue" },
-              { key: "card", icon: <CreditCard className="w-5 h-5" />, label: "Card",    color: "indigo" },
               { key: "udhaar", icon: <BookOpen className="w-5 h-5" />, label: "उधार",   color: "amber" },
             ] as const).map(({ key, icon, label, color }) => (
               <button
@@ -2657,6 +2679,15 @@ export default function PosBillingPage() {
             const modeLabel = paymentMethod === "cash" ? "नकद (Cash)" : paymentMethod === "upi" ? "UPI / QR" : "Card";
             return (
               <div className="space-y-3">
+                {/* UPI: show a live scan-and-pay QR for the amount being collected */}
+                {paymentMethod === "upi" && (
+                  <UpiQrCode
+                    upiId={printerConfig.upiId}
+                    payeeName={printerConfig.upiPayeeName || printerConfig.shopName}
+                    amount={advance > 0 ? advance : totalAmount}
+                  />
+                )}
+
                 {/* Advance Amount Input */}
                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
                   <div className="flex items-center justify-between">

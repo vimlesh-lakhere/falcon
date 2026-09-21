@@ -187,7 +187,7 @@ export const khataRepository = {
       );
       totalPaid += paidAtCounter;
 
-      const payMethods = salePayments.map((p: any) => p.method.toUpperCase()).join(", ");
+      const payMethods = salePayments.map((p: any) => String(p.method || "cash").toUpperCase()).join(", ");
 
       const itemsDesc = (sale.items || [])
         .map((it: any) => `${it.product?.name || "Item"} x${it.quantity}`)
