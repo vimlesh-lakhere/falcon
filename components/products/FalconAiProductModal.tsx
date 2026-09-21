@@ -59,6 +59,7 @@ import {
 import { Product, Category, Supplier, Unit } from "@/types/database";
 import { formatCurrency, capitalizeFirstLetter } from "@/lib/utils";
 import { productsRepository } from "@/repositories/products.repo";
+import { getCleanUnitBaseName } from "@/lib/units-pricing";
 import { createClient } from "@/lib/supabase/client";
 import { transliterateToHindi, transliterateSync } from "@/lib/transliterate";
 import { localImageStudio, StudioTheme } from "@/lib/ai/local-image-studio";
@@ -194,6 +195,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
     is_website_published: true,
     is_online: true,
     online_price: 0,
+    price_basis: "piece",
   });
 
   // UI accordion sections
@@ -453,6 +455,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         is_website_published: true,
         is_online: true,
         online_price: 0,
+        price_basis: "piece",
       });
 
       // Clear synthetic showroom url so the user's real product photo is the primary hero
@@ -740,6 +743,7 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         is_website_published: true,
         is_online: true,
         online_price: 0,
+        price_basis: "piece",
       });
 
       setAiResult({
@@ -954,6 +958,11 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         purchase_price: Number(formData.purchase_price) || 0,
         mrp: formData.mrp ? Number(formData.mrp) : Number(formData.selling_price) || 0,
         selling_price: Number(formData.selling_price) || 0,
+        // 'pack' only when a real pack unit (conversion > 1) is chosen; otherwise per piece.
+        price_basis:
+          (Number(units.find((u) => u.id === formData.unit_id)?.conversion_factor) || 1) > 1
+            ? ((formData as any).price_basis === "pack" ? "pack" : "piece")
+            : "piece",
         wholesale_price: formData.wholesale_price ? Number(formData.wholesale_price) : null,
         wholesale_min_qty: (formData as any).wholesale_min_qty ? Number((formData as any).wholesale_min_qty) : 12,
         current_stock: Number(formData.current_stock) || 0,
@@ -2579,6 +2588,44 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                       </select>
                     </div>
                   </div>
+
+                  {(() => {
+                    const selUnit = units.find((u) => u.id === formData.unit_id);
+                    const factor = Number(selUnit?.conversion_factor) || 1;
+                    if (factor <= 1) return null;
+                    const packName = getCleanUnitBaseName(selUnit?.name);
+                    const basis = (formData as any).price_basis === "pack" ? "pack" : "piece";
+                    const sell = Number(formData.selling_price) || 0;
+                    const perPiece = basis === "pack" && sell > 0 ? Math.round((sell / factor) * 100) / 100 : sell;
+                    return (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-purple-200 bg-purple-50/70 px-3 py-2">
+                        <span className="text-[11px] font-black text-purple-900">Prices are per:</span>
+                        <div className="flex items-center gap-1 rounded-lg bg-white p-0.5 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, price_basis: "piece" })}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
+                              basis === "piece" ? "bg-purple-600 text-white shadow-xs" : "text-gray-600 hover:bg-gray-100"
+                            }`}
+                          >
+                            1 Piece
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, price_basis: "pack" })}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
+                              basis === "pack" ? "bg-purple-600 text-white shadow-xs" : "text-gray-600 hover:bg-gray-100"
+                            }`}
+                          >
+                            1 {packName} ({factor} pcs)
+                          </button>
+                        </div>
+                        {basis === "pack" && sell > 0 && (
+                          <span className="text-[11px] font-bold text-emerald-700">= ₹{perPiece}/pc</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* E-Commerce Descriptions & SEO */}

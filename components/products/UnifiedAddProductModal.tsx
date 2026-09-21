@@ -37,6 +37,7 @@ import { findInIndianRetailCatalog, searchIndianRetailCatalog } from "@/lib/cata
 import { transliterateToHindi, transliterateSync } from "@/lib/transliterate";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { getProductOnlineConfig } from "@/lib/product-online";
+import { getCleanUnitBaseName } from "@/lib/units-pricing";
 
 import {
   extractProductVariants,
@@ -96,6 +97,8 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
   const [wholesalePrice, setWholesalePrice] = useState<number>(0);
   const [wholesaleMinQty, setWholesaleMinQty] = useState<number>(12);
   const [minSellingPrice, setMinSellingPrice] = useState<number>(0);
+  // Are the prices above entered per single piece (default) or per full pack (box/ladi)?
+  const [priceBasis, setPriceBasis] = useState<"piece" | "pack">("piece");
   const [currentStock, setCurrentStock] = useState<number>(10);
   const [minStock, setMinStock] = useState<number>(5);
   const [isOnline, setIsOnline] = useState<boolean>(true);
@@ -467,6 +470,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setWholesalePrice(Number(editingProduct.wholesale_price || 0));
         setWholesaleMinQty(Number((editingProduct as any).wholesale_min_qty || 12));
         setMinSellingPrice(Number(editingProduct.minimum_selling_price || 0));
+        setPriceBasis((editingProduct as any).price_basis === "pack" ? "pack" : "piece");
         setCurrentStock(Number(editingProduct.current_stock || 0));
         setMinStock(Number(editingProduct.minimum_stock || 5));
         const onlineCfg = getProductOnlineConfig(editingProduct);
@@ -503,6 +507,7 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setWholesalePrice(0);
         setWholesaleMinQty(12);
         setMinSellingPrice(0);
+        setPriceBasis("piece");
         setCurrentStock(10);
         setMinStock(5);
         setIsOnline(true);
@@ -989,6 +994,9 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         purchase_price: purchasePrice,
         mrp: mrp > 0 ? mrp : null,
         selling_price: sellingPrice,
+        // Only a real pack unit (conversion > 1) can be 'pack'; single-piece products are always 'piece'.
+        price_basis:
+          (Number(units.find((u) => u.id === unitId)?.conversion_factor) || 1) > 1 ? priceBasis : "piece",
         wholesale_price: wholesalePrice || null,
         wholesale_min_qty: wholesaleMinQty > 0 ? wholesaleMinQty : 12,
         minimum_selling_price: minSellingPrice || null,
@@ -1965,6 +1973,52 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   </div>
                 </div>
 
+                {(() => {
+                  const selUnit = units.find((u) => u.id === unitId);
+                  const factor = Number(selUnit?.conversion_factor) || 1;
+                  if (factor <= 1) return null;
+                  const packName = getCleanUnitBaseName(selUnit?.name);
+                  const perPiece =
+                    priceBasis === "pack" && sellingPrice > 0
+                      ? Math.round((sellingPrice / factor) * 100) / 100
+                      : sellingPrice;
+                  return (
+                    <div className="mb-2.5 flex flex-wrap items-center gap-2 rounded-xl border border-purple-200 bg-purple-50/70 px-3 py-2">
+                      <span className="text-[11px] font-black text-purple-900">Prices are per:</span>
+                      <div className="flex items-center gap-1 rounded-lg bg-white p-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => setPriceBasis("piece")}
+                          className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
+                            priceBasis === "piece" ? "bg-purple-600 text-white shadow-xs" : "text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          1 Piece
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPriceBasis("pack")}
+                          className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
+                            priceBasis === "pack" ? "bg-purple-600 text-white shadow-xs" : "text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          1 {packName} ({factor} pcs)
+                        </button>
+                      </div>
+                      {priceBasis === "pack" && sellingPrice > 0 && (
+                        <span className="text-[11px] font-bold text-emerald-700">
+                          = ₹{perPiece}/pc · ₹{sellingPrice} per {packName}
+                        </span>
+                      )}
+                      <span className="w-full text-[10px] font-medium text-purple-700/80">
+                        {priceBasis === "pack"
+                          ? `Type the ${packName} (box/ladi) price. The app converts to per-piece automatically — same everywhere.`
+                          : "Type the single-piece price (default)."}
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                   <div>
                     <Input
@@ -1989,7 +2043,13 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                   <div>
                     <Input
                       type="number"
-                      label="Retail / 1 Pc (₹) *"
+                      label={(() => {
+                        const selUnit = units.find((u) => u.id === unitId);
+                        const factor = Number(selUnit?.conversion_factor) || 1;
+                        return factor > 1 && priceBasis === "pack"
+                          ? `Retail / 1 ${getCleanUnitBaseName(selUnit?.name)} (₹) *`
+                          : "Retail / 1 Pc (₹) *";
+                      })()}
                       required
                       placeholder="0.00"
                       value={sellingPrice === 0 ? "" : sellingPrice}
