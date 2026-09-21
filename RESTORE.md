@@ -136,8 +136,26 @@ without them. **Optional** = extra features (AI images, cloud backup) that degra
 
 ---
 
-## Keep-it-safe routine (do this so recovery stays a 15-minute job)
-- **Weekly:** Settings → Backup → Export the data JSON (or enable Google Drive auto-backup).
+## Automatic weekly backup (already set up)
+
+A Windows Task Scheduler job named **"Falcon Weekly Backup"** runs every **Sunday 7:00 PM** (and
+catches up if the PC was off). It runs `scripts/weekly-backup.bat`, which:
+- exports the full data backup (`backups/falcon_backup_*.json`),
+- downloads all product images (`backups/products-images/`),
+- **mirrors the whole `backups` folder to `OneDrive\Falcon_Backups`** — so it goes off this PC to
+  the cloud automatically (OneDrive syncs it).
+
+Manage it:
+- **Run now:** open *Task Scheduler* → find *Falcon Weekly Backup* → Run. (Or the app's Settings → Backup.)
+- **Change day/time:** Task Scheduler → the task → Triggers → Edit.
+- **Check it ran:** see `backups\backup-log.txt`, or Task Scheduler's *Last Run Result* (0 = success).
+- The cloud copy lives in your OneDrive at **Falcon_Backups** — that is your off-site backup.
+
+> Still keep your `.env` secrets saved separately (OneDrive/password manager) — the auto-backup covers
+> data + images, not the secrets.
+
+## Keep-it-safe checklist
+- **Data + images:** automatic weekly (above). ✅
 - **After any database change** (running a migration): refresh your `schema.sql` (step 2B).
 - **Whenever you change a secret in Vercel:** update your saved `.env` copy too.
 - Keep the GitHub account, the domain registrar login, and the backup files each in two places.
