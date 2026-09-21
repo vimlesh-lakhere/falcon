@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "rembg": "python scripts/start-rembg.py"
+    "rembg": "python scripts/start-rembg.py",
+    "backup:images": "node scripts/backup-images.js",
+    "backup:images:restore": "node scripts/backup-images.js --restore"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

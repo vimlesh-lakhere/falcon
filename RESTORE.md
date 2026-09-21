@@ -81,10 +81,19 @@ the **new** Supabase project's values, then redeploy. Done.
 
 Photos live in Supabase Storage (`products` bucket), not in the database — the database only stores
 their URLs. If the Supabase project is deleted, the image files are gone unless you kept a copy.
-To back the bucket up periodically:
+
+**Back them up (run weekly, one command):**
 ```bash
-# lists/downloads bucket files; or use Dashboard → Storage → ... → Download
-npx supabase storage cp --recursive ss://products ./products-images-backup
+npm run backup:images
+```
+This downloads every product photo into `backups/products-images/`. Copy that folder to Google Drive
+or a USB — that's your image backup. (The folder is git-ignored, so it never goes to GitHub.) The
+script is resume-friendly: re-running only fetches new images.
+
+**Restore them** into a fresh Supabase (after re-creating the public `products` bucket, and with
+`SUPABASE_SERVICE_ROLE_KEY` in `.env.local`):
+```bash
+npm run backup:images:restore
 ```
 Losing images is not fatal — the store still works and you can re-upload photos later.
 
