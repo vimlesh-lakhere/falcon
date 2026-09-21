@@ -152,18 +152,33 @@ export function getAvailableUnitsForProduct(
 ): DynamicProductUnit[] {
   const { conversionFactor, cleanBaseName, unitName } = resolveProductUnitDetails(product, unitCatalog);
 
-  // If conversion factor is 1, return single piece
+  // No pack unit (loose product): still offer generic quick-quantity shortcuts so every product
+  // bills fast, not just pack products. These are plain multiples of the piece price; including the
+  // wholesale threshold makes unlocking the wholesale rate a single tap.
   if (conversionFactor <= 1) {
-    return [
-      {
-        key: "piece",
-        label: "Pc (1)",
-        shortName: "Pc",
-        multiplier: 1,
-        description: "Single piece standard retail unit",
-        isDefault: true,
-      },
-    ];
+    const wholesaleQty = Number(product.wholesale_min_qty) || 0;
+    const qtys = Array.from(new Set<number>([1, 6, 12, ...(wholesaleQty > 1 ? [wholesaleQty] : [])]))
+      .sort((a, b) => a - b)
+      .slice(0, 4);
+    return qtys.map((n) =>
+      n === 1
+        ? {
+            key: "piece",
+            label: "Pc (1)",
+            shortName: "Pc",
+            multiplier: 1,
+            description: "Single loose piece",
+            isDefault: true,
+          }
+        : {
+            key: `qty_${n}`,
+            label: `${n} Pcs`,
+            shortName: `${n} Pcs`,
+            multiplier: n,
+            description: `${n} pieces`,
+            isDefault: false,
+          }
+    );
   }
 
   const units: DynamicProductUnit[] = [];
@@ -357,6 +372,12 @@ export function getBaseMultiplier(
 
   if (unitKey === "piece") return 1;
 
+  // Generic quick-quantity shortcut for loose products, e.g. "qty_12" = 12 pieces.
+  if (typeof unitKey === "string" && unitKey.startsWith("qty_")) {
+    const n = parseInt(unitKey.slice(4), 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
   if (product) {
     const { conversionFactor } = resolveProductUnitDetails(product, unitCatalog);
     if (unitKey === "half_unit" || unitKey === "half_dozen") {
@@ -464,6 +485,10 @@ export function formatItemQuantityAndUnit(
 
   if (unitKey === "piece") {
     return `${quantity} ${quantity > 1 ? "Pcs" : "Pc"}`;
+  }
+  if (unitKey.startsWith("qty_")) {
+    const n = parseInt(unitKey.slice(4), 10);
+    if (Number.isFinite(n) && n > 0) return `${quantity} × ${n} Pcs`;
   }
   if (unitKey === "half_dozen") {
     return `${quantity} (1/2 Doz)`;
