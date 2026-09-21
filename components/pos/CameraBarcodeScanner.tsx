@@ -26,6 +26,13 @@ export interface ScanFeedback {
   timestamp: number;
 }
 
+export interface ScanCartLine {
+  name: string;
+  qty: number;
+  unitLabel?: string;
+  lineTotal: number;
+}
+
 interface CameraBarcodeScannerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -35,6 +42,11 @@ interface CameraBarcodeScannerProps {
   cartTotal?: number;
   lastScannedFeedback?: ScanFeedback | null;
   onQuickAddUnknown?: (barcode: string) => void;
+  /** Live cart lines shown in the editable panel while scanning (index-aligned with the handlers). */
+  scanCart?: ScanCartLine[];
+  onScanInc?: (index: number) => void;
+  onScanDec?: (index: number) => void;
+  onScanRemove?: (index: number) => void;
 }
 
 export function CameraBarcodeScanner({
@@ -46,8 +58,13 @@ export function CameraBarcodeScanner({
   cartTotal = 0,
   lastScannedFeedback = null,
   onQuickAddUnknown,
+  scanCart = [],
+  onScanInc,
+  onScanDec,
+  onScanRemove,
 }: CameraBarcodeScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [showCart, setShowCart] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
@@ -459,31 +476,82 @@ export function CameraBarcodeScanner({
               </div>
             )}
 
-            {/* Bottom Live Cart Summary HUD Bar */}
+            {/* Bottom Live Cart — tap the bar to expand an editable, scrollable list of scanned items */}
             {cartCount > 0 && (
-              <div className="absolute bottom-3 inset-x-3 pointer-events-auto flex items-center justify-between bg-black/80 backdrop-blur-md p-2 rounded-xl border border-white/20 shadow-xl">
-                <div className="flex items-center gap-2 pl-1">
-                  <div className="p-1.5 bg-purple-600 rounded-lg text-white">
-                    <ShoppingCart className="w-4 h-4" />
+              <div className="absolute bottom-3 inset-x-3 pointer-events-auto">
+                {/* Expandable editable item list */}
+                {showCart && scanCart.length > 0 && (
+                  <div className="mb-2 bg-black/85 backdrop-blur-md rounded-xl border border-white/20 shadow-xl max-h-[42vh] overflow-y-auto divide-y divide-white/10">
+                    {scanCart.map((it, i) => (
+                      <div key={i} className="flex items-center gap-2 p-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[11px] font-bold text-white truncate">{it.name}</div>
+                          <div className="text-[10px] text-emerald-400 font-semibold">
+                            {formatCurrency(it.lineTotal)}
+                            {it.unitLabel ? <span className="text-white/50"> · {it.unitLabel}</span> : null}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => onScanDec?.(i)}
+                            className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white text-base font-black leading-none flex items-center justify-center active:scale-95"
+                            aria-label="Decrease quantity"
+                          >
+                            −
+                          </button>
+                          <span className="text-xs font-black text-white w-6 text-center tabular-nums">{it.qty}</span>
+                          <button
+                            type="button"
+                            onClick={() => onScanInc?.(i)}
+                            className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white text-base font-black leading-none flex items-center justify-center active:scale-95"
+                            aria-label="Increase quantity"
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onScanRemove?.(i)}
+                            className="w-7 h-7 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-sm font-black leading-none flex items-center justify-center active:scale-95"
+                            aria-label="Remove item"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div>
-                    <div className="text-xs font-black text-white">
-                      {cartCount} Items in Bill
-                    </div>
-                    <div className="text-[11px] font-bold text-emerald-400">
-                      Total: {formatCurrency(cartTotal)}
-                    </div>
-                  </div>
-                </div>
+                )}
 
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-black flex items-center gap-1 shadow-md cursor-pointer active:scale-95 transition-all"
-                >
-                  <span>Finish & Pay</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                {/* Summary bar: tap to expand/collapse the list, or Finish & Pay */}
+                <div className="flex items-center justify-between bg-black/80 backdrop-blur-md p-2 rounded-xl border border-white/20 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => setShowCart((v) => !v)}
+                    className="flex items-center gap-2 pl-1 min-w-0 flex-1 text-left cursor-pointer"
+                  >
+                    <div className="p-1.5 bg-purple-600 rounded-lg text-white shrink-0">
+                      <ShoppingCart className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-white truncate">
+                        {cartCount} Items {scanCart.length > 0 ? (showCart ? "▲ hide" : "▼ tap to edit") : ""}
+                      </div>
+                      <div className="text-[11px] font-bold text-emerald-400">
+                        Total: {formatCurrency(cartTotal)}
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-black flex items-center gap-1 shadow-md cursor-pointer active:scale-95 transition-all shrink-0"
+                  >
+                    <span>Finish &amp; Pay</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             )}
           </div>

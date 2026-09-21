@@ -751,12 +751,20 @@ export default function PosBillingPage() {
     handleOpenCheckout("cash");
   };
 
-  // Barcode / Search / Math auto-matching
+  // Barcode / Search / Math auto-matching. Enter and the green ✓ button both add the best match.
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
+    addTopSearchResult();
+  };
 
-    // 1. If user typed a math expression (e.g. 1*30, 2*20, 50+30), add directly to cart!
+  // Adds the best match for the current search text to the bill, then keeps the search focused so the
+  // next item can be typed/scanned immediately (fast mobile billing). Falls back to Quick Add when
+  // nothing matches at all.
+  const addTopSearchResult = () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    // 1. Math expression (e.g. 1*30, 2*20, 50+30) -> add loose items directly.
     if (searchMathEvaluation && searchMathEvaluation.items.length > 0) {
       handleAddCalculatorItemsToCart(
         searchMathEvaluation.items.map((it: { label: string; qty: number; price: number }) => ({
@@ -766,23 +774,26 @@ export default function PosBillingPage() {
         }))
       );
       setSearchQuery("");
+      searchInputRef.current?.focus();
       return;
     }
 
-    // 2. Check exact barcode or SKU match first
-    const matched = products.find(
+    // 2. Exact barcode / SKU / name match, else the first (best) visible search result.
+    const exact = products.find(
       (p) =>
-        p.barcode?.toLowerCase() === searchQuery.trim().toLowerCase() ||
-        p.sku?.toLowerCase() === searchQuery.trim().toLowerCase() ||
-        p.name.toLowerCase() === searchQuery.trim().toLowerCase() ||
-        (p.name_hindi && p.name_hindi.toLowerCase() === searchQuery.trim().toLowerCase())
+        p.barcode?.toLowerCase() === q.toLowerCase() ||
+        p.sku?.toLowerCase() === q.toLowerCase() ||
+        p.name.toLowerCase() === q.toLowerCase() ||
+        (p.name_hindi && p.name_hindi.toLowerCase() === q.toLowerCase())
     );
+    const top = exact || filteredProducts[0];
 
-    if (matched) {
-      addToCart(matched, "piece", 1);
+    if (top) {
+      addToCart(top, "piece", 1);
       setSearchQuery("");
+      searchInputRef.current?.focus();
     } else {
-      // If not found, open Quick Add with pre-filled search term
+      // Nothing matches — offer to quick-add a new product with the typed name.
       setIsQuickAddOpen(true);
     }
   };
@@ -1703,7 +1714,19 @@ export default function PosBillingPage() {
                       }`}
                       autoFocus
                     />
-                    <Barcode className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
+                    {searchQuery.trim() ? (
+                      <button
+                        type="button"
+                        onClick={addTopSearchResult}
+                        className="absolute right-1.5 top-1.5 p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-md active:scale-95 transition-all cursor-pointer"
+                        title="Add top result to bill"
+                        aria-label="Add top result to bill"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <Barcode className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
+                    )}
                   </div>
 
                   {/* Voice Search Mic Button */}
@@ -2238,7 +2261,9 @@ export default function PosBillingPage() {
               cart.map((item, index) => {
                 const stock = Number(item.product.current_stock) || 0;
                 const baseQtyNeeded = getBaseQuantity(item.quantity, item.unit, item.unitMultiplier, item.product, units);
-                const isOverStock = baseQtyNeeded > stock;
+                // Only warn when there is some positive stock left but not enough. Oversold/negative
+                // stock never blocks or shows a scary negative number during billing.
+                const isOverStock = stock > 0 && baseQtyNeeded > stock;
 
                 const wholesaleMinQty =
                   Number(item.product.wholesale_min_qty) ||
@@ -2454,7 +2479,7 @@ export default function PosBillingPage() {
 
                     {isOverStock && (
                       <div className="text-[10px] text-amber-700 font-bold flex items-center gap-1 bg-amber-100/60 px-2 py-0.5 rounded">
-                        <span>⚠️ Stock low: Need {baseQtyNeeded} pcs, only {stock} pcs available</span>
+                        <span>⚠️ Only {stock} pc{stock === 1 ? "" : "s"} in stock</span>
                       </div>
                     )}
                   </div>
@@ -3006,6 +3031,15 @@ export default function PosBillingPage() {
         isContinuous={true}
         cartCount={cart.reduce((s, i) => s + i.quantity, 0)}
         cartTotal={totalAmount}
+        scanCart={cart.map((it) => ({
+          name: it.product.name,
+          qty: it.quantity,
+          unitLabel: it.unitName,
+          lineTotal: (Number(it.unitPrice) || 0) * (Number(it.quantity) || 0),
+        }))}
+        onScanInc={(i) => updateQuantity(i, 1)}
+        onScanDec={(i) => updateQuantity(i, -1)}
+        onScanRemove={(i) => removeItem(i)}
         lastScannedFeedback={scanFeedback}
         onQuickAddUnknown={(code) => {
           setSearchQuery(code);
