@@ -166,7 +166,7 @@ ${itemsText}
 💵 *Subtotal:* ₹${Number(sale.subtotal).toFixed(2)}
 ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}${freightAmount > 0 ? `🚚 *भाड़ा / Freight:* +₹${freightAmount.toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${totalBillAmt.toFixed(2)}*
 💵 *Paid Amount:* ₹${paidAmount.toFixed(2)} (${payMethod})
-${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${todayDue.toFixed(2)}*\n` : ""}${todayDue > 0 && currentCustomerBalance > 0 ? `📕 *कुल शेष बकाया (Total Khata Balance):* *₹${currentCustomerBalance.toFixed(2)}*\n` : ""}${upiPayLink}
+${todayDue > 0 && (currentCustomerBalance - todayDue) > 0 ? `📋 *पुराना बकाया (Previous Due):* ₹${Math.max(0, currentCustomerBalance - todayDue).toFixed(2)}\n` : ""}${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${todayDue.toFixed(2)}*\n` : ""}${currentCustomerBalance > 0 ? `📕 *कुल बकाया (Total Khata Balance):* *₹${currentCustomerBalance.toFixed(2)}*\n` : ""}${upiPayLink}
 ━━━━━━━━━━━━━━━━━━━━
 🙏 *${printerConfig.customFooter || "Thank you for shopping with us!"}*
 ⚡ *Visit again soon.*`;
@@ -509,15 +509,21 @@ ${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${today
                 <span>₹{Number(p.amount).toFixed(2)}</span>
               </div>
             ))}
+            {todayDue > 0 && currentCustomerBalance - todayDue > 0 && (
+              <div className="flex justify-between font-bold text-gray-700 pt-0.5">
+                <span>पुराना बकाया (Previous Due):</span>
+                <span>₹{Math.max(0, currentCustomerBalance - todayDue).toFixed(2)}</span>
+              </div>
+            )}
             {todayDue > 0 && (
               <div className="flex justify-between font-black text-amber-950 bg-amber-50 px-1.5 py-0.5 rounded mt-1 border border-amber-300">
                 <span>आज का उधार (Today&apos;s Due):</span>
                 <span>₹{todayDue.toFixed(2)}</span>
               </div>
             )}
-            {todayDue > 0 && currentCustomerBalance > 0 && (
+            {currentCustomerBalance > 0 && (
               <div className="flex justify-between font-black text-red-700 pt-0.5">
-                <span>कुल शेष बकाया (Total Balance):</span>
+                <span>कुल बकाया (Total Balance):</span>
                 <span>₹{currentCustomerBalance.toFixed(2)}</span>
               </div>
             )}

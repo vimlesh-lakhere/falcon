@@ -575,12 +575,18 @@ export async function buildRasterGraphicsReceipt(
 
   const rawCustBalance = Number(customer?.outstanding_balance || (sale as any).customer?.outstanding_balance || 0);
   const currentCustomerBalance = todayDue > 0 && rawCustBalance < todayDue ? rawCustBalance + todayDue : rawCustBalance;
+  const previousBalance = Math.max(0, currentCustomerBalance - todayDue);
 
+  // Show the customer's old (previous) due only on a credit bill, where it differs from the total.
+  if (todayDue > 0 && previousBalance > 0) {
+    drawRow("पुराना बकाया (Previous Due):", `₹${previousBalance.toFixed(2)}`, baseFontSize, true);
+  }
   if (todayDue > 0) {
     drawRow("आज का उधार (Today's Due):", `₹${todayDue.toFixed(2)}`, baseFontSize, true);
   }
-  if (todayDue > 0 && currentCustomerBalance > 0) {
-    drawRow("कुल शेष बकाया (Total Balance):", `₹${currentCustomerBalance.toFixed(2)}`, baseFontSize, true);
+  // Total outstanding shows on EVERY bill (cash/UPI/credit) whenever the customer owes anything.
+  if (currentCustomerBalance > 0) {
+    drawRow("कुल बकाया (Total Balance):", `₹${currentCustomerBalance.toFixed(2)}`, baseFontSize, true);
   }
 
   // 6. Dynamic Bank UPI QR Code Section
@@ -820,10 +826,14 @@ export function buildEscPosReceipt(
     write(`  - ${p.method.toUpperCase()}: INR ${Number(p.amount).toFixed(2)}\n`);
   });
 
+  const previousBalanceTxt = Math.max(0, currentCustomerBalance - todayDue);
+  if (todayDue > 0 && previousBalanceTxt > 0) {
+    write(`Previous Due: INR ${previousBalanceTxt.toFixed(2)}\n`);
+  }
   if (todayDue > 0) {
     write(`Today's Due: INR ${todayDue.toFixed(2)}\n`);
   }
-  if (todayDue > 0 && currentCustomerBalance > 0) {
+  if (currentCustomerBalance > 0) {
     write(`Total Balance: INR ${currentCustomerBalance.toFixed(2)}\n`);
   }
 
