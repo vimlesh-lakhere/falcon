@@ -45,10 +45,57 @@ interface DryRunReport {
   warnings: string[];
 }
 
+/**
+ * Saves a backup blob in the most reliable way for the device.
+ *
+ * On a phone / installed PWA a programmatic `<a download>` click is often ignored in standalone
+ * mode, which is why "backup failed" showed up on mobile. So we try the native Share Sheet first
+ * (Web Share API with files) — the user picks Drive, Files, WhatsApp, Gmail, etc. — and fall back
+ * to the classic download on desktop or when sharing isn't available.
+ */
+async function saveBackupFile(
+  blob: Blob,
+  fileName: string,
+  mimeType: string
+): Promise<"shared" | "downloaded"> {
+  const nav: any = typeof navigator !== "undefined" ? navigator : null;
+
+  try {
+    const file = new File([blob], fileName, { type: mimeType });
+    if (nav?.share && nav?.canShare?.({ files: [file] })) {
+      try {
+        await nav.share({ files: [file], title: fileName, text: "Falcon ERP database backup" });
+        return "shared";
+      } catch (e: any) {
+        // User closed the share sheet — treat as done, don't double-save.
+        if (e?.name === "AbortError") return "shared";
+        // Any other share error → fall through to the download path.
+      }
+    }
+  } catch {
+    // Constructing File / canShare not supported → fall through to download.
+  }
+
+  const urlObj = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = urlObj;
+    a.download = fileName;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(urlObj), 4000);
+  }
+  return "downloaded";
+}
+
 export function BackupSettingsTab() {
   // Export states
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [selectedTables, setSelectedTables] = useState<string[]>([...BACKUP_TABLES]);
   const [showTableSelector, setShowTableSelector] = useState(false);
 
@@ -93,33 +140,48 @@ export function BackupSettingsTab() {
     }
   };
 
-  // 1-Click Download Full Backup
+  // 1-Click Download / Share Full Backup (mobile-safe)
   const handleDownloadBackup = async (format: "json" | "sql" = "json") => {
     try {
       setIsExporting(true);
       setExportSuccess(null);
+      setExportError(null);
 
       const tablesQuery = selectedTables.join(",");
       const url = `/api/backup/export?format=${format}&download=true&tables=${encodeURIComponent(tablesQuery)}`;
 
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to export database");
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) {
+        let msg = `Server returned ${res.status}.`;
+        try {
+          const j = await res.json();
+          msg = j.error || j.details || msg;
+        } catch {}
+        if (res.status === 401) {
+          msg = "Your session has expired. Please log out and log in again, then retry the backup.";
+        }
+        throw new Error(msg);
+      }
 
       const blob = await res.blob();
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = `falcon_backup_${timestamp}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      if (blob.size < 20) {
+        throw new Error("The backup came back empty. Please retry, or contact support if it repeats.");
+      }
 
-      setExportSuccess(`Backup downloaded successfully! (${selectedTables.length} tables included)`);
-      setTimeout(() => setExportSuccess(null), 5000);
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const fileName = `falcon_backup_${timestamp}.${format}`;
+      const mimeType = format === "json" ? "application/json" : "text/plain";
+      const outcome = await saveBackupFile(blob, fileName, mimeType);
+
+      const sizeKb = (blob.size / 1024).toFixed(0);
+      setExportSuccess(
+        outcome === "shared"
+          ? `Backup ready (${sizeKb} KB) — choose where to save it: Google Drive, Files, or WhatsApp.`
+          : `Backup saved (${sizeKb} KB, ${selectedTables.length} tables). Check your Downloads folder.`
+      );
+      setTimeout(() => setExportSuccess(null), 7000);
     } catch (err: any) {
-      alert("Export failed: " + err.message);
+      setExportError(err?.message || "Backup failed. Please check your connection and try again.");
     } finally {
       setIsExporting(false);
     }
@@ -440,24 +502,38 @@ GOOGLE_DRIVE_FOLDER_ID="your_folder_id_from_url"`}
               className="gap-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold"
             >
               <Download className="w-4 h-4" />
-              Download Full Backup (JSON)
+              Save Full Backup (JSON)
             </Button>
 
             <Button
               onClick={handleSyncToDrive}
               isLoading={isDriveSyncing}
+              disabled={driveConfigured === false}
               variant="outline"
-              className="gap-2 border-brand-200 text-brand-700 hover:bg-brand-50 text-xs font-semibold"
+              className="gap-2 border-brand-200 text-brand-700 hover:bg-brand-50 text-xs font-semibold disabled:opacity-50"
+              title={driveConfigured === false ? "Optional — connect Google Drive first (see the setup guide above)" : undefined}
             >
               <Cloud className="w-4 h-4 text-brand-600" />
-              Sync to Google Drive Now
+              {driveConfigured === false ? "Google Drive (not set up)" : "Sync to Google Drive Now"}
             </Button>
           </div>
+
+          <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            On your phone this opens the share sheet — save the file to <strong>Google Drive</strong>, <strong>Files</strong>, or send it to yourself on <strong>WhatsApp</strong>. On a computer it downloads to your Downloads folder.
+          </p>
 
           {exportSuccess && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-xs text-emerald-800">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               {exportSuccess}
+            </div>
+          )}
+
+          {exportError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-xs text-red-700">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <span>{exportError}</span>
             </div>
           )}
 
