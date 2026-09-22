@@ -31,10 +31,18 @@ export const AartiBillOfSupplyImage = forwardRef<HTMLDivElement, AartiBillOfSupp
     const discountAmount = Number(sale.discount_amount) || 0;
     const taxAmount = Number(sale.tax_amount) || 0;
 
-    // Calculate Paid / Balance
+    // Calculate Paid / Balance, including the customer's earlier khata due.
     const payments = sale.payments || [];
     const receivedAmount = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-    const currentBalance = Math.max(0, totalAmount - receivedAmount);
+    // Customer's total outstanding AFTER this bill (already includes this bill's unpaid part).
+    const custBalanceAfter = Number(customer?.outstanding_balance ?? (sale as any).customer?.outstanding_balance ?? 0);
+    const todayDue = Math.max(0, totalAmount - receivedAmount);
+    // Previous (old) balance the customer already owed before this bill.
+    const previousBalance = Math.max(0, custBalanceAfter - todayDue);
+    // Grand total the customer owes = this bill + old balance.
+    const grandTotalDue = Math.round((totalAmount + previousBalance) * 100) / 100;
+    // What remains after today's payment.
+    const currentBalance = Math.max(0, Math.round((grandTotalDue - receivedAmount) * 100) / 100);
 
     const invoiceDateStr = sale.created_at
       ? new Date(sale.created_at).toLocaleString("en-GB", {
@@ -258,20 +266,32 @@ export const AartiBillOfSupplyImage = forwardRef<HTMLDivElement, AartiBillOfSupp
                 </div>
               )}
               <div className="flex justify-between items-center text-sm font-black text-gray-900 pt-1">
-                <span className="text-base">Total Amount</span>
+                <span className="text-base">Total Amount (आज का बिल)</span>
                 <span className="text-lg text-[#0f172a] tabular-nums">
                   ₹ {totalAmount.toFixed(2)}
                 </span>
               </div>
+              {previousBalance > 0 && (
+                <div className="flex justify-between text-gray-600 pt-0.5 text-[11px]">
+                  <span>Previous Balance (पिछला बकाया)</span>
+                  <span className="font-semibold text-gray-800">+ ₹ {previousBalance.toFixed(2)}</span>
+                </div>
+              )}
+              {previousBalance > 0 && (
+                <div className="flex justify-between text-gray-900 text-[11px] font-black border-t border-gray-200 pt-0.5">
+                  <span>Grand Total (कुल बकाया)</span>
+                  <span className="tabular-nums">₹ {grandTotalDue.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-gray-600 pt-0.5 text-[11px]">
-                <span>Received Amount</span>
-                <span className="font-semibold text-gray-800">
-                  ₹ {receivedAmount.toFixed(2)}
-                </span>
+                <span>Received / जमा</span>
+                <span className="font-semibold text-gray-800">− ₹ {receivedAmount.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-600 text-[11px]">
-                <span>Current Balance</span>
-                <span className={`font-bold ${currentBalance > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+              <div className="flex justify-between text-[11px] font-bold border-t border-gray-200 pt-0.5">
+                <span className="text-gray-800">
+                  {previousBalance > 0 ? "Current Balance (कुल बाकी)" : "Current Balance (बाकी)"}
+                </span>
+                <span className={`${currentBalance > 0 ? "text-amber-700" : "text-emerald-700"}`}>
                   ₹ {currentBalance.toFixed(2)}
                 </span>
               </div>
