@@ -33,67 +33,10 @@ export async function GET(request: NextRequest) {
     if (!exchangeError && exchangeData.user) {
       const user = exchangeData.user;
 
-      // Ensure profile and store exist for ERP access
-      try {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id, store_id, role, is_active")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        const isMasterOwner =
-          user.email === "vimlesh.lakhere@gmail.com" ||
-          user.email === "vlakhere@gmail.com" ||
-          user.email === "owner_1786762700828@agsstore.com";
-
-        const needsNewStore =
-          !profile ||
-          !profile.store_id ||
-          (!isMasterOwner && profile.store_id === "a0000000-0000-0000-0000-000000000001");
-
-        if (needsNewStore) {
-          const userName =
-            user.user_metadata?.full_name ||
-            user.user_metadata?.name ||
-            user.email?.split("@")[0] ||
-            "My Store";
-          const storeName = `${userName}'s Store`;
-          const newStoreId = crypto.randomUUID();
-
-          // 1. Create dedicated store in both shops and stores tables
-          await supabase.from("shops").insert([
-            {
-              id: newStoreId,
-              name: storeName,
-              currency: "INR",
-            },
-          ]);
-
-          await supabase.from("stores").insert([
-            {
-              id: newStoreId,
-              name: storeName,
-              currency: "INR",
-            },
-          ]);
-
-          // 2. Upsert profile with dedicated store_id
-          await supabase
-            .from("profiles")
-            .upsert({
-              id: user.id,
-              email: user.email || "",
-              full_name: userName,
-              avatar_url: user.user_metadata?.avatar_url || null,
-              role: "Owner",
-              store_id: newStoreId,
-              is_active: true,
-            });
-        }
-      } catch (profileErr) {
-        console.error("Error setting up profile during OAuth callback:", profileErr);
-      }
-
+      // Auto-store-creation on OAuth (Google) sign-in is DISABLED — a login no longer provisions a
+      // fresh 14-day trial store without the owner's approval. Signed-in users without their own
+      // approved store just get no ERP store (the middleware routes them to the storefront). This was
+      // the main source of junk trial stores from stray Google sign-ins.
       return response;
     }
   }

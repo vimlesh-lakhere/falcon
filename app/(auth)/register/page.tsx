@@ -236,6 +236,35 @@ export default function RegisterBusinessPage() {
     }
   };
 
+  // Self-registration is DISABLED — new store/trial accounts are provisioned only by the platform
+  // owner (no automatic 14-day trials without approval). Flip to re-open public sign-up.
+  const SIGNUP_ENABLED = false;
+  if (!SIGNUP_ENABLED) {
+    return (
+      <AuthLayout
+        title="Registration is invite-only"
+        subtitle="New store accounts are set up by the Falcon 360 owner."
+      >
+        <div className="space-y-4 text-center py-2">
+          <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-2xl">
+            🔒
+          </div>
+          <h3 className="text-base font-black text-gray-900">Self sign-up band hai</h3>
+          <p className="text-sm text-gray-600 leading-relaxed">
+            Naya store / trial account sirf owner ki approval se banta hai. Account chahiye to owner se
+            sampark karein.
+          </p>
+          <a
+            href="/login"
+            className="inline-flex items-center justify-center w-full h-10 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg"
+          >
+            ← Sign In
+          </a>
+        </div>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout
       title="Create your store account"
