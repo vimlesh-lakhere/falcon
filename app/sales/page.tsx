@@ -34,6 +34,7 @@ import { Sale } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 import { EditInvoiceModal } from "@/components/sales/EditInvoiceModal";
+import { ReturnModal } from "@/components/sales/ReturnModal";
 import { ThermalReceipt } from "@/components/pos/ThermalReceipt";
 import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
 import { parseFreightCharge } from "@/lib/thermal-printer";
@@ -86,6 +87,7 @@ function SalesHistoryContent() {
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [printingSale, setPrintingSale] = useState<Sale | null>(null);
   const [parcelSale, setParcelSale] = useState<Sale | null>(null);
+  const [returningSale, setReturningSale] = useState<Sale | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "online" | "pos">(initialTab);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -772,6 +774,18 @@ function SalesHistoryContent() {
                                 <span>Edit</span>
                               </Button>
 
+                              {/* ↩️ Return / Refund Button */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setReturningSale(sale)}
+                                className="text-xs font-bold h-7 gap-1 text-amber-700 hover:bg-amber-50 border-amber-300"
+                                title="Item wapas lein — stock wapas add hoga & refund"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                                <span className="hidden md:inline">Return</span>
+                              </Button>
+
                               {/* 🖨️ Thermal Print Receipt Button */}
                               <Button
                                 size="sm"
@@ -1143,6 +1157,20 @@ function SalesHistoryContent() {
               setEditingSale(null);
               loadSales();
               setPrintingSale(updatedSale);
+            }}
+          />
+        )}
+
+        {/* Return / Refund Modal */}
+        {returningSale && (
+          <ReturnModal
+            isOpen={!!returningSale}
+            onClose={() => setReturningSale(null)}
+            sale={returningSale}
+            shopId={SHOP_ID}
+            processedBy={null}
+            onSuccess={() => {
+              loadSales();
             }}
           />
         )}
