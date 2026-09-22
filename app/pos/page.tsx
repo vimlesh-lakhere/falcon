@@ -482,11 +482,22 @@ export default function PosBillingPage() {
   useEffect(() => {
     setIsOnline(navigator.onLine);
     setPendingOfflineBills(offlinePosEngine.getPendingCount());
+    // Catch up bills queued during a previous offline session, even if no "online" event fires.
+    if (navigator.onLine && offlinePosEngine.getPendingCount() > 0) {
+      handleSyncOfflineBills();
+    }
 
     const handleOnline = () => {
       setIsOnline(true);
       handleSyncOfflineBills();
     };
+    // Also retry whenever the app regains focus while online (connection may have returned silently).
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && navigator.onLine && offlinePosEngine.getPendingCount() > 0) {
+        handleSyncOfflineBills();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener("online", handleOnline);
@@ -495,6 +506,7 @@ export default function PosBillingPage() {
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -511,9 +523,29 @@ export default function PosBillingPage() {
     }
   };
 
-  // Load catalog data (with offline cache fallback & sales count)
+  // Load catalog data — CACHE-FIRST so billing is instant even offline / on slow internet, then
+  // refresh from the server in the background when online.
   const loadCatalog = async () => {
     if (!SHOP_ID) return;
+
+    // 1. Paint immediately from the offline cache — no network wait.
+    const cachedProds = offlinePosEngine.getCachedCatalog();
+    if (cachedProds.length > 0) {
+      setProducts(cachedProds);
+      const cachedCats = offlinePosEngine.getCachedCategories();
+      const cachedCusts = offlinePosEngine.getCachedCustomers();
+      const cachedUnits = offlinePosEngine.getCachedUnits();
+      const cachedStats = offlinePosEngine.getCachedSalesStats();
+      if (cachedCats.length > 0) setCategories(cachedCats);
+      if (cachedCusts.length > 0) setCustomers(cachedCusts);
+      if (cachedUnits.length > 0) setUnits(cachedUnits);
+      if (Object.keys(cachedStats).length > 0) setProductSalesCount(cachedStats);
+    }
+
+    // 2. Offline? The cache is our source — don't hang on a dead/slow network.
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+
+    // 3. Online: refresh from the server in the background and update the cache.
     try {
       const [prods, cats, custs, unts] = await Promise.all([
         productsRepository.getAll(SHOP_ID, { isActive: true }),
@@ -549,21 +581,10 @@ export default function PosBillingPage() {
         }
       } catch (e) {
         console.warn("Could not load sales count stats:", e);
-        setProductSalesCount(offlinePosEngine.getCachedSalesStats());
       }
     } catch (err) {
-      console.warn("Online catalog load failed, loading from offline cache:", err);
-      const cachedProds = offlinePosEngine.getCachedCatalog();
-      const cachedCats = offlinePosEngine.getCachedCategories();
-      const cachedCusts = offlinePosEngine.getCachedCustomers();
-      const cachedStats = offlinePosEngine.getCachedSalesStats();
-      const cachedUnits = offlinePosEngine.getCachedUnits();
-
-      if (cachedProds.length > 0) setProducts(cachedProds);
-      if (cachedCats.length > 0) setCategories(cachedCats);
-      if (cachedCusts.length > 0) setCustomers(cachedCusts);
-      if (cachedUnits.length > 0) setUnits(cachedUnits);
-      if (Object.keys(cachedStats).length > 0) setProductSalesCount(cachedStats);
+      // Network refresh failed — we already painted from cache above, so billing still works.
+      console.warn("Online catalog refresh failed, using offline cache:", err);
     }
   };
 
