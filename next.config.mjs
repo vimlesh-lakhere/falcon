@@ -24,6 +24,8 @@ const nextConfig = {
         "node_modules/onnxruntime-node/**",
         "node_modules/onnxruntime-web/**",
         "node_modules/@imgly/**",
+        "node_modules/googleapis/**",
+        "node_modules/googleapis-common/**",
         "falcon_mobile/**",
         "backups/**",
         "database/**",

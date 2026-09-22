@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { google } from "googleapis";
 import fs from "fs";
 import path from "path";
 
@@ -36,8 +35,21 @@ export async function GET(request: NextRequest) {
     const host = request.headers.get("host") || "localhost:3000";
     const redirectUri = `${protocol}://${host}/api/backup/google-drive/callback`;
 
-    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-    const { tokens } = await oauth2Client.getToken(code);
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    });
+    const tokens = (await tokenRes.json()) as { refresh_token?: string; error?: string };
+    if (!tokenRes.ok) {
+      throw new Error(`Token exchange failed: ${tokens.error || tokenRes.status}`);
+    }
 
     if (tokens.refresh_token) {
       // Append or update GOOGLE_REFRESH_TOKEN in .env.local

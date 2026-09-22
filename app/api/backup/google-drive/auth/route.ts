@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { google } from "googleapis";
 
 export const dynamic = "force-dynamic";
 
@@ -22,16 +21,18 @@ export async function GET(request: NextRequest) {
     const host = request.headers.get("host") || "localhost:3000";
     const redirectUri = `${protocol}://${host}/api/backup/google-drive/callback`;
 
-    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-
-    const authUrl = oauth2Client.generateAuthUrl({
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
       access_type: "offline",
       prompt: "consent",
       scope: [
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/drive",
-      ],
+      ].join(" "),
     });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 
     return NextResponse.redirect(authUrl);
   } catch (error: any) {
