@@ -37,18 +37,24 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Default: List recent backups
-    const files = await listDriveBackups(20);
-
-    return NextResponse.json({
-      configured: true,
-      files,
-    });
+    // Default: List recent backups. A listing failure must NOT report the account as
+    // "not set up" — the credentials still exist; we just couldn't read the folder right now.
+    try {
+      const files = await listDriveBackups(20);
+      return NextResponse.json({ configured: true, files });
+    } catch (listErr: any) {
+      console.error("[Google Drive List Error]", listErr);
+      return NextResponse.json({
+        configured: true,
+        files: [],
+        warning: `Google Drive is connected, but the backup list couldn't be read: ${listErr.message}`,
+      });
+    }
   } catch (error: any) {
     console.error("[Google Drive GET Error]", error);
     return NextResponse.json(
       {
-        configured: false,
+        configured: isGoogleDriveConfigured(),
         error: "Failed to connect or fetch from Google Drive",
         details: error.message,
         files: [],

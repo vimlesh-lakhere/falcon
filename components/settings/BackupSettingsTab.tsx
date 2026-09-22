@@ -131,7 +131,9 @@ export function BackupSettingsTab() {
       if (data.files) {
         setDriveFiles(data.files);
       }
-      if (data.message) {
+      if (data.warning) {
+        setDriveMessage(`⚠️ ${data.warning}`);
+      } else if (data.message) {
         setDriveMessage(data.message);
       }
     } catch (err) {

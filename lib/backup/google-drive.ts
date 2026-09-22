@@ -50,84 +50,99 @@ function base64Url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");
 }
 
+/** POSTs an OAuth token request, caches the result, and returns the access token. */
+async function requestToken(body: URLSearchParams): Promise<string> {
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status} ${detail.slice(0, 180)}`);
+  }
+  const json = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!json.access_token) throw new Error("response had no access_token");
+  cachedToken = {
+    value: json.access_token,
+    expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
+  };
+  return json.access_token;
+}
+
+/** Service-account JWT flow. Returns null when SA credentials aren't configured. */
+async function tokenViaServiceAccount(): Promise<string | null> {
+  const saEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  let saKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
+  if (!saEmail || !saKey) return null;
+
+  // Env vars usually store the PEM with escaped newlines.
+  if (saKey.includes("\\n")) saKey = saKey.replace(/\\n/g, "\n");
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claim = base64Url(
+    JSON.stringify({ iss: saEmail, scope: DRIVE_SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600 })
+  );
+  const signingInput = `${header}.${claim}`;
+  const signature = crypto.createSign("RSA-SHA256").update(signingInput).sign(saKey, "base64url");
+  const assertion = `${signingInput}.${signature}`;
+
+  return requestToken(
+    new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion })
+  );
+}
+
+/** OAuth2 refresh-token flow. Returns null when OAuth credentials aren't configured. */
+async function tokenViaRefreshToken(): Promise<string | null> {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) return null;
+
+  return requestToken(
+    new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    })
+  );
+}
+
 /**
- * Returns a valid OAuth access token, using the OAuth2 refresh-token flow when client credentials
- * are present, otherwise a signed service-account JWT. Result is cached until ~1 min before expiry.
+ * Returns a valid OAuth access token, cached until ~1 min before expiry.
+ *
+ * Tries the SERVICE ACCOUNT first because its token never expires; an OAuth "testing"-app refresh
+ * token silently expires after 7 days, which is the usual reason Drive suddenly shows "not set up".
+ * If the service account fails (e.g. the folder isn't shared with it) we fall back to the refresh
+ * token, so whichever credential actually works gets used.
  */
 async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) {
     return cachedToken.value;
   }
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  const strategies: Array<[string, () => Promise<string | null>]> = [
+    ["service account", tokenViaServiceAccount],
+    ["OAuth refresh token", tokenViaRefreshToken],
+  ];
 
-  let body: URLSearchParams;
-
-  if (clientId && clientSecret && refreshToken) {
-    body = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    });
-  } else {
-    const saEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    let saKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-
-    if (!saEmail || !saKey) {
-      throw new Error(
-        "Google Drive credentials not configured. Provide GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN or GOOGLE_SERVICE_ACCOUNT_EMAIL/PRIVATE_KEY."
-      );
+  const errors: string[] = [];
+  for (const [name, fn] of strategies) {
+    try {
+      const token = await fn();
+      if (token) return token;
+    } catch (e: any) {
+      errors.push(`${name}: ${e?.message || e}`);
     }
-
-    // Env vars usually store the PEM with escaped newlines.
-    if (saKey.includes("\\n")) saKey = saKey.replace(/\\n/g, "\n");
-
-    const now = Math.floor(Date.now() / 1000);
-    const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-    const claim = base64Url(
-      JSON.stringify({
-        iss: saEmail,
-        scope: DRIVE_SCOPE,
-        aud: TOKEN_URL,
-        iat: now,
-        exp: now + 3600,
-      })
-    );
-    const signingInput = `${header}.${claim}`;
-    const signature = crypto
-      .createSign("RSA-SHA256")
-      .update(signingInput)
-      .sign(saKey, "base64url");
-    const assertion = `${signingInput}.${signature}`;
-
-    body = new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion,
-    });
   }
 
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Google token request failed (HTTP ${res.status}): ${detail}`);
-  }
-
-  const json = (await res.json()) as { access_token?: string; expires_in?: number };
-  if (!json.access_token) throw new Error("Google token response had no access_token.");
-
-  cachedToken = {
-    value: json.access_token,
-    expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
-  };
-  return cachedToken.value;
+  throw new Error(
+    errors.length
+      ? `Could not authenticate with Google Drive (${errors.join(" | ")}).`
+      : "Google Drive credentials are not configured."
+  );
 }
 
 /** Drive REST call with the bearer token attached; throws on non-2xx. */
