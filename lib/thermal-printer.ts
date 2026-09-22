@@ -391,7 +391,7 @@ export async function buildRasterGraphicsReceipt(
     if (upiUrl) {
       try {
         const qrDataUrl = await QRCode.toDataURL(upiUrl, {
-          width: is80mm ? 260 : 200,
+          width: is80mm ? 190 : 150, // smaller QR = less thermal roll per bill; still easily scannable
           margin: 1,
           errorCorrectionLevel: "M",
           color: { dark: "#000000", light: "#ffffff" },
@@ -614,7 +614,7 @@ export async function buildRasterGraphicsReceipt(
   }
   drawCenteredText("Powered by Falcon Store ERP", smallFontSize - 3);
 
-  y += 24; // Bottom margin
+  y += 12; // Bottom margin (trimmed to save roll paper)
 
   // Crop canvas to actual rendered content height
   const finalCanvas = document.createElement("canvas");

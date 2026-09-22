@@ -67,7 +67,7 @@ export const AartiBillOfSupplyImage = forwardRef<HTMLDivElement, AartiBillOfSupp
       <div
         ref={ref}
         id="aarti-invoice-render-card"
-        className="w-[794px] min-h-[1050px] bg-white text-[#1e293b] p-8 font-sans select-none relative box-border mx-auto border-[3px] border-[#d4af37]"
+        className="w-[794px] bg-white text-[#1e293b] p-8 font-sans select-none relative box-border mx-auto border-[3px] border-[#d4af37]"
         style={{
           boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
           fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
