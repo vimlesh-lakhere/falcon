@@ -556,6 +556,17 @@ function SalesHistoryContent() {
                           <span>WA</span>
                         </Button>
                       </div>
+
+                      {/* Return / Refund — full width so it's easy to tap on mobile */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setReturningSale(sale)}
+                        className="w-full mt-1.5 text-[11px] h-7 flex items-center justify-center gap-1 font-bold text-amber-700 border-amber-300 hover:bg-amber-50"
+                      >
+                        <RotateCcw className="w-3 h-3 text-amber-600" />
+                        <span>Return / वापसी (item wapas)</span>
+                      </Button>
                     </div>
                   );
                 })
