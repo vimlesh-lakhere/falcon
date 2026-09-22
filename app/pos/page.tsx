@@ -22,6 +22,7 @@ import {
   ArrowRight,
   RefreshCw,
   ShoppingCart,
+  RotateCcw,
   Wifi,
   WifiOff,
   Camera,
@@ -54,6 +55,7 @@ import { CollectPaymentModal } from "@/components/khata/CollectPaymentModal";
 import { WhatsAppInvoiceModal } from "@/components/pos/WhatsAppInvoiceModal";
 import { CameraBarcodeScanner, ScanFeedback } from "@/components/pos/CameraBarcodeScanner";
 import { UpiQrCode } from "@/components/pos/UpiQrCode";
+import { PosReturnFlow } from "@/components/pos/PosReturnFlow";
 import { PosQuickAddModal } from "@/components/pos/PosQuickAddModal";
 import { PosFastCalculatorModal } from "@/components/pos/PosFastCalculatorModal";
 import { QuickDemandPadModal } from "@/components/dashboard/QuickDemandPadModal";
@@ -149,6 +151,8 @@ export default function PosBillingPage() {
 
   // Held Bills Modal
   const [isHeldBillsModalOpen, setIsHeldBillsModalOpen] = useState(false);
+  // Return / refund from POS (find a past bill, then return items)
+  const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [heldBillToast, setHeldBillToast] = useState<string>("");
 
   // Mobile Category Sidebar Drawer
@@ -1561,6 +1565,17 @@ export default function PosBillingPage() {
           >
             <Printer className="w-4 h-4 text-amber-300" />
             <span className="hidden sm:inline">Printer</span>
+          </button>
+
+          {/* Return / Refund — find a past bill and return items */}
+          <button
+            type="button"
+            onClick={() => setIsReturnOpen(true)}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-brand-800 hover:bg-brand-900 transition-all text-white flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer shadow-xs active:scale-95 border border-white/10"
+            title="Return / वापसी — purana bill dhoondh kar item wapas lein"
+          >
+            <RotateCcw className="w-4 h-4 text-amber-300" />
+            <span className="hidden sm:inline">Return</span>
           </button>
 
           {/* Fast Calculator Header Trigger Button */}
@@ -3051,6 +3066,14 @@ export default function PosBillingPage() {
           <PrinterSettingsTab shopId={SHOP_ID} />
         </div>
       </Modal>
+
+      {/* Return / Refund from POS — pick a past bill, then return items (restores stock) */}
+      <PosReturnFlow
+        isOpen={isReturnOpen}
+        onClose={() => setIsReturnOpen(false)}
+        shopId={SHOP_ID}
+        onDone={() => loadCatalog()}
+      />
 
       {/* Continuous Live Camera Barcode Scanner Modal */}
       <CameraBarcodeScanner
