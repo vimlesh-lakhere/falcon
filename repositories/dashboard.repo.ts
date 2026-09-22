@@ -65,10 +65,10 @@ export const dashboardRepository = {
         .eq("shop_id", shopId)
         .order("created_at", { ascending: false })
         .limit(6),
-      // 6. Today's returns (to net off sales & profit)
+      // 6. Today's returns, with the ORIGINAL sale date, to net off sales & profit
       supabase
         .from("returns")
-        .select("total_refund, items:return_items(quantity, sale_item:sale_items(unit_price, cost_price))")
+        .select("total_refund, created_at, sale:sales(created_at), items:return_items(quantity, sale_item:sale_items(unit_price, cost_price))")
         .eq("shop_id", shopId)
         .gte("created_at", todayIso),
     ]);
@@ -86,10 +86,15 @@ export const dashboardRepository = {
       });
     });
 
-    // Net today's returns off sales and profit (refund amount off sales; item margin off profit).
+    // Net returns off today's sales/profit — but ONLY returns whose original sale was ALSO today.
+    // Refunding a bill from a previous day is a cash return, not a reduction of today's selling, so
+    // it must not push "Today's Sales" negative.
+    const todayMs = today.getTime();
     let todayReturnsTotal = 0;
     let todayReturnsProfit = 0;
     ((returnsData as any[]) || []).forEach((r) => {
+      const saleDate = r.sale?.created_at;
+      if (!saleDate || new Date(saleDate).getTime() < todayMs) return;
       todayReturnsTotal += Number(r.total_refund || 0);
       (r.items || []).forEach((ri: any) => {
         const up = Number(ri.sale_item?.unit_price || 0);
