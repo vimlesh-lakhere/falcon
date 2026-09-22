@@ -1,4 +1,5 @@
 import { Product, Unit } from "@/types/database";
+import { getProductEffectiveOnlinePrice } from "@/lib/product-online";
 
 export type UnitKey = "piece" | "half_dozen" | "dozen" | "bundle_10_doz" | "half_unit" | "unit" | "bulk_5" | "bulk_10" | "custom" | string;
 
@@ -467,6 +468,74 @@ export function getEffectiveItemPrice(
     isWholesaleTriggered: false,
     totalPieces,
     savingsPerUnit: round2(Math.max(0, originalPrice - regularUnitPrice)),
+  };
+}
+
+/**
+ * Pieces contained in ONE storefront / online-order unit for this product.
+ *
+ * The public store (and the online checkout) sells a product in the SAME unit its card shows:
+ *  - price_basis 'pack'  → the customer buys whole packs, so 1 unit = conversion_factor pieces.
+ *  - price_basis 'piece' → the customer buys loose pieces, so 1 unit = 1 piece, even if the product
+ *    also has a pack unit defined (that pack unit only exists for POS pack-breaking at the counter).
+ * Inventory is deducted as quantity × this value.
+ */
+export function getStorefrontUnitPieces(product: Product, unitCatalog?: Unit[]): number {
+  const { conversionFactor } = resolveProductUnitDetails(product, unitCatalog);
+  const isPack = (product as any).price_basis === "pack" && conversionFactor > 1;
+  return isPack ? conversionFactor : 1;
+}
+
+/**
+ * Price of ONE storefront unit (a pack for pack-basis products, a piece otherwise) — exactly the
+ * price the product card shows, so the drawer, the cart page, the totals and the recorded order all
+ * agree with what the customer saw. Wholesale kicks in once the order reaches the piece threshold.
+ *
+ * This is the storefront counterpart of getEffectiveItemPrice (which resolves to loose pieces for
+ * the in-store POS). Using the POS "piece" price on the storefront billed pack products at
+ * 1/conversion_factor of their price — e.g. an ₹84 box was charged as ₹7.
+ */
+export function getStorefrontItemPrice(
+  product: Product,
+  quantity: number = 1,
+  unitCatalog?: Unit[]
+): {
+  unitPrice: number;
+  originalPrice: number;
+  isWholesaleTriggered: boolean;
+  totalPieces: number;
+  unitPieces: number;
+  savingsPerUnit: number;
+} {
+  const unitPieces = getStorefrontUnitPieces(product, unitCatalog);
+  const qty = Number(quantity) > 0 ? Number(quantity) : 1;
+  const totalPieces = qty * unitPieces;
+
+  // The card price: online_price when set, otherwise selling_price — already in the product's basis.
+  const displayPrice = getProductEffectiveOnlinePrice(product);
+  const listSelling = Number(product.selling_price) || displayPrice;
+  const rawMrp = Number(product.mrp) || 0;
+  const rawWholesale = Number(product.wholesale_price) || 0;
+  const minQty = Number(product.wholesale_min_qty) || 0;
+
+  let unitPrice = displayPrice;
+  let isWholesaleTriggered = false;
+  if (rawWholesale > 0 && minQty > 0 && totalPieces >= minQty && rawWholesale < displayPrice) {
+    unitPrice = rawWholesale;
+    isWholesaleTriggered = true;
+  }
+
+  // Strikethrough "was" price: the highest of MRP, undiscounted selling and the live price, read
+  // from the raw values so a stray per-piece MRP on a pack product can never drop below the price.
+  const originalPrice = Math.max(rawMrp, listSelling, unitPrice);
+
+  return {
+    unitPrice: round2(unitPrice),
+    originalPrice: round2(originalPrice),
+    isWholesaleTriggered,
+    totalPieces,
+    unitPieces,
+    savingsPerUnit: round2(Math.max(0, originalPrice - unitPrice)),
   };
 }
 

@@ -16,7 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useStoreCart } from "@/store/useStoreCart";
-import { getEffectiveItemPrice } from "@/lib/units-pricing";
+import { getStorefrontItemPrice } from "@/lib/units-pricing";
 
 export const CartDrawer: React.FC = () => {
   const router = useRouter();
@@ -87,13 +87,16 @@ export const CartDrawer: React.FC = () => {
               </div>
             ) : (
               cart.map((item) => {
-                const effective = getEffectiveItemPrice(item.product, item.quantity, "piece");
+                const effective = getStorefrontItemPrice(item.product, item.quantity);
                 const price = effective.unitPrice;
                 const originalRetail = effective.originalPrice;
                 const mrp = Number(item.product.mrp) || originalRetail;
                 const isWholesaleActive = effective.isWholesaleTriggered;
                 const wholesaleMinQty = Number(item.product.wholesale_min_qty) || 12;
                 const wholesaleRaw = Number(item.product.wholesale_price) || 0;
+                // Pieces still needed to unlock the wholesale rate (order is counted in pieces).
+                const piecesToWholesale = Math.max(0, wholesaleMinQty - effective.totalPieces);
+                const unitsToWholesale = Math.ceil(piecesToWholesale / effective.unitPieces);
 
                 const imageSrc =
                   item.product.image_url ||
@@ -144,9 +147,9 @@ export const CartDrawer: React.FC = () => {
                           )}
                         </div>
 
-                        {!isWholesaleActive && wholesaleRaw > 0 && item.quantity < wholesaleMinQty && (
+                        {!isWholesaleActive && wholesaleRaw > 0 && piecesToWholesale > 0 && (
                           <p className="text-[9px] text-indigo-600 font-semibold mt-0.5">
-                            💡 Add {wholesaleMinQty - item.quantity} more for Wholesale rate
+                            💡 Add {unitsToWholesale} more for Wholesale rate
                           </p>
                         )}
                       </div>

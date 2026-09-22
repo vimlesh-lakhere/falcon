@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSupabaseClient } from "@/lib/supabase/admin";
-import { getEffectiveItemPrice } from "@/lib/units-pricing";
+import { getStorefrontItemPrice, getStorefrontUnitPieces } from "@/lib/units-pricing";
 
 const SHOP_OWNER_WHATSAPP = process.env.NEXT_PUBLIC_SHOP_WHATSAPP || "919340362381";
 
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
         } catch {}
       }
 
-      const effective = getEffectiveItemPrice(dbProd as any, qty, "piece");
+      const effective = getStorefrontItemPrice(dbProd as any, qty);
       const price = variantPrice !== null ? variantPrice : effective.unitPrice;
       verifiedSubtotal += price * qty;
 
@@ -230,8 +230,11 @@ export async function POST(req: NextRequest) {
     // 6. Record stock movements (deducting base pieces for accurate multi-unit inventory)
     const stockMovements = verifiedItems.map((it) => {
       const dbProd = productMap.get(it.productId);
-      const conversionFactor = Number((dbProd as any)?.unit?.conversion_factor) || 1;
-      const baseDeduction = it.quantity * (conversionFactor > 0 ? conversionFactor : 1);
+      // Pieces per ordered unit: a pack-basis product deducts a full pack; a piece-basis product
+      // deducts one piece per unit even if it also has a pack unit (which is only for POS breaking).
+      // This matches getStorefrontItemPrice, so price and stock always move on the same unit.
+      const unitPieces = getStorefrontUnitPieces(dbProd as any);
+      const baseDeduction = it.quantity * (unitPieces > 0 ? unitPieces : 1);
       return {
         shop_id: shopId,
         product_id: it.productId,
@@ -239,7 +242,7 @@ export async function POST(req: NextRequest) {
         quantity_delta: -baseDeduction,
         reference_table: "sales",
         reference_id: saleId,
-        notes: `Online Storefront Order #${invoiceNumber}${conversionFactor > 1 ? ` (${it.quantity} packs = ${baseDeduction} pcs)` : ""}`,
+        notes: `Online Storefront Order #${invoiceNumber}${unitPieces > 1 ? ` (${it.quantity} packs = ${baseDeduction} pcs)` : ""}`,
       };
     });
 

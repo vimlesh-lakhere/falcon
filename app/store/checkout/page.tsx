@@ -20,6 +20,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { useStoreCart, CustomerAddress } from "@/store/useStoreCart";
+import { getStorefrontItemPrice } from "@/lib/units-pricing";
 import { storeOrderService } from "@/lib/store/order-service";
 import { CustomerAuthModal } from "@/components/store/CustomerAuthModal";
 import { LocationPicker } from "@/components/store/LocationPicker";
@@ -634,16 +635,21 @@ export default function StoreCheckoutPage() {
           </h2>
 
           <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
-            {cart.map((item) => (
-              <div key={item.product.id} className="flex items-center justify-between text-xs">
-                <span className="text-gray-800 line-clamp-1 flex-1 pr-2">
-                  {item.quantity}x {item.product.name}
-                </span>
-                <span className="font-bold text-gray-900">
-                  ₹{(Number(item.product.selling_price) || 0) * item.quantity}
-                </span>
-              </div>
-            ))}
+            {cart.map((item) => {
+              // Same display-unit price the drawer, cart and server use — keeps each line in sync
+              // with the subtotal (applies pack pricing, online offers and wholesale).
+              const lineUnit = getStorefrontItemPrice(item.product, item.quantity).unitPrice;
+              return (
+                <div key={item.product.id} className="flex items-center justify-between text-xs">
+                  <span className="text-gray-800 line-clamp-1 flex-1 pr-2">
+                    {item.quantity}x {item.product.name}
+                  </span>
+                  <span className="font-bold text-gray-900">
+                    ₹{Number((lineUnit * item.quantity).toFixed(2))}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           <div className="pt-3 border-t border-gray-100 space-y-2 text-xs text-gray-600">
