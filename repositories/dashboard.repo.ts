@@ -5,6 +5,7 @@ export interface DashboardMetrics {
   todaySalesTotal: number;
   todaySalesCount: number;
   todayProfit: number;
+  todayReturnsTotal: number;
   lowStockCount: number;
   pendingRequestsCount: number;
   pendingPurchasesCount: number;
@@ -30,6 +31,7 @@ export const dashboardRepository = {
       { count: pendingRequestsCount },
       { count: pendingPurchasesCount },
       { data: recentSalesData },
+      { data: returnsData },
     ] = await Promise.all([
       // 1. Today's sales (for totals, profit and top products)
       supabase
@@ -63,20 +65,41 @@ export const dashboardRepository = {
         .eq("shop_id", shopId)
         .order("created_at", { ascending: false })
         .limit(6),
+      // 6. Today's returns (to net off sales & profit)
+      supabase
+        .from("returns")
+        .select("total_refund, items:return_items(quantity, sale_item:sale_items(unit_price, cost_price))")
+        .eq("shop_id", shopId)
+        .gte("created_at", todayIso),
     ]);
 
     const todaySales = (salesData as Sale[]) || [];
-    const todaySalesTotal = todaySales.reduce((sum, s) => sum + Number(s.total_amount || 0), 0);
+    const grossSalesTotal = todaySales.reduce((sum, s) => sum + Number(s.total_amount || 0), 0);
     const todaySalesCount = todaySales.length;
 
-    let todayProfit = 0;
+    let grossProfit = 0;
     todaySales.forEach((sale) => {
       sale.items?.forEach((item) => {
         const rev = Number(item.unit_price) * Number(item.quantity);
         const cost = Number(item.cost_price || 0) * Number(item.quantity);
-        todayProfit += rev - cost;
+        grossProfit += rev - cost;
       });
     });
+
+    // Net today's returns off sales and profit (refund amount off sales; item margin off profit).
+    let todayReturnsTotal = 0;
+    let todayReturnsProfit = 0;
+    ((returnsData as any[]) || []).forEach((r) => {
+      todayReturnsTotal += Number(r.total_refund || 0);
+      (r.items || []).forEach((ri: any) => {
+        const up = Number(ri.sale_item?.unit_price || 0);
+        const cp = Number(ri.sale_item?.cost_price || 0);
+        todayReturnsProfit += (up - cp) * Number(ri.quantity || 0);
+      });
+    });
+
+    const todaySalesTotal = grossSalesTotal - todayReturnsTotal;
+    const todayProfit = grossProfit - todayReturnsProfit;
 
     const products = productsData || [];
     const lowStockCount = products.filter((p) => Number(p.current_stock) <= Number(p.minimum_stock)).length;
@@ -107,6 +130,7 @@ export const dashboardRepository = {
       todaySalesTotal,
       todaySalesCount,
       todayProfit,
+      todayReturnsTotal,
       lowStockCount,
       pendingRequestsCount: pendingRequestsCount || 0,
       pendingPurchasesCount: pendingPurchasesCount || 0,

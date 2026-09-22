@@ -218,6 +218,16 @@ export const PosCustomerSelector: React.FC<PosCustomerSelectorProps> = ({
               </button>
             </div>
 
+            {/* Advance / Credit badge when the customer has paid extra (negative balance) */}
+            {Number(selectedCustomer.outstanding_balance) < 0 && (
+              <div className="pt-1 border-t border-purple-200/60 text-[10px]">
+                <span className="font-bold text-blue-800 bg-blue-100/90 px-2 py-0.5 rounded-md border border-blue-300 flex items-center gap-1 w-fit">
+                  <span>💰 Advance जमा:</span>
+                  <span className="font-black">₹{Math.abs(Number(selectedCustomer.outstanding_balance)).toFixed(2)}</span>
+                </span>
+              </div>
+            )}
+
             {/* Khata / Udhaar Badge if customer has pending balance */}
             {Number(selectedCustomer.outstanding_balance) > 0 && (
               <div className="flex items-center justify-between pt-1 border-t border-purple-200/60 text-[10px]">

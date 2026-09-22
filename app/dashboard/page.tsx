@@ -201,8 +201,11 @@ export default function DashboardPage() {
                 <div className="text-2xl font-bold text-gray-900 tabular-nums">
                   {loading ? "..." : formatCurrency(metrics?.todaySalesTotal || 0)}
                 </div>
-                <div className="text-xs text-gray-500 flex items-center gap-1">
+                <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
                   <span>{metrics?.todaySalesCount || 0} completed invoices</span>
+                  {(metrics?.todayReturnsTotal || 0) > 0 && (
+                    <span className="text-amber-700 font-semibold">· −{formatCurrency(metrics!.todayReturnsTotal)} returns</span>
+                  )}
                 </div>
               </div>
               <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">

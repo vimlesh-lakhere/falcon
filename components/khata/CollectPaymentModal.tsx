@@ -101,7 +101,8 @@ export const CollectPaymentModal: React.FC<CollectPaymentModalProps> = ({
   const shopPhone = shopConfig.shopPhone || "+91 9340362381";
 
   const prevBal = successData?.prevBalance || currentDue;
-  const newBal = successData?.newBalance ?? Math.max(0, currentDue - amount);
+  // May be negative = customer advance / credit (they paid more than the due).
+  const newBal = successData?.newBalance ?? Math.round((currentDue - amount) * 100) / 100;
   const paidAmt = successData?.payment?.amount || amount;
 
   const whatsappReceiptMessage = `🧾 *रसीद: खाता जमा / PAYMENT RECEIPT*
@@ -115,7 +116,7 @@ export const CollectPaymentModal: React.FC<CollectPaymentModalProps> = ({
 ━━━━━━━━━━━━━━━━━━━━
 💵 *प्राप्त राशि (Paid):* *₹${paidAmt.toFixed(2)}*
 📋 *पिछला बकाया (Previous Due):* ₹${prevBal.toFixed(2)}
-✅ *शेष बकाया (Remaining Balance):* *₹${newBal.toFixed(2)}*
+${newBal < 0 ? `💰 *Advance जमा (Credit):* *₹${Math.abs(newBal).toFixed(2)}*` : `✅ *शेष बकाया (Remaining Balance):* *₹${newBal.toFixed(2)}*`}
 ━━━━━━━━━━━━━━━━━━━━
 🙏 *आपका भुगतान सफलतापूर्वक प्राप्त हुआ। धन्यवाद!*`;
 
@@ -159,8 +160,12 @@ export const CollectPaymentModal: React.FC<CollectPaymentModalProps> = ({
                 <span className="font-black text-emerald-700">₹{successData.payment.amount.toFixed(2)}</span>
               </div>
               <div className="bg-white/80 p-2 rounded-xl border border-emerald-100">
-                <span className="text-[10px] text-gray-500 font-bold block">शेष बकाया</span>
-                <span className="font-black text-purple-900">₹{successData.newBalance.toFixed(2)}</span>
+                <span className="text-[10px] text-gray-500 font-bold block">
+                  {successData.newBalance < 0 ? "Advance जमा" : "शेष बकाया"}
+                </span>
+                <span className={`font-black ${successData.newBalance < 0 ? "text-blue-700" : "text-purple-900"}`}>
+                  ₹{Math.abs(successData.newBalance).toFixed(2)}
+                </span>
               </div>
             </div>
           </div>
@@ -282,13 +287,16 @@ export const CollectPaymentModal: React.FC<CollectPaymentModalProps> = ({
 
           {/* Remaining Balance Preview */}
           <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between text-xs">
-            <span className="font-semibold text-gray-600">जमा के बाद शेष बकाया:</span>
+            <span className="font-semibold text-gray-600">
+              {newBal < 0 ? "जमा (Advance) बचेगा:" : "जमा के बाद शेष बकाया:"}
+            </span>
             <span
               className={`font-black tabular-nums ${
-                newBal <= 0 ? "text-emerald-700" : "text-amber-800"
+                newBal < 0 ? "text-blue-700" : newBal === 0 ? "text-emerald-700" : "text-amber-800"
               }`}
             >
-              ₹{newBal.toFixed(2)} {newBal <= 0 ? "(खाता बेबाक/क्लियर ✓)" : ""}
+              ₹{Math.abs(newBal).toFixed(2)}{" "}
+              {newBal < 0 ? "(Advance जमा)" : newBal === 0 ? "(खाता क्लियर ✓)" : ""}
             </span>
           </div>
 

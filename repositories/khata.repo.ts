@@ -309,8 +309,10 @@ export const khataRepository = {
 
     if (fetchErr) throw fetchErr;
 
+    // Do NOT clamp at 0: paying more than the due leaves a NEGATIVE balance = the customer's advance
+    // / credit, which automatically offsets their next udhaar bill.
     const currentBal = Number(currentCust?.outstanding_balance) || 0;
-    const newBalance = Math.max(0, currentBal - payload.amount);
+    const newBalance = Math.round((currentBal - payload.amount) * 100) / 100;
 
     const { error: updateErr } = await supabase
       .from("customers")

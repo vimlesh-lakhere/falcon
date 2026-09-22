@@ -505,6 +505,10 @@ export default function KhataPage() {
                                 <span className="inline-block px-2.5 py-1 bg-red-100 text-red-900 border border-red-200 rounded-lg font-black text-xs">
                                   ₹{due.toFixed(2)}
                                 </span>
+                              ) : due < 0 ? (
+                                <span className="inline-block px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold text-xs">
+                                  Advance ₹{Math.abs(due).toFixed(2)}
+                                </span>
                               ) : (
                                 <span className="inline-block px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-xs">
                                   बेबाक ✓
