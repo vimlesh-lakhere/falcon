@@ -1,5 +1,5 @@
 // Project Falcon POS Service Worker
-const CACHE_NAME = "falcon-pos-v3";
+const CACHE_NAME = "falcon-pos-v4";
 
 const STATIC_PRECACHE = [
   "/pos",
@@ -72,31 +72,22 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Navigation requests & HTML -> Network First, Cache Fallback
+  // Navigation / HTML -> ALWAYS network-first, and DO NOT cache the live HTML at runtime. A cached
+  // page can reference JS chunks that a later deploy removed, which shows a blank / dataless app.
+  // Offline, fall back to the precached /pos shell (refreshed on each SW version bump).
   event.respondWith(
-    fetch(request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-        }
-        return networkResponse;
-      })
-      .catch(async () => {
-        const cached = await caches.match(request);
-        if (cached) return cached;
-
-        // If user is navigating to any page while offline, return cached /pos shell
-        if (request.mode === "navigate") {
-          const posFallback = await caches.match("/pos");
-          if (posFallback) return posFallback;
-        }
-
-        return new Response("Offline", {
-          status: 503,
-          statusText: "Offline",
-          headers: { "Content-Type": "text/plain" },
-        });
-      })
+    fetch(request).catch(async () => {
+      if (request.mode === "navigate") {
+        const posFallback = await caches.match("/pos");
+        if (posFallback) return posFallback;
+      }
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      return new Response("Offline", {
+        status: 503,
+        statusText: "Offline",
+        headers: { "Content-Type": "text/plain" },
+      });
+    })
   );
 });
