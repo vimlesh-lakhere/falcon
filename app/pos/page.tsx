@@ -1287,14 +1287,18 @@ export default function PosBillingPage() {
       setIsProcessing(true);
 
       // 1. Calculate tendered amounts & check due/udhaar
-      let totalPaid: number;
+      const prevDueForBill = selectedCustomer ? Math.max(0, Number(selectedCustomer.outstanding_balance) || 0) : 0;
+      let totalPaid: number;      // amount that settles THIS bill
+      let khataPayment = 0;       // extra the customer paid toward their PREVIOUS balance
       if (paymentMethod === "udhaar") {
         totalPaid = 0;
       } else if (paymentMethod === "split") {
         totalPaid = (Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0);
       } else {
-        // cash / upi / card with optional partial advance
-        totalPaid = Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
+        // cash / upi / card with optional partial advance — anything over the bill clears old dues.
+        const received = Math.max(0, Number(advancePaidAmount) || 0);
+        totalPaid = Math.min(received, totalAmount);
+        khataPayment = Math.min(Math.max(0, received - totalAmount), prevDueForBill);
       }
       const dueAmount = Math.max(0, totalAmount - totalPaid);
 
@@ -1328,6 +1332,8 @@ export default function PosBillingPage() {
         tax_amount: taxAmount,
         total_amount: totalAmount,
         notes: freightAmount > 0 ? `[Freight: ₹${freightAmount}]` : undefined,
+        khata_payment: khataPayment > 0 ? khataPayment : undefined,
+        khata_method: khataPayment > 0 ? paymentMethod : undefined,
         items: cart.map((it) => ({
           product_id: it.product.id,
           quantity: it.quantity,
@@ -1366,7 +1372,8 @@ export default function PosBillingPage() {
       let updatedCust: Customer | null = customerSnapshot;
       if (customerSnapshot) {
         const prevBal = Number(customerSnapshot.outstanding_balance) || 0;
-        const updatedBal = dueAmount > 0 ? prevBal + dueAmount : prevBal;
+        // Add this bill's udhaar, subtract any extra paid toward the old balance.
+        const updatedBal = Math.max(0, prevBal + dueAmount - khataPayment);
         const finalCust: Customer = {
           ...customerSnapshot,
           outstanding_balance: updatedBal,
@@ -2707,11 +2714,14 @@ export default function PosBillingPage() {
             </div>
           )}
 
-          {/* ─── Cash / UPI / Card with Advance + Udhaar ─── */}
+          {/* ─── Cash / UPI / Card with Advance + Udhaar + Old-dues collection ─── */}
           {(paymentMethod === "cash" || paymentMethod === "upi" || paymentMethod === "card") && (() => {
-            const advance = Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
-            const udhaarDue = Math.max(0, totalAmount - advance);
-            const change = Math.max(0, advance - totalAmount);
+            const prevDue = selectedCustomer ? Math.max(0, Number(selectedCustomer.outstanding_balance) || 0) : 0;
+            const maxAllowed = totalAmount + prevDue; // bill + whatever they can clear of old dues
+            const received = Math.min(Math.max(0, Number(advancePaidAmount) || 0), maxAllowed);
+            const billPaid = Math.min(received, totalAmount);
+            const udhaarDue = Math.max(0, totalAmount - billPaid);
+            const towardOld = Math.max(0, received - totalAmount); // ≤ prevDue by the cap above
             const modeLabel = paymentMethod === "cash" ? "नकद (Cash)" : paymentMethod === "upi" ? "UPI / QR" : "Card";
             return (
               <div className="space-y-3">
@@ -2720,7 +2730,7 @@ export default function PosBillingPage() {
                   <UpiQrCode
                     upiId={printerConfig.upiId}
                     payeeName={printerConfig.upiPayeeName || printerConfig.shopName}
-                    amount={advance > 0 ? advance : totalAmount}
+                    amount={received > 0 ? received : totalAmount}
                   />
                 )}
 
@@ -2728,24 +2738,36 @@ export default function PosBillingPage() {
                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-gray-700">
-                      💵 {modeLabel} से प्राप्त (Advance Paid Now):
+                      💵 {modeLabel} से प्राप्त (Amount Received):
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setAdvancePaidAmount(totalAmount)}
-                      className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black rounded-full hover:bg-emerald-200 cursor-pointer transition-colors"
-                    >
-                      Full Pay
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setAdvancePaidAmount(totalAmount)}
+                        className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black rounded-full hover:bg-emerald-200 cursor-pointer transition-colors"
+                      >
+                        बिल Full ₹{totalAmount}
+                      </button>
+                      {prevDue > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setAdvancePaidAmount(maxAllowed)}
+                          className="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-800 font-black rounded-full hover:bg-purple-200 cursor-pointer transition-colors"
+                          title="बिल + पूरा पुराना बकाया एक साथ"
+                        >
+                          पूरा हिसाब ₹{maxAllowed}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <input
                     type="number"
-                    placeholder={`0 — Max: ${totalAmount}`}
+                    placeholder={`0 — Max: ${maxAllowed}`}
                     value={advancePaidAmount === 0 ? "" : advancePaidAmount}
                     onFocus={(e) => e.currentTarget.select()}
                     onChange={(e) => {
                       const val = e.target.value === "" ? 0 : parseFloat(e.target.value) || 0;
-                      setAdvancePaidAmount(Math.min(val, totalAmount));
+                      setAdvancePaidAmount(Math.min(Math.max(0, val), maxAllowed));
                     }}
                     className="w-full text-2xl font-black text-right px-4 py-3 bg-white border-2 border-gray-300 rounded-xl focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 tabular-nums"
                     autoFocus
@@ -2756,7 +2778,7 @@ export default function PosBillingPage() {
                       <button
                         key={chip}
                         type="button"
-                        onClick={() => setAdvancePaidAmount(Math.min(chip, totalAmount))}
+                        onClick={() => setAdvancePaidAmount(Math.min(chip, maxAllowed))}
                         className="px-2.5 py-1 text-[11px] font-bold bg-white border border-gray-300 rounded-lg hover:bg-brand-50 hover:border-brand-400 hover:text-brand-700 transition-all cursor-pointer"
                       >
                         ₹{chip}
@@ -2770,33 +2792,38 @@ export default function PosBillingPage() {
                       ₹0 (Full Udhaar)
                     </button>
                   </div>
+                  {prevDue > 0 && (
+                    <p className="text-[10px] text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-2 py-1 leading-snug">
+                      💡 पिछला बकाया <strong>{formatCurrency(prevDue)}</strong> है। बिल (₹{totalAmount}) से ज़्यादा जो भी लेंगे, वो अपने आप <strong>पुराने बकाया में जमा</strong> हो जाएगा।
+                    </p>
+                  )}
                 </div>
 
-                {/* Live Summary: Advance + Udhaar + Change */}
+                {/* Live Summary: Received + This-bill Udhaar + Toward old dues */}
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col items-center gap-0.5">
-                    <span className="text-[10px] font-bold text-emerald-700 text-center">✅ अभी मिला</span>
-                    <span className="text-base font-black text-emerald-800 tabular-nums">{formatCurrency(advance)}</span>
+                    <span className="text-[10px] font-bold text-emerald-700 text-center">✅ अभी लिया</span>
+                    <span className="text-base font-black text-emerald-800 tabular-nums">{formatCurrency(received)}</span>
                   </div>
                   <div className={`p-2.5 border rounded-xl flex flex-col items-center gap-0.5 ${
                     udhaarDue > 0 ? "bg-amber-50 border-amber-300" : "bg-gray-50 border-gray-200"
                   }`}>
                     <span className={`text-[10px] font-bold text-center ${
                       udhaarDue > 0 ? "text-amber-700" : "text-gray-500"
-                    }`}>📕 उधार बाकी</span>
+                    }`}>📕 बिल उधार</span>
                     <span className={`text-base font-black tabular-nums ${
                       udhaarDue > 0 ? "text-amber-900" : "text-gray-400"
                     }`}>{formatCurrency(udhaarDue)}</span>
                   </div>
                   <div className={`p-2.5 border rounded-xl flex flex-col items-center gap-0.5 ${
-                    change > 0 ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"
+                    towardOld > 0 ? "bg-purple-50 border-purple-300" : "bg-gray-50 border-gray-200"
                   }`}>
                     <span className={`text-[10px] font-bold text-center ${
-                      change > 0 ? "text-blue-700" : "text-gray-500"
-                    }`}>💵 वापसी</span>
+                      towardOld > 0 ? "text-purple-700" : "text-gray-500"
+                    }`}>💜 बकाया जमा</span>
                     <span className={`text-base font-black tabular-nums ${
-                      change > 0 ? "text-blue-800" : "text-gray-400"
-                    }`}>{formatCurrency(change)}</span>
+                      towardOld > 0 ? "text-purple-800" : "text-gray-400"
+                    }`}>{formatCurrency(towardOld)}</span>
                   </div>
                 </div>
               </div>
@@ -2821,15 +2848,16 @@ export default function PosBillingPage() {
 
           {/* ─── Customer Selector (Always visible) ─── */}
           {(() => {
-            const advance = paymentMethod === "udhaar" ? 0 :
+            const prevDue = selectedCustomer ? Math.max(0, Number(selectedCustomer.outstanding_balance) || 0) : 0;
+            const received = paymentMethod === "udhaar" ? 0 :
               paymentMethod === "split" ? ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0)) :
-              Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
-            const dueOnBill = Math.max(0, totalAmount - advance);
+              Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount + prevDue);
+            const dueOnBill = Math.max(0, totalAmount - Math.min(received, totalAmount));
+            const towardOld = paymentMethod === "split" ? 0 : Math.max(0, received - totalAmount);
 
             // If customer already selected — show summary card
             if (selectedCustomer) {
-              const prevDue = Number(selectedCustomer.outstanding_balance || 0);
-              const newDue = prevDue + dueOnBill;
+              const newDue = Math.max(0, prevDue + dueOnBill - towardOld);
               return (
                 <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs space-y-1.5">
                   <div className="flex justify-between items-center">
@@ -2854,19 +2882,27 @@ export default function PosBillingPage() {
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  {dueOnBill > 0.01 && (
+                  {(dueOnBill > 0.01 || towardOld > 0.01 || prevDue > 0.01) && (
                     <>
                       <div className="flex justify-between items-center text-[11px]">
                         <span className="text-gray-500">पिछला बकाया:</span>
                         <span className="font-bold text-gray-700">{formatCurrency(prevDue)}</span>
                       </div>
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-amber-800 font-bold">इस बिल का उधार:</span>
-                        <span className="font-black text-amber-900">+{formatCurrency(dueOnBill)}</span>
-                      </div>
+                      {dueOnBill > 0.01 && (
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="text-amber-800 font-bold">इस बिल का उधार:</span>
+                          <span className="font-black text-amber-900">+{formatCurrency(dueOnBill)}</span>
+                        </div>
+                      )}
+                      {towardOld > 0.01 && (
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="text-purple-800 font-bold">पुराने बकाया में जमा:</span>
+                          <span className="font-black text-purple-800">−{formatCurrency(towardOld)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center pt-1.5 border-t border-purple-200">
                         <span className="text-purple-950 font-bold">नया कुल बकाया:</span>
-                        <span className="text-red-700 font-black text-sm">{formatCurrency(newDue)}</span>
+                        <span className={`font-black text-sm ${newDue > 0.01 ? "text-red-700" : "text-emerald-700"}`}>{formatCurrency(newDue)}</span>
                       </div>
                     </>
                   )}
@@ -3062,12 +3098,16 @@ export default function PosBillingPage() {
             >
               <CheckCircle2 className="w-5 h-5 mr-2" />
               {(() => {
-                const advance = paymentMethod === "udhaar" ? 0 :
+                const prevDue = selectedCustomer ? Math.max(0, Number(selectedCustomer.outstanding_balance) || 0) : 0;
+                const received = paymentMethod === "udhaar" ? 0 :
                   paymentMethod === "split" ? ((Number(cashAmount) || 0) + (Number(upiAmount) || 0) + (Number(cardAmount) || 0)) :
-                  Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount);
-                const udhaarDue = Math.max(0, totalAmount - advance);
+                  Math.min(Math.max(0, Number(advancePaidAmount) || 0), totalAmount + prevDue);
+                const billPaid = Math.min(received, totalAmount);
+                const udhaarDue = Math.max(0, totalAmount - billPaid);
+                const towardOld = paymentMethod === "split" ? 0 : Math.max(0, received - totalAmount);
                 if (paymentMethod === "udhaar") return `पूरा उधार — बिल Save करें`;
-                if (udhaarDue > 0.01) return `${formatCurrency(advance)} प्राप्त + ${formatCurrency(udhaarDue)} उधार — बिल Save करें`;
+                if (towardOld > 0.01) return `${formatCurrency(received)} लिया (${formatCurrency(towardOld)} पुराने बकाया में) — Save करें`;
+                if (udhaarDue > 0.01) return `${formatCurrency(billPaid)} प्राप्त + ${formatCurrency(udhaarDue)} उधार — बिल Save करें`;
                 return `Complete & Print Receipt`;
               })()}
             </Button>

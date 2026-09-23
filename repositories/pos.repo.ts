@@ -26,6 +26,10 @@ export interface CheckoutPayload {
     amount: number;
     reference_no?: string;
   }[];
+  /** Extra amount the customer paid toward their PREVIOUS balance in this same bill. */
+  khata_payment?: number;
+  /** Method for that extra amount ('cash' | 'upi' | 'card'); defaults to cash. */
+  khata_method?: string;
 }
 
 export interface UpdateSalePayload {
@@ -140,11 +144,26 @@ export const posRepository = {
       if (paymentError) throw paymentError;
     }
 
-    // 3b. If partial payment or full credit (Udhaar), update customer's outstanding_balance
+    // 3b. Update customer's outstanding_balance: add this bill's udhaar, and subtract any extra the
+    //     customer paid toward their previous balance (recorded as a customer_payments row).
     const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const dueAmount = Math.max(0, Number(payload.total_amount) - totalPaid);
+    const khataPayment = Math.max(0, Number(payload.khata_payment) || 0);
 
-    if (dueAmount > 0 && payload.customer_id) {
+    if ((dueAmount > 0 || khataPayment > 0) && payload.customer_id) {
+      if (khataPayment > 0) {
+        await supabase.from("customer_payments").insert([
+          {
+            shop_id: payload.shop_id,
+            customer_id: payload.customer_id,
+            amount: khataPayment,
+            payment_method: (payload.khata_method || "cash").toLowerCase(),
+            notes: `POS ${invoice_number} — extra toward previous balance`,
+            payment_date: new Date().toISOString(),
+          },
+        ]);
+      }
+
       const { data: custData } = await supabase
         .from("customers")
         .select("outstanding_balance")
@@ -154,7 +173,7 @@ export const posRepository = {
       const prevBal = Number(custData?.outstanding_balance) || 0;
       await supabase
         .from("customers")
-        .update({ outstanding_balance: prevBal + dueAmount })
+        .update({ outstanding_balance: Math.max(0, prevBal + dueAmount - khataPayment) })
         .eq("id", payload.customer_id);
     }
 
