@@ -282,7 +282,7 @@ export const AartiBillOfSupplyImage = forwardRef<HTMLDivElement, AartiBillOfSupp
               )}
               {previousBalance > 0 && (
                 <div className="flex justify-between text-gray-900 text-[11px] font-black border-t border-gray-200 pt-0.5">
-                  <span>Grand Total (कुल बकाया)</span>
+                  <span>Grand Total (कुल देय)</span>
                   <span className="tabular-nums">₹ {grandTotalDue.toFixed(2)}</span>
                 </div>
               )}

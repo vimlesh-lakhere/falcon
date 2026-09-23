@@ -170,8 +170,8 @@ ${itemsText}
 ━━━━━━━━━━━━━━━━━━━━
 💵 *Subtotal:* ₹${Number(sale.subtotal).toFixed(2)}
 ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}${freightAmount > 0 ? `🚚 *भाड़ा / Freight:* +₹${freightAmount.toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${totalBillAmt.toFixed(2)}*
-💵 *Paid Amount:* ₹${paidAmount.toFixed(2)} (${payMethod})
-${khataPaid > 0 ? `💚 *पुराने बकाया में जमा (Old Dues Paid):* ₹${khataPaid.toFixed(2)}\n💵 *कुल प्राप्त (Total Received):* ₹${(paidAmount + khataPaid).toFixed(2)}\n` : ""}${(todayDue > 0 || khataPaid > 0) && balanceBeforeBill > 0 ? `📋 *पिछला बकाया (Previous Due):* ₹${balanceBeforeBill.toFixed(2)}\n` : ""}${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${todayDue.toFixed(2)}*\n` : ""}${currentCustomerBalance > 0 ? `📕 *कुल बकाया (Total Khata Balance):* *₹${currentCustomerBalance.toFixed(2)}*\n` : ""}${upiPayLink}
+💵 *Payment Mode:* ${paidAmount > 0 ? payMethod : "उधार / KHATA (DUE)"}
+${(currentCustomerBalance > 0 || khataPaid > 0 || todayDue > 0) ? `━━━━━━━━━━━━━━━━━━━━\n🧮 *हिसाब / ACCOUNT SUMMARY*\nआज का बिल (Today's Bill): ₹${totalBillAmt.toFixed(2)}\n${balanceBeforeBill > 0 ? `पिछला बकाया (Previous Bal.): + ₹${balanceBeforeBill.toFixed(2)}\nकुल देय (Total Due): ₹${(totalBillAmt + balanceBeforeBill).toFixed(2)}\n` : ""}प्राप्त (Received): − ₹${(paidAmount + khataPaid).toFixed(2)}\n📕 *बाकी बकाया (Remaining): ₹${currentCustomerBalance.toFixed(2)}*\n` : ""}${upiPayLink}
 ━━━━━━━━━━━━━━━━━━━━
 🙏 *${printerConfig.customFooter || "Thank you for shopping with us!"}*
 ⚡ *Visit again soon.*`;
@@ -502,46 +502,46 @@ ${khataPaid > 0 ? `💚 *पुराने बकाया में जमा 
             </div>
           </div>
 
-          {/* Payment breakdown */}
+          {/* Payment breakdown + account summary (आज का बिल + पिछला बकाया = कुल देय − प्राप्त = बाकी) */}
           <div className="py-2 border-b border-dashed border-black text-[10px] space-y-0.5">
             <div className="flex justify-between font-bold">
               <span>Payment Mode:</span>
               <span>{paidAmount > 0 ? payMethod : "उधार / KHATA (DUE)"}</span>
             </div>
-            {payments.map((p, i) => (
+            {payments.length > 1 && payments.map((p, i) => (
               <div key={i} className="flex justify-between text-[9px] text-gray-600">
-                <span>• {p.method.toUpperCase()} (इस बिल का)</span>
+                <span>• {p.method.toUpperCase()}</span>
                 <span>₹{Number(p.amount).toFixed(2)}</span>
               </div>
             ))}
-            {khataPaid > 0 && (
-              <div className="flex justify-between font-black text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded mt-1 border border-emerald-300">
-                <span>पुराने बकाया में जमा (Old Dues Paid):</span>
-                <span>₹{khataPaid.toFixed(2)}</span>
-              </div>
-            )}
-            {khataPaid > 0 && (
-              <div className="flex justify-between text-[9px] text-gray-600 pt-0.5">
-                <span>कुल नकद प्राप्त (Total Received):</span>
-                <span>₹{(paidAmount + khataPaid).toFixed(2)}</span>
-              </div>
-            )}
-            {(todayDue > 0 || khataPaid > 0) && balanceBeforeBill > 0 && (
-              <div className="flex justify-between font-bold text-gray-700 pt-0.5">
-                <span>पिछला बकाया (Previous Due):</span>
-                <span>₹{balanceBeforeBill.toFixed(2)}</span>
-              </div>
-            )}
-            {todayDue > 0 && (
-              <div className="flex justify-between font-black text-amber-950 bg-amber-50 px-1.5 py-0.5 rounded mt-1 border border-amber-300">
-                <span>आज का उधार (Today&apos;s Due):</span>
-                <span>₹{todayDue.toFixed(2)}</span>
-              </div>
-            )}
-            {currentCustomerBalance > 0 && (
-              <div className="flex justify-between font-black text-red-700 pt-0.5">
-                <span>कुल बकाया (Total Balance):</span>
-                <span>₹{currentCustomerBalance.toFixed(2)}</span>
+
+            {(currentCustomerBalance > 0 || khataPaid > 0 || todayDue > 0) && (
+              <div className="mt-1.5 pt-1 border-t border-dashed border-gray-400 space-y-0.5">
+                <div className="text-[9px] font-black text-gray-500 tracking-wide">हिसाब / ACCOUNT SUMMARY</div>
+                <div className="flex justify-between">
+                  <span>आज का बिल (Today&apos;s Bill):</span>
+                  <span>₹{totalBillAmt.toFixed(2)}</span>
+                </div>
+                {balanceBeforeBill > 0 && (
+                  <div className="flex justify-between text-gray-700">
+                    <span>पिछला बकाया (Previous Bal.):</span>
+                    <span>+ ₹{balanceBeforeBill.toFixed(2)}</span>
+                  </div>
+                )}
+                {balanceBeforeBill > 0 && (
+                  <div className="flex justify-between font-bold border-t border-dashed border-gray-300 pt-0.5">
+                    <span>कुल देय (Total Due):</span>
+                    <span>₹{(totalBillAmt + balanceBeforeBill).toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-emerald-800">
+                  <span>प्राप्त (Received):</span>
+                  <span>− ₹{(paidAmount + khataPaid).toFixed(2)}</span>
+                </div>
+                <div className={`flex justify-between font-black px-1.5 py-0.5 rounded mt-0.5 border ${currentCustomerBalance > 0 ? "text-red-700 bg-red-50 border-red-300" : "text-emerald-800 bg-emerald-50 border-emerald-300"}`}>
+                  <span>बाकी बकाया (Remaining):</span>
+                  <span>₹{currentCustomerBalance.toFixed(2)}</span>
+                </div>
               </div>
             )}
           </div>

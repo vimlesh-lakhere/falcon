@@ -578,22 +578,15 @@ export async function buildRasterGraphicsReceipt(
   const currentCustomerBalance = todayDue > 0 && rawCustBalance < todayDue ? rawCustBalance + todayDue : rawCustBalance;
   const previousBalance = Math.max(0, currentCustomerBalance - todayDue + khataPaid);
 
-  // Extra cash collected toward the customer's OLD balance in this same bill.
-  if (khataPaid > 0) {
-    drawRow("पुराने बकाया में जमा (Old Dues Paid):", `₹${khataPaid.toFixed(2)}`, baseFontSize, true);
-    drawRow("  कुल नकद प्राप्त (Total Received):", `₹${(paidAmount + khataPaid).toFixed(2)}`, smallFontSize - 2);
-  }
-
-  // Show the customer's old (previous) due on a credit bill or when old dues were collected.
-  if ((todayDue > 0 || khataPaid > 0) && previousBalance > 0) {
-    drawRow("पिछला बकाया (Previous Due):", `₹${previousBalance.toFixed(2)}`, baseFontSize, true);
-  }
-  if (todayDue > 0) {
-    drawRow("आज का उधार (Today's Due):", `₹${todayDue.toFixed(2)}`, baseFontSize, true);
-  }
-  // Total outstanding shows on EVERY bill (cash/UPI/credit) whenever the customer owes anything.
-  if (currentCustomerBalance > 0) {
-    drawRow("कुल बकाया (Total Balance):", `₹${currentCustomerBalance.toFixed(2)}`, baseFontSize, true);
+  // हिसाब: आज का बिल + पिछला बकाया = कुल देय − प्राप्त = बाकी बकाया.
+  if (currentCustomerBalance > 0 || khataPaid > 0 || todayDue > 0) {
+    drawRow("आज का बिल (Today's Bill):", `₹${totalBillAmt.toFixed(2)}`, baseFontSize);
+    if (previousBalance > 0) {
+      drawRow("पिछला बकाया (Previous Bal.):", `+ ₹${previousBalance.toFixed(2)}`, baseFontSize);
+      drawRow("कुल देय (Total Due):", `₹${(totalBillAmt + previousBalance).toFixed(2)}`, baseFontSize, true);
+    }
+    drawRow("प्राप्त (Received):", `- ₹${(paidAmount + khataPaid).toFixed(2)}`, baseFontSize);
+    drawRow("बाकी बकाया (Remaining):", `₹${currentCustomerBalance.toFixed(2)}`, baseFontSize, true);
   }
 
   // 6. Dynamic Bank UPI QR Code Section
@@ -829,25 +822,23 @@ export function buildEscPosReceipt(
 
   const payMethod = payments.length > 0 ? payments.map((p) => p.method.toUpperCase()).join(", ") : (todayDue > 0 ? "UDHAAR / CREDIT" : "CASH");
   write(`Payment: ${payMethod}\n`);
-  payments.forEach((p: any) => {
-    write(`  - ${p.method.toUpperCase()}: INR ${Number(p.amount).toFixed(2)}\n`);
-  });
+  if (payments.length > 1) {
+    payments.forEach((p: any) => {
+      write(`  - ${p.method.toUpperCase()}: INR ${Number(p.amount).toFixed(2)}\n`);
+    });
+  }
 
   const khataPaidTxt = Number((sale as any).khata_paid) || 0;
-  if (khataPaidTxt > 0) {
-    write(`Old Dues Paid: INR ${khataPaidTxt.toFixed(2)}\n`);
-    write(`Total Received: INR ${(paidAmount + khataPaidTxt).toFixed(2)}\n`);
-  }
-
   const previousBalanceTxt = Math.max(0, currentCustomerBalance - todayDue + khataPaidTxt);
-  if ((todayDue > 0 || khataPaidTxt > 0) && previousBalanceTxt > 0) {
-    write(`Previous Due: INR ${previousBalanceTxt.toFixed(2)}\n`);
-  }
-  if (todayDue > 0) {
-    write(`Today's Due: INR ${todayDue.toFixed(2)}\n`);
-  }
-  if (currentCustomerBalance > 0) {
-    write(`Total Balance: INR ${currentCustomerBalance.toFixed(2)}\n`);
+  // Account summary: Today's Bill + Previous = Total Due - Received = Remaining.
+  if (currentCustomerBalance > 0 || khataPaidTxt > 0 || todayDue > 0) {
+    write(`Today's Bill: INR ${totalBillAmt.toFixed(2)}\n`);
+    if (previousBalanceTxt > 0) {
+      write(`Previous Bal: + INR ${previousBalanceTxt.toFixed(2)}\n`);
+      write(`Total Due: INR ${(totalBillAmt + previousBalanceTxt).toFixed(2)}\n`);
+    }
+    write(`Received: - INR ${(paidAmount + khataPaidTxt).toFixed(2)}\n`);
+    write(`Remaining: INR ${currentCustomerBalance.toFixed(2)}\n`);
   }
 
   if (config.showQrCode && config.upiId) {
