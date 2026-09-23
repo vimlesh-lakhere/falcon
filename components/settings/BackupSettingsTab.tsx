@@ -100,7 +100,6 @@ export function BackupSettingsTab() {
   const [showTableSelector, setShowTableSelector] = useState(false);
 
   // Google Drive states
-  const [isDriveSyncing, setIsDriveSyncing] = useState(false);
   const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
   const [driveMessage, setDriveMessage] = useState<string | null>(null);
@@ -186,31 +185,6 @@ export function BackupSettingsTab() {
       setExportError(err?.message || "Backup failed. Please check your connection and try again.");
     } finally {
       setIsExporting(false);
-    }
-  };
-
-  // Sync to Google Drive
-  const handleSyncToDrive = async () => {
-    try {
-      setIsDriveSyncing(true);
-      setDriveMessage(null);
-
-      const res = await fetch("/api/backup/google-drive", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || data.details || "Upload to Google Drive failed.");
-      }
-
-      setDriveMessage(`✅ Backup successfully uploaded to Google Drive! (${data.recordsCount} records)`);
-      checkDriveStatus();
-    } catch (err: any) {
-      setDriveMessage(`❌ Error: ${err.message}`);
-    } finally {
-      setIsDriveSyncing(false);
     }
   };
 
@@ -337,7 +311,7 @@ export function BackupSettingsTab() {
                 onClick={() => setShowDriveSetup(!showDriveSetup)}
                 className="mt-2 text-[11px] font-semibold text-brand-600 hover:text-brand-800 flex items-center gap-1 cursor-pointer"
               >
-                {showDriveSetup ? "Hide Setup Guide" : "View Setup & Credentials Guide"}
+                {showDriveSetup ? "Hide" : "How are my backups protected?"}
                 {showDriveSetup ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
             </div>
@@ -397,30 +371,35 @@ export function BackupSettingsTab() {
         </Card>
       </div>
 
-      {/* Accordion: Google Drive Setup Instructions (if toggled) */}
+      {/* Accordion: how backups are protected (if toggled) */}
       {showDriveSetup && (
-        <Card className="border-amber-200 bg-amber-50/40">
+        <Card className="border-brand-200 bg-brand-50/30">
           <CardContent className="p-5 space-y-3 text-xs text-gray-700">
-            <div className="flex items-center gap-2 font-bold text-amber-900 text-sm">
-              <Info className="w-4 h-4 text-amber-600" />
-              How to Connect Google Drive for Automated Backups
+            <div className="flex items-center gap-2 font-bold text-gray-900 text-sm">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              Your data is backed up in three ways
             </div>
-            <p>
-              Google Drive cloud backups operate using a secure Google Cloud Service Account with no user passwords required:
-            </p>
-            <ol className="list-decimal list-inside space-y-1.5 pl-1 text-gray-800">
-              <li>Go to <strong>Google Cloud Console</strong> and create a Service Account.</li>
-              <li>Enable the <strong>Google Drive API</strong>.</li>
-              <li>Create a service account key (JSON) and copy the <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">client_email</code> and <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">private_key</code>.</li>
-              <li>Create a folder on your personal Google Drive named <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">Falcon_ERP_Backups</code> and share it with the service account email as <strong>Editor</strong>.</li>
-              <li>Add these environment variables to your <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">.env.local</code> or Vercel Settings:
-                <pre className="mt-2 p-3 bg-gray-900 text-amber-200 rounded-lg overflow-x-auto text-[11px] font-mono">
-{`GOOGLE_SERVICE_ACCOUNT_EMAIL="your-service-account@project.iam.gserviceaccount.com"
-GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
-GOOGLE_DRIVE_FOLDER_ID="your_folder_id_from_url"`}
-                </pre>
+            <ol className="list-decimal list-inside space-y-2 pl-1 text-gray-800">
+              <li>
+                <strong>One-tap backup (this button).</strong> "Save Full Backup (JSON)" makes a complete
+                snapshot of your shop. On your phone it opens the share sheet — save it to your own
+                <strong> Google Drive</strong>, <strong>Files</strong>, or WhatsApp. This is the simplest, most
+                reliable cloud copy: it goes to <em>your</em> Google account and never expires.
+              </li>
+              <li>
+                <strong>Automatic weekly backup.</strong> A scheduled job on your shop PC saves a snapshot
+                every week and mirrors it to <strong>Google Drive for Desktop</strong> — no action needed.
+              </li>
+              <li>
+                <strong>Instant restore.</strong> Any saved <code className="bg-gray-100 px-1 py-0.5 rounded font-mono">.json</code>
+                file can be re-loaded below to bring everything back.
               </li>
             </ol>
+            <p className="text-[11px] text-gray-500 pt-1 border-t border-brand-100">
+              Note: fully-automatic server-side upload to Google Drive isn't used — a personal Google
+              account can't grant a server its own Drive storage — so the one-tap save above is the
+              recommended cloud backup.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -495,7 +474,7 @@ GOOGLE_DRIVE_FOLDER_ID="your_folder_id_from_url"`}
             </div>
           )}
 
-          {/* Action Buttons */}
+          {/* Action Button — single reliable cloud/local backup */}
           <div className="flex flex-wrap items-center gap-3">
             <Button
               onClick={() => handleDownloadBackup("json")}
@@ -506,24 +485,20 @@ GOOGLE_DRIVE_FOLDER_ID="your_folder_id_from_url"`}
               <Download className="w-4 h-4" />
               Save Full Backup (JSON)
             </Button>
-
-            <Button
-              onClick={handleSyncToDrive}
-              isLoading={isDriveSyncing}
-              disabled={driveConfigured === false}
-              variant="outline"
-              className="gap-2 border-brand-200 text-brand-700 hover:bg-brand-50 text-xs font-semibold disabled:opacity-50"
-              title={driveConfigured === false ? "Optional — connect Google Drive first (see the setup guide above)" : undefined}
-            >
-              <Cloud className="w-4 h-4 text-brand-600" />
-              {driveConfigured === false ? "Google Drive (not set up)" : "Sync to Google Drive Now"}
-            </Button>
           </div>
 
-          <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-            On your phone this opens the share sheet — save the file to <strong>Google Drive</strong>, <strong>Files</strong>, or send it to yourself on <strong>WhatsApp</strong>. On a computer it downloads to your Downloads folder.
-          </p>
+          <div className="text-[11px] text-gray-600 bg-brand-50/60 border border-brand-100 rounded-lg p-3 space-y-1.5">
+            <p className="flex items-start gap-1.5">
+              <Cloud className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-gray-800">This is your cloud backup.</strong> On your phone, tap the button and the share sheet opens — save the file straight to <strong>Google Drive</strong> or <strong>Files</strong>, or send it to yourself on <strong>WhatsApp</strong>. On a computer it downloads to your Downloads folder.
+              </span>
+            </p>
+            <p className="flex items-start gap-1.5 text-gray-500">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+              <span>A weekly automatic backup also runs on your shop PC and mirrors to Google Drive for Desktop — so your data is safe even if you forget.</span>
+            </p>
+          </div>
 
           {exportSuccess && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-xs text-emerald-800">
@@ -764,8 +739,8 @@ GOOGLE_DRIVE_FOLDER_ID="your_folder_id_from_url"`}
           ) : (
             <div className="text-center py-6 text-xs text-gray-500">
               {driveConfigured
-                ? "No backup snapshots found in Google Drive yet. Click 'Sync to Google Drive Now' above to create your first cloud backup."
-                : "Google Drive credentials not detected. Backups are stored locally until Google Service Account is configured."}
+                ? "Older cloud snapshots (from the automatic weekly backup) appear here. For a new backup right now, use 'Save Full Backup (JSON)' above and pick Google Drive."
+                : "No cloud snapshots yet. Use 'Save Full Backup (JSON)' above and save it to Google Drive from the share sheet."}
             </div>
           )}
         </CardContent>
