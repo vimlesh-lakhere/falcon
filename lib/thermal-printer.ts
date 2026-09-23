@@ -573,13 +573,20 @@ export async function buildRasterGraphicsReceipt(
     drawRow(`  • ${p.method.toUpperCase()}:`, `₹${Number(p.amount).toFixed(2)}`, smallFontSize - 2);
   });
 
+  const khataPaid = Number((sale as any).khata_paid) || 0;
   const rawCustBalance = Number(customer?.outstanding_balance || (sale as any).customer?.outstanding_balance || 0);
   const currentCustomerBalance = todayDue > 0 && rawCustBalance < todayDue ? rawCustBalance + todayDue : rawCustBalance;
-  const previousBalance = Math.max(0, currentCustomerBalance - todayDue);
+  const previousBalance = Math.max(0, currentCustomerBalance - todayDue + khataPaid);
 
-  // Show the customer's old (previous) due only on a credit bill, where it differs from the total.
-  if (todayDue > 0 && previousBalance > 0) {
-    drawRow("पुराना बकाया (Previous Due):", `₹${previousBalance.toFixed(2)}`, baseFontSize, true);
+  // Extra cash collected toward the customer's OLD balance in this same bill.
+  if (khataPaid > 0) {
+    drawRow("पुराने बकाया में जमा (Old Dues Paid):", `₹${khataPaid.toFixed(2)}`, baseFontSize, true);
+    drawRow("  कुल नकद प्राप्त (Total Received):", `₹${(paidAmount + khataPaid).toFixed(2)}`, smallFontSize - 2);
+  }
+
+  // Show the customer's old (previous) due on a credit bill or when old dues were collected.
+  if ((todayDue > 0 || khataPaid > 0) && previousBalance > 0) {
+    drawRow("पिछला बकाया (Previous Due):", `₹${previousBalance.toFixed(2)}`, baseFontSize, true);
   }
   if (todayDue > 0) {
     drawRow("आज का उधार (Today's Due):", `₹${todayDue.toFixed(2)}`, baseFontSize, true);
@@ -826,8 +833,14 @@ export function buildEscPosReceipt(
     write(`  - ${p.method.toUpperCase()}: INR ${Number(p.amount).toFixed(2)}\n`);
   });
 
-  const previousBalanceTxt = Math.max(0, currentCustomerBalance - todayDue);
-  if (todayDue > 0 && previousBalanceTxt > 0) {
+  const khataPaidTxt = Number((sale as any).khata_paid) || 0;
+  if (khataPaidTxt > 0) {
+    write(`Old Dues Paid: INR ${khataPaidTxt.toFixed(2)}\n`);
+    write(`Total Received: INR ${(paidAmount + khataPaidTxt).toFixed(2)}\n`);
+  }
+
+  const previousBalanceTxt = Math.max(0, currentCustomerBalance - todayDue + khataPaidTxt);
+  if ((todayDue > 0 || khataPaidTxt > 0) && previousBalanceTxt > 0) {
     write(`Previous Due: INR ${previousBalanceTxt.toFixed(2)}\n`);
   }
   if (todayDue > 0) {

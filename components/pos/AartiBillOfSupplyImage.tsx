@@ -36,13 +36,16 @@ export const AartiBillOfSupplyImage = forwardRef<HTMLDivElement, AartiBillOfSupp
     const receivedAmount = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
     // Customer's total outstanding AFTER this bill (already includes this bill's unpaid part).
     const custBalanceAfter = Number(customer?.outstanding_balance ?? (sale as any).customer?.outstanding_balance ?? 0);
+    // Extra cash the customer paid toward their OLD balance in this same bill.
+    const khataPaid = Number((sale as any).khata_paid) || 0;
+    const receivedTotal = receivedAmount + khataPaid; // total cash handed over (this bill + old dues)
     const todayDue = Math.max(0, totalAmount - receivedAmount);
-    // Previous (old) balance the customer already owed before this bill.
-    const previousBalance = Math.max(0, custBalanceAfter - todayDue);
-    // Grand total the customer owes = this bill + old balance.
+    // Previous (old) balance the customer owed before this bill (add back what was just cleared).
+    const previousBalance = Math.max(0, custBalanceAfter - todayDue + khataPaid);
+    // Grand total the customer owed = this bill + old balance.
     const grandTotalDue = Math.round((totalAmount + previousBalance) * 100) / 100;
-    // What remains after today's payment.
-    const currentBalance = Math.max(0, Math.round((grandTotalDue - receivedAmount) * 100) / 100);
+    // What remains after today's payment (this bill + any old-dues collection).
+    const currentBalance = Math.max(0, Math.round((grandTotalDue - receivedTotal) * 100) / 100);
 
     const invoiceDateStr = sale.created_at
       ? new Date(sale.created_at).toLocaleString("en-GB", {
@@ -284,8 +287,8 @@ export const AartiBillOfSupplyImage = forwardRef<HTMLDivElement, AartiBillOfSupp
                 </div>
               )}
               <div className="flex justify-between text-gray-600 pt-0.5 text-[11px]">
-                <span>Received / जमा</span>
-                <span className="font-semibold text-gray-800">− ₹ {receivedAmount.toFixed(2)}</span>
+                <span>Received / जमा{khataPaid > 0 ? " (बिल + पुराना बकाया)" : ""}</span>
+                <span className="font-semibold text-gray-800">− ₹ {receivedTotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-[11px] font-bold border-t border-gray-200 pt-0.5">
                 <span className="text-gray-800">

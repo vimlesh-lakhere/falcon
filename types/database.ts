@@ -294,6 +294,9 @@ export interface Sale {
   customer?: Customer;
   items?: SaleItem[];
   payments?: Payment[];
+  /** Transient (not a DB column): extra cash collected toward the customer's OLD balance in this
+   * bill, so the receipt can show how much was deposited against previous dues. */
+  khata_paid?: number;
 }
 
 export interface SaleItem {

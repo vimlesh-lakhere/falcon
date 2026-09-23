@@ -81,9 +81,14 @@ export function ThermalReceipt({
   const paidAmount = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
   const todayDue = Math.max(0, totalBillAmt - paidAmount);
   
+  // Extra cash the customer paid toward their OLD balance in this bill (separate from the bill payment).
+  const khataPaid = Number((sale as any).khata_paid) || 0;
+
   // Outstanding balance of customer (ensuring pre-sale snapshot safely adds today's due)
   const rawCustBalance = Number(customer?.outstanding_balance || (sale as any).customer?.outstanding_balance || 0);
   const currentCustomerBalance = todayDue > 0 && rawCustBalance < todayDue ? rawCustBalance + todayDue : rawCustBalance;
+  // The balance that stood BEFORE this bill: add back the extra just paid off, drop today's new due.
+  const balanceBeforeBill = Math.max(0, currentCustomerBalance - todayDue + khataPaid);
 
   // QR Amount for UPI
   const qrAmount = todayDue > 0 ? todayDue : totalBillAmt;
@@ -166,7 +171,7 @@ ${itemsText}
 💵 *Subtotal:* ₹${Number(sale.subtotal).toFixed(2)}
 ${Number(sale.discount_amount) > 0 ? `🎁 *Discount:* -₹${Number(sale.discount_amount).toFixed(2)}\n` : ""}${Number(sale.tax_amount) > 0 ? `🏛️ *GST/Tax:* +₹${Number(sale.tax_amount).toFixed(2)}\n` : ""}${freightAmount > 0 ? `🚚 *भाड़ा / Freight:* +₹${freightAmount.toFixed(2)}\n` : ""}💰 *FINAL TOTAL:* *₹${totalBillAmt.toFixed(2)}*
 💵 *Paid Amount:* ₹${paidAmount.toFixed(2)} (${payMethod})
-${todayDue > 0 && (currentCustomerBalance - todayDue) > 0 ? `📋 *पुराना बकाया (Previous Due):* ₹${Math.max(0, currentCustomerBalance - todayDue).toFixed(2)}\n` : ""}${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${todayDue.toFixed(2)}*\n` : ""}${currentCustomerBalance > 0 ? `📕 *कुल बकाया (Total Khata Balance):* *₹${currentCustomerBalance.toFixed(2)}*\n` : ""}${upiPayLink}
+${khataPaid > 0 ? `💚 *पुराने बकाया में जमा (Old Dues Paid):* ₹${khataPaid.toFixed(2)}\n💵 *कुल प्राप्त (Total Received):* ₹${(paidAmount + khataPaid).toFixed(2)}\n` : ""}${(todayDue > 0 || khataPaid > 0) && balanceBeforeBill > 0 ? `📋 *पिछला बकाया (Previous Due):* ₹${balanceBeforeBill.toFixed(2)}\n` : ""}${todayDue > 0 ? `⚠️ *आज का उधार (Today's Due):* *₹${todayDue.toFixed(2)}*\n` : ""}${currentCustomerBalance > 0 ? `📕 *कुल बकाया (Total Khata Balance):* *₹${currentCustomerBalance.toFixed(2)}*\n` : ""}${upiPayLink}
 ━━━━━━━━━━━━━━━━━━━━
 🙏 *${printerConfig.customFooter || "Thank you for shopping with us!"}*
 ⚡ *Visit again soon.*`;
@@ -505,14 +510,26 @@ ${todayDue > 0 && (currentCustomerBalance - todayDue) > 0 ? `📋 *पुरा�
             </div>
             {payments.map((p, i) => (
               <div key={i} className="flex justify-between text-[9px] text-gray-600">
-                <span>• {p.method.toUpperCase()}</span>
+                <span>• {p.method.toUpperCase()} (इस बिल का)</span>
                 <span>₹{Number(p.amount).toFixed(2)}</span>
               </div>
             ))}
-            {todayDue > 0 && currentCustomerBalance - todayDue > 0 && (
+            {khataPaid > 0 && (
+              <div className="flex justify-between font-black text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded mt-1 border border-emerald-300">
+                <span>पुराने बकाया में जमा (Old Dues Paid):</span>
+                <span>₹{khataPaid.toFixed(2)}</span>
+              </div>
+            )}
+            {khataPaid > 0 && (
+              <div className="flex justify-between text-[9px] text-gray-600 pt-0.5">
+                <span>कुल नकद प्राप्त (Total Received):</span>
+                <span>₹{(paidAmount + khataPaid).toFixed(2)}</span>
+              </div>
+            )}
+            {(todayDue > 0 || khataPaid > 0) && balanceBeforeBill > 0 && (
               <div className="flex justify-between font-bold text-gray-700 pt-0.5">
-                <span>पुराना बकाया (Previous Due):</span>
-                <span>₹{Math.max(0, currentCustomerBalance - todayDue).toFixed(2)}</span>
+                <span>पिछला बकाया (Previous Due):</span>
+                <span>₹{balanceBeforeBill.toFixed(2)}</span>
               </div>
             )}
             {todayDue > 0 && (

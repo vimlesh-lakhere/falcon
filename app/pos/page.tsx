@@ -1414,6 +1414,8 @@ export default function PosBillingPage() {
       const enrichedSale: Sale = {
         ...sale,
         customer: receiptCustomer,
+        // Extra cash collected toward the customer's OLD balance in this bill (for the receipt).
+        khata_paid: khataPayment > 0 ? khataPayment : undefined,
         items: rawItems.map((saleItem, idx) => {
           const cartMatch = cart[idx] || cart.find((c) => c.product.id === saleItem.product_id);
           return {
