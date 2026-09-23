@@ -7,6 +7,7 @@ export const suppliersRepository = {
       .from("suppliers")
       .select("*")
       .eq("shop_id", shopId)
+      .eq("is_active", true)
       .order("name", { ascending: true });
 
     if (search) {
@@ -50,6 +51,16 @@ export const suppliersRepository = {
 
     if (error) throw error;
     return data as Supplier;
+  },
+
+  // Soft-delete: hide from lists but keep the row so past purchases/payments stay intact.
+  async remove(id: string) {
+    const { error } = await supabase
+      .from("suppliers")
+      .update({ is_active: false })
+      .eq("id", id);
+
+    if (error) throw error;
   },
 
   async recordPayment(payload: {

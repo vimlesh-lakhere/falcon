@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Building2, Plus, Phone, Mail, FileText, DollarSign } from "lucide-react";
+import { Plus, Phone, Mail, DollarSign, Pencil, Trash2 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -20,14 +20,16 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Add Supplier Modal
+  // Add / Edit Supplier Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [gstNumber, setGstNumber] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Record Payment Modal
   const [selectedSupplierForPayment, setSelectedSupplierForPayment] = useState<Supplier | null>(null);
@@ -59,32 +61,83 @@ export default function SuppliersPage() {
     }
   }, [SHOP_ID]);
 
+  const resetForm = () => {
+    setName("");
+    setPhone("");
+    setEmail("");
+    setAddress("");
+    setGstNumber("");
+  };
+
+  const closeModal = () => {
+    setIsAddModalOpen(false);
+    setEditingSupplier(null);
+    resetForm();
+  };
+
+  const openAddModal = () => {
+    setEditingSupplier(null);
+    resetForm();
+    setIsAddModalOpen(true);
+  };
+
+  const openEditModal = (s: Supplier) => {
+    setEditingSupplier(s);
+    setName(s.name || "");
+    setPhone(s.phone || "");
+    setEmail(s.email || "");
+    setAddress(s.address || "");
+    setGstNumber(s.gst_number || "");
+    setIsAddModalOpen(true);
+  };
+
   const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setIsSaving(true);
-      await suppliersRepository.create({
-        shop_id: SHOP_ID,
-        name,
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        gst_number: gstNumber || null,
-        outstanding_balance: 0,
-      });
+      if (editingSupplier) {
+        await suppliersRepository.update(editingSupplier.id, {
+          name,
+          phone: phone || null,
+          email: email || null,
+          address: address || null,
+          gst_number: gstNumber || null,
+        });
+      } else {
+        await suppliersRepository.create({
+          shop_id: SHOP_ID,
+          name,
+          phone: phone || null,
+          email: email || null,
+          address: address || null,
+          gst_number: gstNumber || null,
+          outstanding_balance: 0,
+        });
+      }
 
-      setIsAddModalOpen(false);
-      setName("");
-      setPhone("");
-      setEmail("");
-      setAddress("");
-      setGstNumber("");
+      closeModal();
       loadSuppliers();
     } catch (err: any) {
       console.error(err);
-      alert("Failed to add supplier: " + err.message);
+      alert("Failed to save supplier: " + err.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteSupplier = async (s: Supplier) => {
+    if (!window.confirm(`Delete supplier "${s.name}"?\n\nPast purchases & payments stay intact — it just won't show in the list any more.`)) {
+      return;
+    }
+    try {
+      setDeletingId(s.id);
+      await suppliersRepository.remove(s.id);
+      loadSuppliers();
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to delete supplier: " + err.message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -126,7 +179,7 @@ export default function SuppliersPage() {
           <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
             Vendor Directory
           </div>
-          <Button onClick={() => setIsAddModalOpen(true)} className="gap-1.5 font-semibold text-xs shadow-sm">
+          <Button onClick={openAddModal} className="gap-1.5 font-semibold text-xs shadow-sm">
             <Plus className="w-4 h-4" />
             Add Supplier
           </Button>
@@ -146,17 +199,33 @@ export default function SuppliersPage() {
             suppliers.map((s) => (
               <Card key={s.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-5 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-900">{s.name}</h4>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-bold text-gray-900 truncate">{s.name}</h4>
                       {s.gst_number && (
                         <p className="text-[11px] font-mono text-gray-400 mt-0.5">
                           GST: {s.gst_number}
                         </p>
                       )}
                     </div>
-                    <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-xs">
-                      <Building2 className="w-4 h-4" />
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(s)}
+                        title="Edit supplier"
+                        className="w-8 h-8 rounded-lg text-gray-500 hover:text-brand-700 hover:bg-brand-50 flex items-center justify-center transition-colors"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSupplier(s)}
+                        disabled={deletingId === s.id}
+                        title="Delete supplier"
+                        className="w-8 h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
@@ -210,8 +279,8 @@ export default function SuppliersPage() {
         {/* Add Supplier Modal */}
         <Modal
           isOpen={isAddModalOpen}
-          onClose={() => setIsAddModalOpen(false)}
-          title="Add New Supplier"
+          onClose={closeModal}
+          title={editingSupplier ? "Edit Supplier" : "Add New Supplier"}
           maxWidth="md"
         >
           <form onSubmit={handleAddSupplier} className="space-y-4">
@@ -249,11 +318,11 @@ export default function SuppliersPage() {
             />
 
             <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-200">
-              <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
+              <Button type="button" variant="outline" onClick={closeModal}>
                 Cancel
               </Button>
               <Button type="submit" isLoading={isSaving}>
-                Save Supplier
+                {editingSupplier ? "Update Supplier" : "Save Supplier"}
               </Button>
             </div>
           </form>

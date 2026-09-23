@@ -1,5 +1,5 @@
 // Project Falcon POS Service Worker
-const CACHE_NAME = "falcon-pos-v4";
+const CACHE_NAME = "falcon-pos-v5";
 
 const STATIC_PRECACHE = [
   "/pos",
@@ -72,22 +72,37 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Navigation / HTML -> ALWAYS network-first, and DO NOT cache the live HTML at runtime. A cached
-  // page can reference JS chunks that a later deploy removed, which shows a blank / dataless app.
-  // Offline, fall back to the precached /pos shell (refreshed on each SW version bump).
+  // Navigation / HTML -> network-first, and CACHE each successful load. That is what actually keeps
+  // offline working across redeploys: the cached shell always matches the JS chunks fetched in the
+  // same visit (chunks are cache-first stored below). A fixed precache instead goes stale after a
+  // deploy and points at removed chunks, which is what broke offline. Offline: serve the cached page
+  // (or the last cached /pos shell).
   event.respondWith(
-    fetch(request).catch(async () => {
-      if (request.mode === "navigate") {
-        const posFallback = await caches.match("/pos");
-        if (posFallback) return posFallback;
-      }
-      const cached = await caches.match(request);
-      if (cached) return cached;
-      return new Response("Offline", {
-        status: 503,
-        statusText: "Offline",
-        headers: { "Content-Type": "text/plain" },
-      });
-    })
+    fetch(request)
+      .then((networkResponse) => {
+        if (
+          request.mode === "navigate" &&
+          networkResponse &&
+          networkResponse.status === 200 &&
+          !networkResponse.redirected
+        ) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)).catch(() => {});
+        }
+        return networkResponse;
+      })
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        if (request.mode === "navigate") {
+          const posFallback = await caches.match("/pos");
+          if (posFallback) return posFallback;
+        }
+        return new Response("Offline", {
+          status: 503,
+          statusText: "Offline",
+          headers: { "Content-Type": "text/plain" },
+        });
+      })
   );
 });
