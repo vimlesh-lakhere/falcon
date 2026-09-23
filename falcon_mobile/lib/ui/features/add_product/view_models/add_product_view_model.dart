@@ -1031,6 +1031,69 @@ class AddProductViewModel extends ChangeNotifier {
     }
   }
 
+  // Edit an existing supplier's details.
+  Future<void> updateSupplierDetails(
+    String id, {
+    required String name,
+    String? phone,
+    String? address,
+  }) async {
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) return;
+    try {
+      final updated = await _supabaseService.updateSupplier(
+        id,
+        name: cleanName,
+        phone: phone,
+        address: address,
+      );
+      final idx = suppliers.indexWhere((s) => s.id == id);
+      if (idx >= 0) {
+        suppliers[idx] = updated;
+      } else {
+        suppliers.add(updated);
+      }
+      suppliers.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      notifyListeners();
+      HapticFeedback.lightImpact();
+      Fluttertoast.showToast(
+        msg: 'Supplier "${updated.name}" updated!',
+        backgroundColor: const Color(0xFF10B981),
+        textColor: Colors.white,
+      );
+    } catch (e) {
+      debugPrint('Error updating supplier: $e');
+      Fluttertoast.showToast(
+        msg: 'Failed to update supplier: $e',
+        backgroundColor: const Color(0xFFEF4444),
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  // Soft-delete a supplier and drop it from the current selection.
+  Future<void> deleteSupplierById(String id) async {
+    try {
+      await _supabaseService.deleteSupplier(id);
+      suppliers.removeWhere((s) => s.id == id);
+      selectedSupplierIds.remove(id);
+      notifyListeners();
+      HapticFeedback.lightImpact();
+      Fluttertoast.showToast(
+        msg: 'Supplier deleted',
+        backgroundColor: const Color(0xFF10B981),
+        textColor: Colors.white,
+      );
+    } catch (e) {
+      debugPrint('Error deleting supplier: $e');
+      Fluttertoast.showToast(
+        msg: 'Failed to delete supplier: $e',
+        backgroundColor: const Color(0xFFEF4444),
+        textColor: Colors.white,
+      );
+    }
+  }
+
   void refreshStockCalculation() {
     notifyListeners();
   }
@@ -1165,6 +1228,99 @@ class AddProductViewModel extends ChangeNotifier {
   void setSelectedCategoryId(String? id) {
     selectedCategoryId = id;
     notifyListeners();
+  }
+
+  bool isCreatingCategory = false;
+
+  // Create a category and immediately select it for this product.
+  Future<CategoryModel?> createAndSelectCategory(String name) async {
+    final clean = name.trim();
+    if (clean.isEmpty) return null;
+
+    // Reuse an existing one instead of making a duplicate.
+    final existing = categories.where((c) => c.name.toLowerCase() == clean.toLowerCase());
+    if (existing.isNotEmpty) {
+      selectedCategoryId = existing.first.id;
+      notifyListeners();
+      return existing.first;
+    }
+
+    isCreatingCategory = true;
+    notifyListeners();
+    try {
+      final created = await _supabaseService.createCategory(name: clean);
+      categories.add(created);
+      categories.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      selectedCategoryId = created.id;
+      notifyListeners();
+      HapticFeedback.lightImpact();
+      Fluttertoast.showToast(
+        msg: 'Category "${created.name}" added & selected!',
+        backgroundColor: const Color(0xFF10B981),
+        textColor: Colors.white,
+      );
+      return created;
+    } catch (e) {
+      debugPrint('Error creating category: $e');
+      Fluttertoast.showToast(
+        msg: 'Failed to add category: $e',
+        backgroundColor: const Color(0xFFEF4444),
+        textColor: Colors.white,
+      );
+      return null;
+    } finally {
+      isCreatingCategory = false;
+      notifyListeners();
+    }
+  }
+
+  // Rename an existing category.
+  Future<void> renameCategory(String id, String name) async {
+    final clean = name.trim();
+    if (clean.isEmpty) return;
+    try {
+      final updated = await _supabaseService.updateCategory(id, clean);
+      final idx = categories.indexWhere((c) => c.id == id);
+      if (idx >= 0) categories[idx] = updated;
+      categories.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      notifyListeners();
+      HapticFeedback.lightImpact();
+      Fluttertoast.showToast(
+        msg: 'Category renamed to "${updated.name}"',
+        backgroundColor: const Color(0xFF10B981),
+        textColor: Colors.white,
+      );
+    } catch (e) {
+      debugPrint('Error renaming category: $e');
+      Fluttertoast.showToast(
+        msg: 'Failed to rename: $e',
+        backgroundColor: const Color(0xFFEF4444),
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  // Soft-delete a category and clear it if it was selected.
+  Future<void> deleteCategoryById(String id) async {
+    try {
+      await _supabaseService.deleteCategory(id);
+      categories.removeWhere((c) => c.id == id);
+      if (selectedCategoryId == id) selectedCategoryId = null;
+      notifyListeners();
+      HapticFeedback.lightImpact();
+      Fluttertoast.showToast(
+        msg: 'Category deleted',
+        backgroundColor: const Color(0xFF10B981),
+        textColor: Colors.white,
+      );
+    } catch (e) {
+      debugPrint('Error deleting category: $e');
+      Fluttertoast.showToast(
+        msg: 'Failed to delete: $e',
+        backgroundColor: const Color(0xFFEF4444),
+        textColor: Colors.white,
+      );
+    }
   }
 
   void setSelectedUnitId(String? id) {

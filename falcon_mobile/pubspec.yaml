@@ -47,6 +47,7 @@ dependencies:
   http: ^1.6.0
   native_cutout: ^0.3.0
   shared_preferences: ^2.5.5
+  flutter_contacts: ^1.1.9+2
 
 dev_dependencies:
   flutter_test:

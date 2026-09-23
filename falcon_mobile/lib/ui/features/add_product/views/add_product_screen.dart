@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../../data/models/product_model.dart';
@@ -142,7 +143,7 @@ class AddProductScreen extends StatelessWidget {
                       const SizedBox(height: 14),
 
                       // 6. Stock & Category
-                      _buildStockAndCategoryCard(vm),
+                      _buildStockAndCategoryCard(context, vm),
                       const SizedBox(height: 14),
 
                       // 7. Additional Details & Suppliers (Multiple Suppliers)
@@ -1761,7 +1762,7 @@ class AddProductScreen extends StatelessWidget {
   // ───────────────────────────────────────────────────────────────────────────
   // 6. STOCK & CATEGORY CARD
   // ───────────────────────────────────────────────────────────────────────────
-  Widget _buildStockAndCategoryCard(AddProductViewModel vm) {
+  Widget _buildStockAndCategoryCard(BuildContext context, AddProductViewModel vm) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1777,20 +1778,42 @@ class AddProductScreen extends StatelessWidget {
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 12),
-          // Category
-          DropdownButtonFormField<String>(
-            initialValue: vm.selectedCategoryId,
-            decoration: const InputDecoration(
-              labelText: 'Category',
-              prefixIcon: Icon(Icons.category, size: 20, color: AppTheme.textMuted),
-            ),
-            items: vm.categories.map((c) {
-              return DropdownMenuItem<String>(
-                value: c.id,
-                child: Text(c.name),
-              );
-            }).toList(),
-            onChanged: (val) => vm.setSelectedCategoryId(val),
+          // Category (select + manage: add / edit / delete)
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: vm.categories.any((c) => c.id == vm.selectedCategoryId)
+                      ? vm.selectedCategoryId
+                      : null,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Category',
+                    prefixIcon: Icon(Icons.category, size: 20, color: AppTheme.textMuted),
+                  ),
+                  items: vm.categories.map((c) {
+                    return DropdownMenuItem<String>(
+                      value: c.id,
+                      child: Text(c.name, overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: (val) => vm.setSelectedCategoryId(val),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Material(
+                color: AppTheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => _showManageCategoriesSheet(context, vm),
+                  child: const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Icon(Icons.tune, size: 20, color: AppTheme.primary),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           // Stock & Min Stock
@@ -1858,6 +1881,182 @@ class AddProductScreen extends StatelessWidget {
             value: vm.isOnline,
             activeThumbColor: AppTheme.primary,
             onChanged: (val) => vm.setIsOnline(val),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CATEGORY MANAGEMENT (create / rename / delete from the APK)
+  // ───────────────────────────────────────────────────────────────────────────
+  void _showManageCategoriesSheet(BuildContext context, AddProductViewModel vm) {
+    final addController = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: AnimatedBuilder(
+              animation: vm,
+              builder: (context, _) => Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.category, color: AppTheme.primary, size: 22),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text('Manage Categories (श्रेणियाँ)',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                      ),
+                      IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: addController,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: 'New category name (नई श्रेणी)',
+                            isDense: true,
+                          ),
+                          onSubmitted: (v) async {
+                            if (v.trim().isNotEmpty) {
+                              await vm.createAndSelectCategory(v.trim());
+                              addController.clear();
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: vm.isCreatingCategory
+                            ? null
+                            : () async {
+                                if (addController.text.trim().isNotEmpty) {
+                                  await vm.createAndSelectCategory(addController.text.trim());
+                                  addController.clear();
+                                }
+                              },
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Add'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  if (vm.categories.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text('No categories yet. Add one above.',
+                            style: TextStyle(color: AppTheme.textMuted)),
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: vm.categories.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final c = vm.categories[i];
+                          final isSelected = vm.selectedCategoryId == c.id;
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              isSelected ? Icons.check_circle : Icons.label_outline,
+                              color: isSelected ? AppTheme.primary : AppTheme.textMuted,
+                              size: 20,
+                            ),
+                            title: Text(c.name, style: const TextStyle(fontSize: 14)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 20, color: AppTheme.primary),
+                                  onPressed: () => _showEditCategoryDialog(context, vm, c),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFEF4444)),
+                                  onPressed: () => _confirmDeleteCategory(context, vm, c),
+                                ),
+                              ],
+                            ),
+                            onTap: () {
+                              vm.setSelectedCategoryId(c.id);
+                              Navigator.pop(ctx);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  SizedBox(height: MediaQuery.of(ctx).padding.bottom + 8),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEditCategoryDialog(BuildContext context, AddProductViewModel vm, CategoryModel c) {
+    final ctrl = TextEditingController(text: c.name);
+    showDialog(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Rename Category'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Category name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final n = ctrl.text.trim();
+              Navigator.pop(dctx);
+              if (n.isNotEmpty && n != c.name) await vm.renameCategory(c.id, n);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteCategory(BuildContext context, AddProductViewModel vm, CategoryModel c) {
+    showDialog(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Delete Category?'),
+        content: Text(
+            'Remove "${c.name}"? Products already using it keep working — it just won\'t show in the list any more.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+            onPressed: () async {
+              Navigator.pop(dctx);
+              await vm.deleteCategoryById(c.id);
+            },
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -1954,7 +2153,7 @@ class AddProductScreen extends StatelessWidget {
             )
           else ...[
             const Text(
-              'Tap to select/unselect suppliers for this product:',
+              'Tap to select • Long-press to edit/delete (एडिट/डिलीट के लिए दबाकर रखें):',
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 8),
@@ -1963,23 +2162,26 @@ class AddProductScreen extends StatelessWidget {
               runSpacing: 6,
               children: vm.suppliers.map((s) {
                 final isSelected = vm.isSupplierSelected(s.id);
-                return FilterChip(
-                  label: Text(
-                    s.phone != null && s.phone!.isNotEmpty ? '${s.name} (${s.phone})' : s.name,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? Colors.white : AppTheme.textSecondary,
+                return GestureDetector(
+                  onLongPress: () => _showSupplierActionsSheet(context, vm, s),
+                  child: FilterChip(
+                    label: Text(
+                      s.phone != null && s.phone!.isNotEmpty ? '${s.name} (${s.phone})' : s.name,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected ? Colors.white : AppTheme.textSecondary,
+                      ),
                     ),
+                    selected: isSelected,
+                    selectedColor: AppTheme.primary,
+                    checkmarkColor: Colors.white,
+                    backgroundColor: AppTheme.surfaceElevated,
+                    side: BorderSide(
+                      color: isSelected ? AppTheme.primaryLight : AppTheme.cardBorder,
+                    ),
+                    onSelected: (_) => vm.toggleSupplier(s.id),
                   ),
-                  selected: isSelected,
-                  selectedColor: AppTheme.primary,
-                  checkmarkColor: Colors.white,
-                  backgroundColor: AppTheme.surfaceElevated,
-                  side: BorderSide(
-                    color: isSelected ? AppTheme.primaryLight : AppTheme.cardBorder,
-                  ),
-                  onSelected: (_) => vm.toggleSupplier(s.id),
                 );
               }).toList(),
             ),
@@ -2102,10 +2304,11 @@ class AddProductScreen extends StatelessWidget {
   // ───────────────────────────────────────────────────────────────────────────
   // CREATE NEW SUPPLIER BOTTOM SHEET
   // ───────────────────────────────────────────────────────────────────────────
-  void _showCreateSupplierBottomSheet(BuildContext context, AddProductViewModel vm) {
-    final nameController = TextEditingController();
-    final phoneController = TextEditingController();
-    final addressController = TextEditingController();
+  void _showCreateSupplierBottomSheet(BuildContext context, AddProductViewModel vm, {SupplierModel? existing}) {
+    final isEditing = existing != null;
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final phoneController = TextEditingController(text: existing?.phone ?? '');
+    final addressController = TextEditingController(text: existing?.address ?? '');
     bool isSaving = false;
     String? errorText;
 
@@ -2119,6 +2322,42 @@ class AddProductScreen extends StatelessWidget {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            Future<void> pickFromContacts() async {
+              try {
+                final granted = await FlutterContacts.requestPermission(readonly: true);
+                if (!granted) {
+                  Fluttertoast.showToast(
+                    msg: 'Contacts की अनुमति दें (Allow contacts access)',
+                    backgroundColor: const Color(0xFFEF4444),
+                    textColor: Colors.white,
+                  );
+                  return;
+                }
+                final picked = await FlutterContacts.openExternalPick();
+                if (picked == null) return;
+                Contact? full;
+                try {
+                  full = await FlutterContacts.getContact(picked.id, withProperties: true);
+                } catch (_) {}
+                final c = full ?? picked;
+                final pickedName = c.displayName.trim();
+                final pickedPhone = c.phones.isNotEmpty
+                    ? c.phones.first.number.replaceAll(RegExp(r'[^0-9+]'), '')
+                    : '';
+                setSheetState(() {
+                  if (pickedName.isNotEmpty) nameController.text = pickedName;
+                  if (pickedPhone.isNotEmpty) phoneController.text = pickedPhone;
+                  errorText = null;
+                });
+              } catch (e) {
+                Fluttertoast.showToast(
+                  msg: 'Contact नहीं मिला: $e',
+                  backgroundColor: const Color(0xFFEF4444),
+                  textColor: Colors.white,
+                );
+              }
+            }
+
             Future<void> handleSave() async {
               final name = nameController.text.trim();
               if (name.isEmpty) {
@@ -2134,18 +2373,27 @@ class AddProductScreen extends StatelessWidget {
               });
 
               try {
-                await vm.createAndSelectSupplier(
-                  name: name,
-                  phone: phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
-                  address: addressController.text.trim().isEmpty ? null : addressController.text.trim(),
-                );
+                if (existing != null) {
+                  await vm.updateSupplierDetails(
+                    existing.id,
+                    name: name,
+                    phone: phoneController.text.trim(),
+                    address: addressController.text.trim(),
+                  );
+                } else {
+                  await vm.createAndSelectSupplier(
+                    name: name,
+                    phone: phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
+                    address: addressController.text.trim().isEmpty ? null : addressController.text.trim(),
+                  );
+                }
                 if (context.mounted) {
                   Navigator.of(context).pop();
                 }
               } catch (e) {
                 setSheetState(() {
                   isSaving = false;
-                  errorText = 'सप्लायर नहीं बन सका: $e';
+                  errorText = 'सेव नहीं हुआ: $e';
                 });
               }
             }
@@ -2165,13 +2413,13 @@ class AddProductScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Icon(Icons.store, color: AppTheme.primaryLight, size: 20),
-                            SizedBox(width: 8),
+                            const Icon(Icons.store, color: AppTheme.primaryLight, size: 20),
+                            const SizedBox(width: 8),
                             Text(
-                              'Add New Supplier (नया सप्लायर)',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                              isEditing ? 'Edit Supplier (सप्लायर बदलें)' : 'Add New Supplier (नया सप्लायर)',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                             ),
                           ],
                         ),
@@ -2181,12 +2429,25 @@ class AddProductScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'दुकान, एजेंसी या डिस्ट्रीब्यूटर की जानकारी दर्ज करें',
-                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    const SizedBox(height: 10),
+                    // Pick straight from the phone's contacts (fills name + number)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: pickFromContacts,
+                        icon: const Icon(Icons.contacts_outlined, size: 18, color: AppTheme.primary),
+                        label: const Text(
+                          'Contacts से चुनें (Pick from Contacts)',
+                          style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w600),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppTheme.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     if (errorText != null) ...[
                       Container(
                         padding: const EdgeInsets.all(10),
@@ -2213,7 +2474,8 @@ class AddProductScreen extends StatelessWidget {
                     // Supplier Name
                     TextField(
                       controller: nameController,
-                      autofocus: true,
+                      autofocus: !isEditing,
+                      textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
                         labelText: 'Supplier / Agency Name (सप्लायर का नाम) *',
                         hintText: 'e.g. Balaji Agencies, Sharma Distributor',
@@ -2226,7 +2488,7 @@ class AddProductScreen extends StatelessWidget {
                       controller: phoneController,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
-                        labelText: 'Mobile / WhatsApp Number (ऑर्डर के लिए) *',
+                        labelText: 'Mobile / WhatsApp Number (ऑर्डर के लिए)',
                         hintText: 'e.g. 98260XXXXX',
                         prefixIcon: Icon(Icons.phone_outlined, color: AppTheme.primaryLight, size: 20),
                         helperText: 'री-ऑर्डर और संपर्क के लिए उपयोगी',
@@ -2259,14 +2521,14 @@ class AddProductScreen extends StatelessWidget {
                                 height: 20,
                                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                               )
-                            : const Row(
+                            : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.check_circle_outline, size: 18),
-                                  SizedBox(width: 8),
+                                  const Icon(Icons.check_circle_outline, size: 18),
+                                  const SizedBox(width: 8),
                                   Text(
-                                    'Save & Select Supplier (सप्लायर जोड़ें)',
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                    isEditing ? 'Update Supplier (अपडेट करें)' : 'Save & Select Supplier (सप्लायर जोड़ें)',
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                                   ),
                                 ],
                               ),
@@ -2279,6 +2541,76 @@ class AddProductScreen extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  // Long-press actions for a supplier chip: edit or delete.
+  void _showSupplierActionsSheet(BuildContext context, AddProductViewModel vm, SupplierModel s) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.store, color: AppTheme.primaryLight, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(s.name,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                    ),
+                  ],
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit, color: AppTheme.primary),
+                title: const Text('Edit (बदलें)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showCreateSupplierBottomSheet(context, vm, existing: s);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
+                title: const Text('Delete (हटाएँ)', style: TextStyle(color: Color(0xFFEF4444))),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDeleteSupplier(context, vm, s);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteSupplier(BuildContext context, AddProductViewModel vm, SupplierModel s) {
+    showDialog(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Delete Supplier?'),
+        content: Text('Remove "${s.name}"? Past purchases stay intact — it just won\'t show in the list any more.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+            onPressed: () async {
+              Navigator.pop(dctx);
+              await vm.deleteSupplierById(s.id);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 

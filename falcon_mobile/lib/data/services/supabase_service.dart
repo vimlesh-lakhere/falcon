@@ -33,6 +33,41 @@ class SupabaseService {
     }
   }
 
+  // 1b. Create New Category
+  Future<CategoryModel> createCategory({
+    required String name,
+    String? shopId,
+  }) async {
+    final res = await _client
+        .from('categories')
+        .insert({
+          'shop_id': shopId ?? SessionService.instance.shopId,
+          'name': name.trim(),
+          'is_active': true,
+        })
+        .select()
+        .single();
+
+    return CategoryModel.fromJson(res);
+  }
+
+  // 1c. Rename an existing Category
+  Future<CategoryModel> updateCategory(String id, String name) async {
+    final res = await _client
+        .from('categories')
+        .update({'name': name.trim()})
+        .eq('id', id)
+        .select()
+        .single();
+
+    return CategoryModel.fromJson(res);
+  }
+
+  // 1d. Delete (soft) a Category — keeps products' category link intact, just hides it from pickers.
+  Future<void> deleteCategory(String id) async {
+    await _client.from('categories').update({'is_active': false}).eq('id', id);
+  }
+
   // 2. Fetch Units
   Future<List<UnitModel>> getUnits({String? shopId}) async {
     try {
@@ -118,6 +153,32 @@ class SupabaseService {
         .single();
 
     return SupplierModel.fromJson(res);
+  }
+
+  // 3c. Update an existing Supplier (name / phone / address)
+  Future<SupplierModel> updateSupplier(
+    String id, {
+    required String name,
+    String? phone,
+    String? address,
+  }) async {
+    final res = await _client
+        .from('suppliers')
+        .update({
+          'name': name.trim(),
+          'phone': (phone?.trim().isEmpty ?? true) ? null : phone!.trim(),
+          'address': (address?.trim().isEmpty ?? true) ? null : address!.trim(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+    return SupplierModel.fromJson(res);
+  }
+
+  // 3d. Delete (soft) a Supplier — keeps history/FKs intact, just hides it from pickers.
+  Future<void> deleteSupplier(String id) async {
+    await _client.from('suppliers').update({'is_active': false}).eq('id', id);
   }
 
 
