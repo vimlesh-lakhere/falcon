@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 import { requireStaff } from "@/lib/auth/server";
+import { hydrateAiKeys } from "@/lib/ai/key-store";
 import sharp from "sharp";
 import {
   MultiFormatReader,
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    await hydrateAiKeys(); // load runtime AI keys from app_settings into process.env
     const body = await req.json();
     const {
       frontImage,

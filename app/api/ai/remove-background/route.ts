@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { HfInference } from "@huggingface/inference";
 import { requireStaff } from "@/lib/auth/server";
+import { hydrateAiKeys } from "@/lib/ai/key-store";
 import { spawn } from "child_process";
 import path from "path";
 
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    await hydrateAiKeys(); // load runtime AI keys from app_settings into process.env
     const body = await req.json();
     const { image, apiKey, hfToken } = body;
 
