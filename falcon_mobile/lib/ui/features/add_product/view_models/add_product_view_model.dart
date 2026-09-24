@@ -281,16 +281,23 @@ class AddProductViewModel extends ChangeNotifier {
 
     // Whether this product's prices are stored per full pack is the stored basis, not a name guess.
     sellAsFullPack = factor > 1 && found.priceBasis == 'pack';
-    // Keep the entry mode aligned with the basis so the populated values save back unchanged.
-    enterPriceAsPack = sellAsFullPack;
 
-    // Populate prices according to enterPriceAsPack mode so save doesn't re-divide
-    if (factor > 1 && enterPriceAsPack && !sellAsFullPack) {
-      final packSelling = (found.wholesalePrice != null && found.wholesalePrice! > found.sellingPrice)
-          ? found.wholesalePrice!
-          : (found.sellingPrice * factor);
-      sellingPriceController.text = packSelling.toStringAsFixed(0);
+    // The default add mode is "type the BOX/pack price, sell loose pieces": it stores selling per
+    // PIECE (box ÷ pack size) and parks the box price in wholesale. Detect that round-trip
+    // (wholesale ≈ selling × pack size) so edit shows the exact box price that was typed — not the
+    // divided-down piece value that confused the shopkeeper.
+    final enteredAsPackLoose = factor > 1 &&
+        !sellAsFullPack &&
+        found.sellingPrice > 0 &&
+        found.wholesalePrice != null &&
+        (found.wholesalePrice! - found.sellingPrice * factor).abs() <=
+            (found.sellingPrice * factor * 0.03 + 1);
 
+    enterPriceAsPack = sellAsFullPack || enteredAsPackLoose;
+
+    if (enteredAsPackLoose) {
+      // Show the box price the user actually typed; save() re-derives the per-piece value.
+      sellingPriceController.text = found.wholesalePrice!.toStringAsFixed(0);
       if (found.purchasePrice > 0) {
         purchasePriceController.text = (found.purchasePrice * factor).toStringAsFixed(0);
       }
@@ -309,14 +316,17 @@ class AddProductViewModel extends ChangeNotifier {
       }
     }
 
-    if (found.wholesalePrice != null && found.wholesalePrice! > 0) {
+    // In the "entered as pack" case the box price already lives in the selling field and save()
+    // re-derives the wholesale, so don't also surface it as a separate (identical) wholesale rate.
+    if (!enteredAsPackLoose && found.wholesalePrice != null && found.wholesalePrice! > 0) {
       isWholesaleEnabled = true;
       wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
       wholesaleMinQtyController.text = (found.wholesaleMinQty ?? 12).toString();
     } else {
       isWholesaleEnabled = false;
       wholesalePriceController.clear();
-      wholesaleMinQtyController.text = '12';
+      wholesaleMinQtyController.text =
+          enteredAsPackLoose ? factor.round().toString() : '12';
     }
 
     selectedSupplierIds.clear();
