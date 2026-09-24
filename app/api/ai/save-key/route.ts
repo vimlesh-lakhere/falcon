@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import fs from "fs";
-import path from "path";
+import { hydrateAiKeys, saveAiKey } from "@/lib/ai/key-store";
 
 export async function POST(req: NextRequest) {
   const auth = await requireStaff(req);
@@ -46,58 +45,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Set in runtime process.env
-    if (trimmedGemini) {
-      process.env.GEMINI_API_KEY = trimmedGemini;
-      process.env.NEXT_PUBLIC_GEMINI_API_KEY = trimmedGemini;
-    }
-    if (trimmedRbg) {
-      process.env.REMOVE_BG_API_KEY = trimmedRbg;
-    }
-
-    // Persist to .env.local
-    try {
-      const envPath = path.join(process.cwd(), ".env.local");
-      let envContent = "";
-      if (fs.existsSync(envPath)) {
-        envContent = fs.readFileSync(envPath, "utf8");
-      }
-
-      if (trimmedGemini) {
-        if (envContent.includes("GEMINI_API_KEY=")) {
-          envContent = envContent.replace(
-            /GEMINI_API_KEY=.*/g,
-            `GEMINI_API_KEY="${trimmedGemini}"`
-          );
-        } else {
-          envContent += `\nGEMINI_API_KEY="${trimmedGemini}"`;
-        }
-
-        if (envContent.includes("NEXT_PUBLIC_GEMINI_API_KEY=")) {
-          envContent = envContent.replace(
-            /NEXT_PUBLIC_GEMINI_API_KEY=.*/g,
-            `NEXT_PUBLIC_GEMINI_API_KEY="${trimmedGemini}"`
-          );
-        } else {
-          envContent += `\nNEXT_PUBLIC_GEMINI_API_KEY="${trimmedGemini}"`;
-        }
-      }
-
-      if (trimmedRbg) {
-        if (envContent.includes("REMOVE_BG_API_KEY=")) {
-          envContent = envContent.replace(
-            /REMOVE_BG_API_KEY=.*/g,
-            `REMOVE_BG_API_KEY="${trimmedRbg}"`
-          );
-        } else {
-          envContent += `\nREMOVE_BG_API_KEY="${trimmedRbg}"`;
-        }
-      }
-
-      fs.writeFileSync(envPath, envContent.trim() + "\n", "utf8");
-    } catch (fsErr) {
-      console.warn("Notice: Could not write key to .env.local (keys active in memory):", fsErr);
-    }
+    // Persist to the service-role-only app_settings table (durable on Vercel,
+    // unlike the old .env.local write which is a no-op on read-only serverless FS).
+    // NOTE: we intentionally do NOT store a NEXT_PUBLIC_ copy — that would ship
+    // the secret to the browser bundle.
+    if (trimmedGemini) await saveAiKey("GEMINI_API_KEY", trimmedGemini);
+    if (trimmedRbg) await saveAiKey("REMOVE_BG_API_KEY", trimmedRbg);
 
     return NextResponse.json({
       success: true,
@@ -121,14 +74,15 @@ export async function GET(req: NextRequest) {
     return auth;
   }
 
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
+  await hydrateAiKeys();
+  const geminiKey = process.env.GEMINI_API_KEY || "";
   const removeBgKey = process.env.REMOVE_BG_API_KEY || "";
 
   return NextResponse.json({
     success: true,
     hasGeminiKey: Boolean(geminiKey),
     hasRemoveBgKey: Boolean(removeBgKey),
-    // Masked keys for display
+    // Masked key for display only
     maskedGeminiKey: geminiKey ? `${geminiKey.slice(0, 6)}...${geminiKey.slice(-4)}` : "",
   });
 }

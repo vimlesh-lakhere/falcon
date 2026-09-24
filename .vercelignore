@@ -1,5 +1,6 @@
 # Mobile app Flutter source code (never needed for Next.js web build)
 falcon_mobile/
+falcon_price_check/
 *.apk
 *.aab
 

@@ -1,17 +1,40 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getAdminSupabaseClient } from "@/lib/supabase/admin";
 
 const MASTER_SHOP_ID = "a0000000-0000-0000-0000-000000000001";
 
+/**
+ * This endpoint performs destructive maintenance (deactivating and permanently
+ * purging expired tenants). It MUST NOT be publicly triggerable. Vercel Cron
+ * automatically sends `Authorization: Bearer <CRON_SECRET>` when CRON_SECRET is
+ * configured; manual triggers must send the same header. If CRON_SECRET is not
+ * set we fail closed rather than run unauthenticated.
+ */
+function isAuthorized(request: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false; // fail closed — never run unauthenticated
+  const header = request.headers.get("authorization") || "";
+  return header === `Bearer ${secret}`;
+}
+
 export async function GET(request: Request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
   return handleMaintenance();
 }
 
 export async function POST(request: Request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
   return handleMaintenance();
 }
 
 async function handleMaintenance() {
+  // Service-role client: these writes/deletes bypass RLS. The anon client would be
+  // silently blocked once RLS is enabled, so maintenance must use the admin client.
+  const supabase = getAdminSupabaseClient();
   try {
     const now = new Date();
     const nowIso = now.toISOString();

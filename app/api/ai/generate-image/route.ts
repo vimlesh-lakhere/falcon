@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { aiImagePromptEngine } from "@/lib/ai/image-prompt-engine";
 import { requireStaff } from "@/lib/auth/server";
+import { hydrateAiKeys } from "@/lib/ai/key-store";
 
 /**
  * High-definition Flux.1 / SDXL Commercial Studio fallback generator
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
+    await hydrateAiKeys(); // load runtime AI keys from app_settings into process.env
     const body = await req.json();
     const {
       prompt,

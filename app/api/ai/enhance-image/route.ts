@@ -6,6 +6,7 @@ import {
   type EnhancePipelineOptions,
 } from "@/lib/ai/image-enhance-pipeline";
 import type { BackgroundPreset } from "@/lib/ai/sharp-cropper";
+import { hydrateAiKeys } from "@/lib/ai/key-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    await hydrateAiKeys(); // load runtime AI keys from app_settings into process.env
     const body = await req.json();
     const {
       image,

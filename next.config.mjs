@@ -27,6 +27,7 @@ const nextConfig = {
         "node_modules/googleapis/**",
         "node_modules/googleapis-common/**",
         "falcon_mobile/**",
+        "falcon_price_check/**",
         "backups/**",
         "database/**",
         "docs/**",
