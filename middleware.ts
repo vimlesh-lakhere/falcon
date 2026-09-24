@@ -33,6 +33,50 @@ function isPublicPath(pathname: string) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// ERP access-gate cache
+// The ERP role check (profiles) and the trial/subscription check (shops) run on
+// every navigation, which is 2 Supabase reads per page on top of auth.getUser().
+// We cache a PASS in a short-lived, HMAC-signed httpOnly cookie so warm
+// navigations skip both reads. The signature makes the cookie unforgeable, so a
+// user cannot fabricate it to bypass the paywall. If FALCON_SESSION_SECRET is not
+// set we simply never cache (full checks every time) — fail open, never insecure.
+const GATE_COOKIE = "falcon_erp_gate";
+const GATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function toHex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function signGateValue(secret: string, userId: string, exp: number): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${userId}.${exp}`));
+  return `${exp}.${toHex(sig)}`;
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function hasValidGate(secret: string, userId: string, cookieValue: string | undefined): Promise<boolean> {
+  if (!cookieValue) return false;
+  const exp = Number(cookieValue.split(".")[0]);
+  if (!Number.isFinite(exp) || Date.now() > exp) return false;
+  const expected = await signGateValue(secret, userId, exp);
+  return constantTimeEqual(expected, cookieValue);
+}
+
 // <slug>.falcon360.in -> the shop that owns that slug. Cached briefly per server instance.
 const tenantCache = new Map<string, { shopId: string | null; exp: number }>();
 const TENANT_TTL_MS = 60_000;
@@ -187,6 +231,14 @@ export async function middleware(request: NextRequest) {
   // Individual route handlers enforce their narrower operation-specific roles.
   if (pathname.startsWith("/api/")) return response;
 
+  // Warm-path fast lane: a recently issued, signed PASS lets us skip the two
+  // Supabase reads below entirely. Revoking access (deactivating a staff member
+  // or expiring a trial) takes effect within GATE_TTL_MS at worst.
+  const gateSecret = process.env.FALCON_SESSION_SECRET;
+  if (gateSecret && (await hasValidGate(gateSecret, user.id, request.cookies.get(GATE_COOKIE)?.value))) {
+    return response;
+  }
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("role, is_active, store_id")
@@ -227,6 +279,19 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(expiredUrl);
       }
     }
+  }
+
+  // Passed every check — issue a short-lived signed PASS so the next few
+  // navigations skip the two reads above.
+  if (gateSecret) {
+    const value = await signGateValue(gateSecret, user.id, Date.now() + GATE_TTL_MS);
+    response.cookies.set(GATE_COOKIE, value, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: GATE_TTL_MS / 1000,
+    });
   }
 
   return response;
