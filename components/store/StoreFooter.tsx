@@ -177,6 +177,16 @@ export const StoreFooter: React.FC<StoreFooterProps> = ({
             <MessageCircle className="w-4 h-4" />
             WhatsApp Helpline
           </a>
+          {profile?.googleProfileUrl && (
+            <a
+              href={profile.googleProfileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-amber-300 text-xs font-bold transition-all"
+            >
+              ⭐ Google par review dein
+            </a>
+          )}
         </div>
       </div>
 

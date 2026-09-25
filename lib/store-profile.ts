@@ -25,6 +25,8 @@ export interface StoreProfile {
   keywords: string[];
   /** Other ways people spell / call the shop (used in structured data). */
   alternateNames: string[];
+  /** The shop's Google Business Profile (customers can read / write reviews there). */
+  googleProfileUrl?: string;
   /** Google Search Console HTML-tag verification code (public by design). */
   googleVerification?: string;
 }
@@ -46,6 +48,7 @@ const AGS_PROFILE: StoreProfile = {
   phone: "+91 9340362381",
   // The shop's own Google Maps listing (share link from the owner).
   mapsUrl: "https://maps.app.goo.gl/KcfMjDr9RCdKFoiQ6",
+  googleProfileUrl: "https://share.google/hPp9lqvsdJPodV6Zb",
   siteUrl: "https://ags.falcon360.in",
   googleVerification: "2rFy-rGDBlAnWOpJPOJ6CM_fOVlEUEz9oF_deGjb_40",
   seoTitle: "Aarti General Store Chhatarpur | आरती जनरल स्टोर – Wholesale & Retail",
@@ -128,6 +131,8 @@ export function storeJsonLd(p: StoreProfile) {
       addressCountry: "IN",
     },
     hasMap: p.mapsUrl,
+    // Ties this website to the shop's Google Maps / Business Profile listing.
+    sameAs: [p.mapsUrl, p.googleProfileUrl].filter(Boolean),
     areaServed: p.city || undefined,
   };
 }
