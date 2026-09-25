@@ -1,5 +1,6 @@
 "use client";
 
+import { OnlinePriceField } from "@/components/products/OnlinePriceField";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   X,
@@ -475,7 +476,11 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         setMinStock(Number(editingProduct.minimum_stock || 5));
         const onlineCfg = getProductOnlineConfig(editingProduct);
         setIsOnline(onlineCfg.isOnline);
-        setOnlinePrice(onlineCfg.onlinePrice ? String(onlineCfg.onlinePrice) : "");
+        setOnlinePrice(
+          onlineCfg.onlinePrice && Math.abs(onlineCfg.onlinePrice - Number(editingProduct.selling_price || 0)) >= 0.001
+            ? String(onlineCfg.onlinePrice)
+            : ""
+        );
         setDescription(stripVariantsFromDescription(editingProduct.description));
 
         // Load variants
@@ -1002,7 +1007,11 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
         minimum_selling_price: minSellingPrice || null,
         minimum_stock: minStock,
         is_online: isOnline,
-        online_price: Number(onlinePrice) > 0 ? Number(onlinePrice) : null,
+        // Same as the shop price = linked (NULL), so a later POS price change also updates online.
+        online_price:
+          Number(onlinePrice) > 0 && Math.abs(Number(onlinePrice) - Number(sellingPrice)) >= 0.001
+            ? Number(onlinePrice)
+            : null,
         description: finalDescription.trim() || null,
         image_url: combinedImageUrl,
         back_image_url: backImageUrl.trim() || null,
@@ -2175,19 +2184,11 @@ export const UnifiedAddProductModal: React.FC<UnifiedAddProductModalProps> = ({
                 {isOnline && (
                   <div className="pt-2 border-t border-emerald-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-150">
                     <div className="text-[11px] text-emerald-900 flex-1">
-                      <span className="font-bold">🏷️ Online Special Offer Price (₹):</span> Set a special discounted rate exclusively for website and WhatsApp customers. Leave blank to automatically use standard in-store selling price (₹{sellingPrice || 0}).
+                      <span className="font-bold">🏷️ Online Store Price (₹):</span> Shop (POS) price hi
+                      auto-fill hota hai. Online ke liye alag rate chahiye to badal do ya +5% / +10% dabao.
                     </div>
-                    <div className="w-full sm:w-44 shrink-0">
-                      <div className="relative">
-                        <span className="absolute left-3 top-2 text-xs font-bold text-emerald-700">₹</span>
-                        <input
-                          type="number"
-                          value={onlinePrice}
-                          onChange={(e) => setOnlinePrice(e.target.value)}
-                          placeholder={`POS: ₹${sellingPrice || 0}`}
-                          className="w-full pl-7 pr-3 py-1.5 text-xs font-bold bg-white border border-emerald-400 rounded-xl text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-2xs"
-                        />
-                      </div>
+                    <div className="w-full sm:w-56 shrink-0">
+                      <OnlinePriceField sellingPrice={sellingPrice} value={onlinePrice} onChange={setOnlinePrice} />
                     </div>
                   </div>
                 )}

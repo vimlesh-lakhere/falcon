@@ -16,7 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useStoreCart } from "@/store/useStoreCart";
-import { getStorefrontItemPrice } from "@/lib/units-pricing";
+import { getStorefrontItemPrice, getStorefrontWholesaleInfo } from "@/lib/units-pricing";
 
 export const CartDrawer: React.FC = () => {
   const router = useRouter();
@@ -92,10 +92,9 @@ export const CartDrawer: React.FC = () => {
                 const originalRetail = effective.originalPrice;
                 const mrp = Number(item.product.mrp) || originalRetail;
                 const isWholesaleActive = effective.isWholesaleTriggered;
-                const wholesaleMinQty = Number(item.product.wholesale_min_qty) || 12;
-                const wholesaleRaw = Number(item.product.wholesale_price) || 0;
+                const ws = getStorefrontWholesaleInfo(item.product);
                 // Pieces still needed to unlock the wholesale rate (order is counted in pieces).
-                const piecesToWholesale = Math.max(0, wholesaleMinQty - effective.totalPieces);
+                const piecesToWholesale = ws ? Math.max(0, ws.minPieces - effective.totalPieces) : 0;
                 const unitsToWholesale = Math.ceil(piecesToWholesale / effective.unitPieces);
 
                 const imageSrc =
@@ -147,7 +146,7 @@ export const CartDrawer: React.FC = () => {
                           )}
                         </div>
 
-                        {!isWholesaleActive && wholesaleRaw > 0 && piecesToWholesale > 0 && (
+                        {!isWholesaleActive && ws && piecesToWholesale > 0 && (
                           <p className="text-[9px] text-indigo-600 font-semibold mt-0.5">
                             💡 Add {unitsToWholesale} more for Wholesale rate
                           </p>

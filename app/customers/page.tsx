@@ -25,6 +25,7 @@ import { customersRepository } from "@/repositories/customers.repo";
 import { productsRepository } from "@/repositories/products.repo";
 import { Customer, Product } from "@/types/database";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { resolvePerPiecePrices } from "@/lib/units-pricing";
 import { useAuthStore } from "@/store/useAuthStore";
 import { CustomerLedgerModal } from "@/components/customers/CustomerLedgerModal";
 import { ShippingParcelLabelModal } from "@/components/pos/ShippingParcelLabelModal";
@@ -145,6 +146,19 @@ export default function CustomersPage() {
       alert("Failed to set custom price: " + err.message);
     }
   };
+
+  const handleDeletePrice = async (productId: string) => {
+    if (!selectedCustForPricing) return;
+    try {
+      await customersRepository.deleteCustomerPrice(selectedCustForPricing.id, productId);
+      setActivePrices(await customersRepository.getCustomerPrices(selectedCustForPricing.id));
+    } catch (err: any) {
+      alert("Failed to remove rate: " + err.message);
+    }
+  };
+
+  // Customer rates are stored PER PIECE (the POS multiplies by the pack size for Ladi/Box lines).
+  const retailPerPiece = (p?: Product | null) => (p ? resolvePerPiecePrices(p).sellingPerPiece : 0);
 
   const filteredCustomers = customers.filter(
     (c) =>
@@ -441,8 +455,9 @@ export default function CustomersPage() {
         >
           <div className="space-y-4">
             <p className="text-xs text-gray-500">
-              Configure locked special prices for this specific wholesale customer. These prices
-              will automatically apply during POS checkout.
+              Set this customer&apos;s special rate <b>per piece</b>. It applies automatically in the
+              POS when this customer is selected (Ladi/Box lines = rate × pieces). You can also save a
+              rate straight from a POS bill. Online store prices are not affected.
             </p>
 
             {/* Set price form */}
@@ -461,7 +476,7 @@ export default function CustomersPage() {
                     <option value="">Choose product...</option>
                     {products.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} (Retail: {formatCurrency(p.selling_price)})
+                        {p.name} (Shop: {formatCurrency(retailPerPiece(p))}/pc)
                       </option>
                     ))}
                   </select>
@@ -469,12 +484,13 @@ export default function CustomersPage() {
 
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-700 mb-1">
-                    Custom Price (₹)
+                    Rate per piece (₹)
                   </label>
                   <input
                     type="number"
                     required
-                    min="1"
+                    min="0.01"
+                    step="0.01"
                     value={customPriceVal || ""}
                     onChange={(e) => setCustomPriceVal(parseFloat(e.target.value) || 0)}
                     placeholder="Enter special price"
@@ -500,12 +516,21 @@ export default function CustomersPage() {
                       <div>
                         <span className="font-bold text-gray-900">{cp.product?.name}</span>
                         <span className="text-gray-400 ml-2">
-                          (Retail: {formatCurrency(cp.product?.selling_price)})
+                          (Shop: {formatCurrency(retailPerPiece(cp.product))}/pc)
                         </span>
                       </div>
-                      <span className="font-bold text-brand-700 tabular-nums">
-                        {formatCurrency(cp.price)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-brand-700 tabular-nums">
+                          {formatCurrency(cp.price)}/pc
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePrice(cp.product_id)}
+                          className="text-[11px] font-bold text-rose-600 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

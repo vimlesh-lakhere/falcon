@@ -1704,9 +1704,11 @@ class AddProductScreen extends StatelessWidget {
                   child: TextField(
                     controller: vm.wholesalePriceController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Wholesale Price',
-                      hintText: '0',
+                    decoration: InputDecoration(
+                      labelText: vm.isMultiUnit && vm.enterPriceAsPack
+                          ? '${vm.selectedUnit?.name.split(" ").first ?? "Pack"} Wholesale (₹)'
+                          : 'Wholesale Price / pc',
+                      hintText: 'selling se kam',
                       prefixText: '₹ ',
                     ),
                   ),
@@ -1882,6 +1884,44 @@ class AddProductScreen extends StatelessWidget {
             activeThumbColor: AppTheme.primary,
             onChanged: (val) => vm.setIsOnline(val),
           ),
+          if (vm.isOnline) ...[
+            const SizedBox(height: 4),
+            TextField(
+              controller: vm.onlinePriceController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: vm.onOnlinePriceEdited,
+              decoration: InputDecoration(
+                labelText: vm.isMultiUnit && vm.enterPriceAsPack
+                    ? 'Online Store ${vm.selectedUnit?.name.split(" ").first ?? "Pack"} Price (₹)'
+                    : 'Online Store Price (₹)',
+                prefixText: '₹ ',
+                helperText: vm.onlineLinked
+                    ? '🔗 POS price ke saath linked — POS badlega to online bhi badlega'
+                    : '✏️ Online ka alag rate — POS badalne par ye nahi badlega',
+                helperMaxLines: 2,
+                helperStyle: TextStyle(
+                  fontSize: 10,
+                  color: vm.onlineLinked ? AppTheme.textMuted : AppTheme.primaryLight,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final opt in const [
+                  ['Same as POS', 0.0],
+                  ['+5%', 5.0],
+                  ['+10%', 10.0],
+                ])
+                  ActionChip(
+                    label: Text(opt[0] as String, style: const TextStyle(fontSize: 11)),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => vm.applyOnlinePriceAdjustment(opt[1] as double),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

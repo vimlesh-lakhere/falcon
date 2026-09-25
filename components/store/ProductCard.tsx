@@ -7,6 +7,7 @@ import { Product } from "@/types/database";
 import { useStoreCart } from "@/store/useStoreCart";
 import { extractProductVariants, CleanVariant } from "@/lib/product-variants";
 import { getProductEffectiveOnlinePrice, getProductOnlineConfig } from "@/lib/product-online";
+import { getStorefrontWholesaleInfo } from "@/lib/units-pricing";
 
 interface ProductCardProps {
   product: Product;
@@ -42,6 +43,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const mrp = selectedVariant ? selectedVariant.mrp : Number((product as any).mrp) || Number(product.selling_price) || price;
   const discountPercent = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
   const hasOnlineSpecialPrice = !selectedVariant && onlineConfig.online_price !== null && onlineConfig.online_price < (Number(product.selling_price) || 0);
+  const wholesale = getStorefrontWholesaleInfo(product);
   const isOutOfStock = (selectedVariant?.stock ?? product.current_stock) <= 0;
 
   const rawImages = (product.image_url || "").split("|||").filter(Boolean);
@@ -222,7 +224,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               </span>
               {hasOnlineSpecialPrice ? (
                 <span className="text-[11px] text-gray-400 line-through font-medium" title="Counter price">
-                  ₹{Number(product.selling_price) || 0}
+                  ₹{Math.round((Number(product.selling_price) || 0) * 100) / 100}
                 </span>
               ) : mrp > price ? (
                 <span className="text-[11px] text-gray-400 line-through font-medium">₹{mrp}</span>
@@ -235,14 +237,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             )}
           </div>
 
-          {/* Wholesale Offer Tag */}
-          {!selectedVariant && Number(product.wholesale_price) > 0 && (
-            <div className="text-[10px] text-indigo-700 font-bold bg-indigo-50/80 border border-indigo-100 px-1.5 py-0.5 rounded-md flex items-center justify-between">
-              <span>
-                ⚡ Wholesale: ₹{Number(product.wholesale_price) < price * 3 ? Number(product.wholesale_price) : (Number(product.wholesale_price) / 12).toFixed(0)}/pc
+          {/* Wholesale Offer Tag — only a genuine wholesale rate, in the unit this card sells */}
+          {!selectedVariant && wholesale && (
+            <div className="text-[10px] text-indigo-700 font-bold bg-indigo-50/80 border border-indigo-100 px-1.5 py-0.5 rounded-md flex items-center justify-between gap-1 min-w-0">
+              <span className="truncate">
+                ⚡ Wholesale: ₹{wholesale.unitPrice}/{wholesale.unitLabel}
               </span>
-              <span className="text-[9px] text-indigo-500 font-semibold">
-                ({product.wholesale_min_qty || 12}+ pcs)
+              <span className="text-[9px] text-indigo-500 font-semibold shrink-0">
+                ({wholesale.minUnits}+ {wholesale.unitLabel === "pc" ? "pcs" : wholesale.unitLabel})
               </span>
             </div>
           )}

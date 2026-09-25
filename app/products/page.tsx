@@ -788,9 +788,9 @@ export default function ProductsPage() {
                               >
                                 <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-gray-400"}`} />
                                 <span>{isOnline ? "Online" : "Store Only"}</span>
-                                {onlinePrice && isOnline && (
-                                  <span className="text-[9px] bg-emerald-200/90 text-emerald-900 px-1 rounded">
-                                    ₹{onlinePrice}
+                                {isOnline && (
+                                  <span className="text-[9px] bg-emerald-200/90 text-emerald-900 px-1 rounded" title={onlinePrice ? "Online ka alag rate" : "Online price POS ke saath linked"}>
+                                    {onlinePrice ? `₹${onlinePrice}` : "🔗 POS"}
                                   </span>
                                 )}
                               </button>
@@ -996,9 +996,9 @@ export default function ProductsPage() {
                                 >
                                   <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-gray-400"}`} />
                                   <span>{isOnline ? "🌐 Online" : "🔒 Store Only"}</span>
-                                  {onlinePrice && isOnline && (
-                                    <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-bold">
-                                      ₹{onlinePrice}
+                                  {isOnline && (
+                                    <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-bold" title={onlinePrice ? "Online ka alag rate" : "Online price POS ke saath linked"}>
+                                      {onlinePrice ? `₹${onlinePrice}` : "🔗 POS"}
                                     </span>
                                   )}
                                 </button>

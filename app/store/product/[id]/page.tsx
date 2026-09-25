@@ -37,6 +37,7 @@ import {
   isProductOnline,
   getProductOnlineConfig,
   getProductEffectiveOnlinePrice, STORE_PRODUCT_SELECT} from "@/lib/product-online";
+import { getStorefrontWholesaleInfo } from "@/lib/units-pricing";
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -140,11 +141,14 @@ export default function ProductDetailPage() {
   const effectiveBasePrice = getProductEffectiveOnlinePrice(product);
   const price = selectedVariant ? selectedVariant.price : effectiveBasePrice;
   const mrp = selectedVariant ? selectedVariant.mrp : Number((product as any).mrp) || Number(product.selling_price) || price;
-  const savings = mrp > price ? mrp - price : 0;
+  const savings = mrp > price ? Math.round((mrp - price) * 100) / 100 : 0;
   const discountPercent = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
   const hasOnlineOffer = !selectedVariant && onlineConfig.online_price !== null && onlineConfig.online_price < (Number(product.selling_price) || 0);
   const stockCount = selectedVariant?.stock ?? product.current_stock;
   const isOutOfStock = stockCount <= 0;
+  const ws = getStorefrontWholesaleInfo(product);
+  const wsActive = !!ws && !selectedVariant && quantity >= ws.minUnits;
+  const wsUnitPlural = ws ? (ws.unitLabel === "pc" ? "pcs" : ws.unitLabel) : "";
 
   const handleShare = () => {
     if (typeof window !== "undefined") {
@@ -289,13 +293,9 @@ export default function ProductDetailPage() {
 
           {/* Pricing Card */}
           <div className="bg-gradient-to-r from-purple-50/80 to-pink-50/80 rounded-2xl p-4 sm:p-5 border border-purple-100/80 space-y-3">
-            <div className="flex items-baseline gap-3">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-2xl sm:text-3xl font-black text-gray-900">
-                ₹{quantity >= (Number(product.wholesale_min_qty) || 12) && Number(product.wholesale_price) > 0 && !selectedVariant
-                  ? Number(product.wholesale_price) < price * 3
-                    ? Number(product.wholesale_price)
-                    : Number((Number(product.wholesale_price) / 12).toFixed(0))
-                  : price}
+                ₹{wsActive && ws ? ws.unitPrice : price}
               </span>
               {hasOnlineOffer && (
                 <span className="text-xs font-black text-white bg-emerald-600 px-2.5 py-0.5 rounded-full shadow-xs">
@@ -304,7 +304,7 @@ export default function ProductDetailPage() {
               )}
               {hasOnlineOffer && Number(product.selling_price) > price && (
                 <span className="text-xs sm:text-sm text-gray-400 line-through font-medium" title="Counter Price">
-                  ₹{product.selling_price}
+                  ₹{Math.round((Number(product.selling_price) || 0) * 100) / 100}
                 </span>
               )}
               {mrp > price && !hasOnlineOffer && (
@@ -324,60 +324,46 @@ export default function ProductDetailPage() {
               )}
             </div>
 
-            {/* Wholesale Tier Notice Box */}
-            {!selectedVariant && Number(product.wholesale_price) > 0 && (
+            {/* Wholesale Tier Notice Box — genuine wholesale only, counted in the unit this page sells */}
+            {!selectedVariant && ws && (
               <div
                 className={`p-3 rounded-xl border flex items-center justify-between gap-2 transition-all ${
-                  quantity >= (Number(product.wholesale_min_qty) || 12)
+                  wsActive
                     ? "bg-emerald-50 border-emerald-300 text-emerald-900"
                     : "bg-indigo-50/80 border-indigo-200 text-indigo-950"
                 }`}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <Zap
                     className={`w-4 h-4 shrink-0 ${
-                      quantity >= (Number(product.wholesale_min_qty) || 12)
-                        ? "text-emerald-600 fill-emerald-500"
-                        : "text-indigo-600"
+                      wsActive ? "text-emerald-600 fill-emerald-500" : "text-indigo-600"
                     }`}
                   />
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xs font-black">
-                      Wholesale Rate: ₹
-                      {Number(product.wholesale_price) < price * 3
-                        ? Number(product.wholesale_price)
-                        : (Number(product.wholesale_price) / 12).toFixed(0)}
-                      /pc (from {product.wholesale_min_qty || 12}+ pcs)
+                      Wholesale Rate: ₹{ws.unitPrice}/{ws.unitLabel} (from {ws.minUnits}+ {wsUnitPlural})
                     </div>
                     <div className="text-[11px] text-gray-600">
-                      {quantity >= (Number(product.wholesale_min_qty) || 12) ? (
+                      {wsActive ? (
                         <span className="text-emerald-700 font-bold">
-                          ⚡ Wholesale Applied! You save ₹
-                          {(
-                            (price -
-                              (Number(product.wholesale_price) < price * 3
-                                ? Number(product.wholesale_price)
-                                : Number(product.wholesale_price) / 12)) *
-                            quantity
-                          ).toFixed(0)}{" "}
-                          extra on this pack
+                          ⚡ Wholesale Applied! You save ₹{Math.round((price - ws.unitPrice) * quantity)} extra
                         </span>
                       ) : (
                         <span>
-                          Buy {(Number(product.wholesale_min_qty) || 12) - quantity} more pcs to unlock wholesale price
+                          Buy {ws.minUnits - quantity} more {wsUnitPlural} to unlock wholesale price
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {quantity < (Number(product.wholesale_min_qty) || 12) && (
+                {!wsActive && (
                   <button
                     type="button"
-                    onClick={() => setQuantity(Number(product.wholesale_min_qty) || 12)}
+                    onClick={() => setQuantity(ws.minUnits)}
                     className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shrink-0 shadow-2xs transition-transform active:scale-95"
                   >
-                    Select {product.wholesale_min_qty || 12} Pcs
+                    Select {ws.minUnits}
                   </button>
                 )}
               </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { OnlinePriceField } from "@/components/products/OnlinePriceField";
 import React, { useState, useRef, useEffect } from "react";
 import {
   Sparkles,
@@ -971,7 +972,12 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
         image_url: heroImg, // Primary website & showroom display image
         is_active: true,
         is_online: formData.is_online !== false,
-        online_price: Number(formData.online_price) > 0 ? Number(formData.online_price) : null,
+        // Same as the shop price = linked (NULL), so a later POS price change also updates online.
+        online_price:
+          Number(formData.online_price) > 0 &&
+          Math.abs(Number(formData.online_price) - Number(formData.selling_price)) >= 0.001
+            ? Number(formData.online_price)
+            : null,
       };
 
       const newProd = await productsRepository.create(productPayload as any);
@@ -2267,24 +2273,13 @@ export const FalconAiProductModal: React.FC<FalconAiProductModalProps> = ({
                   {formData.is_online !== false && (
                     <div className="pt-2 border-t border-purple-100/80">
                       <label className="block text-[10px] font-bold text-gray-700 mb-0.5">
-                        Online Offer Price (₹) <span className="font-normal text-gray-500">(Optional)</span>
+                        Online Store Price (₹)
                       </label>
-                      <input
-                        type="number"
-                        placeholder={formData.selling_price ? `Default: ₹${formData.selling_price}` : "0.00"}
-                        value={formData.online_price === 0 || !formData.online_price ? "" : formData.online_price}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            online_price: e.target.value === "" ? 0 : parseFloat(e.target.value) || 0,
-                          })
-                        }
-                        className="w-full text-xs font-bold text-purple-900 bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-purple-600 focus:outline-none"
+                      <OnlinePriceField
+                        sellingPrice={Number(formData.selling_price) || 0}
+                        value={Number(formData.online_price) > 0 ? String(formData.online_price) : ""}
+                        onChange={(v) => setFormData({ ...formData, online_price: v === "" ? 0 : parseFloat(v) || 0 })}
                       />
-                      <p className="text-[9px] text-gray-500 mt-1">
-                        Leave empty to sell online at standard counter price (₹{formData.selling_price || 0}).
-                      </p>
                     </div>
                   )}
                 </div>

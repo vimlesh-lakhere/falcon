@@ -19,7 +19,10 @@ class AddProductViewModel extends ChangeNotifier {
   final ImagePicker _imagePicker = ImagePicker();
 
   AddProductViewModel({SupabaseService? supabaseService})
-      : _supabaseService = supabaseService ?? SupabaseService();
+      : _supabaseService = supabaseService ?? SupabaseService() {
+    // While the online price is "linked", it mirrors the shop (POS) selling price as it is typed.
+    sellingPriceController.addListener(_syncLinkedOnlinePrice);
+  }
 
   // ───────────────────────────────────────────────────────────────────────────
   // CONTROLLERS
@@ -34,6 +37,43 @@ class AddProductViewModel extends ChangeNotifier {
   final TextEditingController sellingPriceController = TextEditingController();
   final TextEditingController wholesalePriceController = TextEditingController();
   final TextEditingController wholesaleMinQtyController = TextEditingController(text: '12');
+  /// ONLINE STORE price. Pre-filled with the shop (POS) price and kept in sync while [onlineLinked].
+  /// Linked is saved as online_price = NULL, so a later POS price change also moves the online price.
+  final TextEditingController onlinePriceController = TextEditingController();
+
+  /// true = online price follows the shop price; false = the owner set a separate online price.
+  bool onlineLinked = true;
+
+  void _syncLinkedOnlinePrice() {
+    if (!onlineLinked) return;
+    if (onlinePriceController.text != sellingPriceController.text) {
+      onlinePriceController.text = sellingPriceController.text;
+    }
+  }
+
+  /// Owner typed in the online price box: it is linked again only if it equals the shop price.
+  void onOnlinePriceEdited(String value) {
+    final online = double.tryParse(value.trim());
+    final shop = double.tryParse(sellingPriceController.text.trim());
+    onlineLinked = value.trim().isEmpty || (online != null && shop != null && (online - shop).abs() < 0.001);
+    notifyListeners();
+  }
+
+  /// "Same" = link to the shop price. +5% / +10% etc. = a separate online price derived from it.
+  void applyOnlinePriceAdjustment(double percent) {
+    final shop = double.tryParse(sellingPriceController.text.trim()) ?? 0;
+    if (percent == 0 || shop <= 0) {
+      onlineLinked = true;
+      onlinePriceController.text = sellingPriceController.text;
+    } else {
+      final raw = shop * (1 + percent / 100);
+      // Clean customer-facing prices: whole rupees from ₹20 up, else the nearest 50 paise.
+      final rounded = raw >= 20 ? raw.roundToDouble() : (raw * 2).roundToDouble() / 2;
+      onlineLinked = (rounded - shop).abs() < 0.001;
+      onlinePriceController.text = fmtPrice(rounded);
+    }
+    notifyListeners();
+  }
   final TextEditingController stockController = TextEditingController(text: '10');
   final TextEditingController minStockController = TextEditingController(text: '5');
   final TextEditingController descriptionController = TextEditingController();
@@ -281,52 +321,57 @@ class AddProductViewModel extends ChangeNotifier {
 
     // Whether this product's prices are stored per full pack is the stored basis, not a name guess.
     sellAsFullPack = factor > 1 && found.priceBasis == 'pack';
+    final loosePack = factor > 1 && !sellAsFullPack;
 
-    // The default add mode is "type the BOX/pack price, sell loose pieces": it stores selling per
-    // PIECE (box ÷ pack size) and parks the box price in wholesale. Detect that round-trip
-    // (wholesale ≈ selling × pack size) so edit shows the exact box price that was typed — not the
-    // divided-down piece value that confused the shopkeeper.
-    final enteredAsPackLoose = factor > 1 &&
-        !sellAsFullPack &&
-        found.sellingPrice > 0 &&
-        found.wholesalePrice != null &&
-        (found.wholesalePrice! - found.sellingPrice * factor).abs() <=
-            (found.sellingPrice * factor * 0.03 + 1);
+    // A multi-unit product is always shown with PACK prices (what the shopkeeper types), whatever
+    // basis it is stored in. Loose products store per piece, so they are scaled up for display.
+    enterPriceAsPack = factor > 1;
+    final showMult = loosePack ? factor : 1.0;
 
-    enterPriceAsPack = sellAsFullPack || enteredAsPackLoose;
-
-    if (enteredAsPackLoose) {
-      // Show the box price the user actually typed; save() re-derives the per-piece value.
-      sellingPriceController.text = found.wholesalePrice!.toStringAsFixed(0);
-      if (found.purchasePrice > 0) {
-        purchasePriceController.text = (found.purchasePrice * factor).toStringAsFixed(0);
-      }
-      if (found.mrp != null && found.mrp! > 0) {
-        mrpController.text = (found.mrp! * factor).toStringAsFixed(0);
-      }
+    final sp = found.sellingPrice;
+    if (sp > 0) sellingPriceController.text = fmtPrice(sp * showMult);
+    if (found.purchasePrice > 0) {
+      purchasePriceController.text = fmtPrice(found.purchasePrice * showMult);
     } else {
-      if (found.purchasePrice > 0) {
-        purchasePriceController.text = found.purchasePrice.toStringAsFixed(0);
-      }
-      if (found.mrp != null && found.mrp! > 0) {
-        mrpController.text = found.mrp!.toStringAsFixed(0);
-      }
-      if (found.sellingPrice > 0) {
-        sellingPriceController.text = found.sellingPrice.toStringAsFixed(0);
-      }
+      purchasePriceController.clear();
+    }
+    if (found.mrp != null && found.mrp! > 0) {
+      mrpController.text = fmtPrice(found.mrp! * showMult);
+    } else {
+      mrpController.clear();
     }
 
-    // In the "entered as pack" case the box price already lives in the selling field and save()
-    // re-derives the wholesale, so don't also surface it as a separate (identical) wholesale rate.
-    if (!enteredAsPackLoose && found.wholesalePrice != null && found.wholesalePrice! > 0) {
+    // Wholesale, normalised to per piece. Older app builds auto-copied the typed box price into
+    // wholesale (or saved a per-box wholesale on a per-piece product) — that is not a real bulk rate.
+    final spPc = sellAsFullPack ? sp / factor : sp;
+    double wsPc = 0;
+    final wp = found.wholesalePrice ?? 0;
+    if (wp > 0) {
+      if (sellAsFullPack) {
+        wsPc = wp <= spPc + 0.001 ? wp : wp / factor; // per-piece value stored on a pack product
+      } else {
+        wsPc = (factor > 1 && wp > sp) ? wp / factor : wp; // per-box value stored on a piece product
+      }
+    }
+    final hasRealWholesale = wsPc > 0 && wsPc < spPc - 0.001;
+    if (hasRealWholesale) {
       isWholesaleEnabled = true;
-      wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
+      wholesalePriceController.text = fmtPrice(factor > 1 ? wsPc * factor : wsPc);
       wholesaleMinQtyController.text = (found.wholesaleMinQty ?? 12).toString();
     } else {
       isWholesaleEnabled = false;
       wholesalePriceController.clear();
-      wholesaleMinQtyController.text =
-          enteredAsPackLoose ? factor.round().toString() : '12';
+      wholesaleMinQtyController.text = factor > 1 ? factor.round().toString() : '12';
+    }
+
+    // Online price only when it is really different from the shop price.
+    final op = found.onlinePrice ?? 0;
+    if (op > 0 && (op - sp).abs() > 0.001) {
+      onlineLinked = false;
+      onlinePriceController.text = fmtPrice(op * showMult);
+    } else {
+      onlineLinked = true;
+      onlinePriceController.text = sellingPriceController.text;
     }
 
     selectedSupplierIds.clear();
@@ -774,9 +819,7 @@ class AddProductViewModel extends ChangeNotifier {
           if (purchasePriceController.text.trim().isEmpty && scanned.purchasePrice != null) {
             purchasePriceController.text = scanned.purchasePrice!.toStringAsFixed(0);
           }
-          if (wholesalePriceController.text.trim().isEmpty && scanned.wholesalePrice != null) {
-            wholesalePriceController.text = scanned.wholesalePrice!.toStringAsFixed(0);
-          }
+          // No AI wholesale guess: wholesale is a deliberate shop decision, typed by the owner.
         }
         if (scanned.description != null && scanned.description!.isNotEmpty) {
           descriptionController.text = scanned.description!;
@@ -1120,15 +1163,7 @@ class AddProductViewModel extends ChangeNotifier {
     if (found.unitId != null) {
       selectedUnitId = found.unitId;
     }
-    if (found.wholesalePrice != null && found.wholesalePrice! > 0) {
-      isWholesaleEnabled = true;
-      wholesalePriceController.text = found.wholesalePrice!.toStringAsFixed(0);
-      wholesaleMinQtyController.text = (found.wholesaleMinQty ?? 12).toString();
-    } else {
-      isWholesaleEnabled = false;
-      wholesalePriceController.clear();
-      wholesaleMinQtyController.text = '12';
-    }
+    // Wholesale fields are set (normalised) by _populateFromExistingProduct.
 
     final factor = currentConversionFactor;
     if (factor > 1 && !sellAsFullPack) {
@@ -1149,9 +1184,6 @@ class AddProductViewModel extends ChangeNotifier {
             ? currentConversionFactor.round().toString()
             : '12';
       }
-      if (wholesalePriceController.text.trim().isEmpty && sellingPriceController.text.trim().isNotEmpty) {
-        wholesalePriceController.text = sellingPriceController.text.trim();
-      }
     } else {
       wholesalePriceController.clear();
     }
@@ -1163,25 +1195,30 @@ class AddProductViewModel extends ChangeNotifier {
     enterPriceAsPack = asPack;
     final factor = currentConversionFactor;
     if (factor > 1) {
-      if (asPack) {
-        // Switched to pack mode: multiply values by factor
-        final pp = double.tryParse(purchasePriceController.text);
-        if (pp != null && pp > 0) purchasePriceController.text = (pp * factor).toStringAsFixed(0);
-        final sp = double.tryParse(sellingPriceController.text);
-        if (sp != null && sp > 0) sellingPriceController.text = (sp * factor).toStringAsFixed(0);
-        final mrp = double.tryParse(mrpController.text);
-        if (mrp != null && mrp > 0) mrpController.text = (mrp * factor).toStringAsFixed(0);
-      } else {
-        // Switched to piece mode: divide values by factor
-        final pp = double.tryParse(purchasePriceController.text);
-        if (pp != null && pp > 0) purchasePriceController.text = (pp / factor).toStringAsFixed(0);
-        final sp = double.tryParse(sellingPriceController.text);
-        if (sp != null && sp > 0) sellingPriceController.text = (sp / factor).toStringAsFixed(0);
-        final mrp = double.tryParse(mrpController.text);
-        if (mrp != null && mrp > 0) mrpController.text = (mrp / factor).toStringAsFixed(0);
+      // Convert every price field between per-pack and per-piece, keeping paise (rounding to whole
+      // rupees here used to turn ₹6.67/pc into ₹7).
+      for (final c in [
+        purchasePriceController,
+        sellingPriceController,
+        mrpController,
+        wholesalePriceController,
+        if (!onlineLinked) onlinePriceController,
+      ]) {
+        final v = double.tryParse(c.text);
+        if (v != null && v > 0) c.text = fmtPrice(asPack ? v * factor : v / factor);
       }
     }
     notifyListeners();
+  }
+
+  /// 240.0 -> "240", 8.5 -> "8.5", 6.6667 -> "6.67" (never rounds paise away).
+  static String fmtPrice(double v) {
+    var t = v.toStringAsFixed(2);
+    if (t.contains('.')) {
+      t = t.replaceAll(RegExp(r'0+$'), '');
+      if (t.endsWith('.')) t = t.substring(0, t.length - 1);
+    }
+    return t;
   }
 
   double get perPieceCost {
@@ -1411,55 +1448,55 @@ class AddProductViewModel extends ChangeNotifier {
           ? descriptionController.text.trim()
           : null;
 
-      double finalPurchasePrice = enteredPurchasePrice;
-      double? finalMrp = enteredMrp;
-      double finalSellingPrice = enteredSellingPrice;
-      double? finalWholesalePrice = isWholesaleEnabled ? double.tryParse(wholesalePriceController.text) : null;
-      int? finalWholesaleMinQty = isWholesaleEnabled ? (int.tryParse(wholesaleMinQtyController.text) ?? 12) : null;
+      // Typed values are per PACK when "enter as pack" is on, else per piece. They are stored in the
+      // product's basis: per pack for sealed-pack products, per piece otherwise (products.price_basis).
+      final factor = currentConversionFactor > 0 ? currentConversionFactor : 1.0;
+      double toStored(double v) {
+        if (!isMultiUnit) return v;
+        final perPiece = enterPriceAsPack ? v / factor : v;
+        return sellAsFullPack ? perPiece * factor : perPiece;
+      }
+
+      final double finalPurchasePrice = toStored(enteredPurchasePrice);
+      final double? finalMrp = (enteredMrp != null && enteredMrp > 0) ? toStored(enteredMrp) : null;
+      final double finalSellingPrice = toStored(enteredSellingPrice);
+
+      // Wholesale only when switched on AND genuinely cheaper than the selling price. Never
+      // auto-filled from the pack price (that made every app product show a fake online wholesale).
+      double? finalWholesalePrice;
+      int? finalWholesaleMinQty;
+      if (isWholesaleEnabled) {
+        final w = double.tryParse(wholesalePriceController.text.trim()) ?? 0;
+        if (w > 0) {
+          final stored = toStored(w);
+          if (stored < finalSellingPrice) {
+            finalWholesalePrice = stored;
+            finalWholesaleMinQty = int.tryParse(wholesaleMinQtyController.text) ?? 12;
+          } else {
+            Fluttertoast.showToast(
+              msg: 'Wholesale rate selling price se kam hona chahiye — wholesale save nahi kiya',
+              backgroundColor: const Color(0xFFF59E0B),
+              textColor: Colors.white,
+            );
+          }
+        }
+      }
+
+      // Online price: linked / same as shop -> NULL (follows the shop price forever); otherwise stored.
+      final enteredOnline = double.tryParse(onlinePriceController.text.trim()) ?? 0;
+      final double? finalOnlinePrice =
+          (!onlineLinked && enteredOnline > 0 && (enteredOnline - enteredSellingPrice).abs() >= 0.001)
+              ? toStored(enteredOnline)
+              : null;
+
       String finalName = name;
-
-      if (isMultiUnit) {
-        if (!sellAsFullPack) {
-          // ── Case 1: Khulla Loose Piece Selling ──
-          if (enterPriceAsPack) {
-            finalPurchasePrice = currentConversionFactor > 0 ? enteredPurchasePrice / currentConversionFactor : enteredPurchasePrice;
-            finalSellingPrice = currentConversionFactor > 0 ? enteredSellingPrice / currentConversionFactor : enteredSellingPrice;
-            finalMrp = (enteredMrp != null && enteredMrp > 0) ? (currentConversionFactor > 0 ? enteredMrp / currentConversionFactor : enteredMrp) : null;
-
-            // Pack selling price becomes the wholesale rate!
-            if (finalWholesalePrice == null || finalWholesalePrice <= 0) {
-              finalWholesalePrice = enteredSellingPrice;
-              finalWholesaleMinQty = currentConversionFactor.round();
-            }
-          } else {
-            // Entered as Piece Price directly
-            finalPurchasePrice = enteredPurchasePrice;
-            finalSellingPrice = enteredSellingPrice;
-            finalMrp = enteredMrp;
-          }
-        } else {
-          // ── Case 2: Sealed Pack Selling ──
-          if (enterPriceAsPack) {
-            finalPurchasePrice = enteredPurchasePrice;
-            finalSellingPrice = enteredSellingPrice;
-            if (enteredMrp != null && enteredMrp > 0) {
-              finalMrp = enteredMrp;
-            }
-          } else {
-            // Entered as piece, selling as full pack
-            finalPurchasePrice = enteredPurchasePrice * currentConversionFactor;
-            finalSellingPrice = enteredSellingPrice * currentConversionFactor;
-            if (enteredMrp != null && enteredMrp > 0) {
-              finalMrp = enteredMrp * currentConversionFactor;
-            }
-          }
-          final unitLabel = selectedUnit?.name ?? 'Pack';
-          if (!finalName.toLowerCase().contains(unitLabel.toLowerCase()) &&
-              !finalName.toLowerCase().contains('pack') &&
-              !finalName.toLowerCase().contains('box') &&
-              !finalName.toLowerCase().contains('lad')) {
-            finalName = '$finalName ($unitLabel)';
-          }
+      if (isMultiUnit && sellAsFullPack) {
+        final unitLabel = selectedUnit?.name ?? 'Pack';
+        if (!finalName.toLowerCase().contains(unitLabel.toLowerCase()) &&
+            !finalName.toLowerCase().contains('pack') &&
+            !finalName.toLowerCase().contains('box') &&
+            !finalName.toLowerCase().contains('lad')) {
+          finalName = '$finalName ($unitLabel)';
         }
       }
 
@@ -1497,15 +1534,22 @@ class AddProductViewModel extends ChangeNotifier {
         backImageUrl: uploadedBackUrl,
         description: finalDescription,
         isOnline: isOnline,
-        onlinePrice: finalSellingPrice,
+        onlinePrice: finalOnlinePrice,
         isActive: true,
       );
+
+      // toInsertJson() drops nulls; send them explicitly so switching wholesale off or blanking the
+      // online price really clears the old value instead of leaving it in the database.
+      final productPayload = newProduct.toInsertJson()
+        ..['wholesale_price'] = finalWholesalePrice
+        ..['online_price'] = finalOnlinePrice;
+      if (finalWholesaleMinQty != null) productPayload['wholesale_min_qty'] = finalWholesaleMinQty;
 
       ProductModel saved;
       if (existingProductFound != null && existingProductFound!.id != null && !isVariantMode) {
         saved = await _supabaseService.updateProduct(
           existingProductFound!.id!,
-          newProduct.toInsertJson(),
+          productPayload,
         );
         Fluttertoast.showToast(
           msg: 'Updated: ${saved.name}',
@@ -1554,6 +1598,8 @@ class AddProductViewModel extends ChangeNotifier {
     mrpController.clear();
     sellingPriceController.clear();
     wholesalePriceController.clear();
+    onlinePriceController.clear();
+    onlineLinked = true;
     wholesaleMinQtyController.text = '12';
     sellAsFullPack = false;
     isWholesaleEnabled = false;
@@ -1586,6 +1632,8 @@ class AddProductViewModel extends ChangeNotifier {
     mrpController.dispose();
     sellingPriceController.dispose();
     wholesalePriceController.dispose();
+    sellingPriceController.removeListener(_syncLinkedOnlinePrice);
+    onlinePriceController.dispose();
     wholesaleMinQtyController.dispose();
     descriptionController.dispose();
     stockController.dispose();

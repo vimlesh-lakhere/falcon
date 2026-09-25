@@ -17,7 +17,8 @@ type Entry = { at: number; data: StoreCatalog };
 const memCache = new Map<string, Entry>();
 const inflight = new Map<string, Promise<StoreCatalog>>();
 
-const keyFor = (shopId: string) => `falcon_store_catalog_${shopId}`;
+// v2: rows now embed the unit (pack size) so store pricing matches the checkout API.
+const keyFor = (shopId: string) => `falcon_store_catalog_v2_${shopId}`;
 
 function readSession(key: string): Entry | null {
   try {

@@ -18,7 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useStoreCart } from "@/store/useStoreCart";
-import { getStorefrontItemPrice } from "@/lib/units-pricing";
+import { getStorefrontItemPrice, getStorefrontWholesaleInfo } from "@/lib/units-pricing";
 
 function CartLoadingSkeleton() {
   return (
@@ -94,10 +94,9 @@ function StoreCartContent() {
             const originalRetail = effective.originalPrice;
             const mrp = Number(item.product.mrp) || originalRetail;
             const isWholesaleActive = effective.isWholesaleTriggered;
-            const wholesaleMinQty = Number(item.product.wholesale_min_qty) || 12;
-            const wholesaleRaw = Number(item.product.wholesale_price) || 0;
+            const ws = getStorefrontWholesaleInfo(item.product);
             // Pieces still needed to unlock the wholesale rate (order is counted in pieces).
-            const piecesToWholesale = Math.max(0, wholesaleMinQty - effective.totalPieces);
+            const piecesToWholesale = ws ? Math.max(0, ws.minPieces - effective.totalPieces) : 0;
             const unitsToWholesale = Math.ceil(piecesToWholesale / effective.unitPieces);
 
             const imageSrc =
@@ -150,9 +149,9 @@ function StoreCartContent() {
                       )}
                     </div>
 
-                    {!isWholesaleActive && wholesaleRaw > 0 && piecesToWholesale > 0 && (
+                    {!isWholesaleActive && ws && piecesToWholesale > 0 && (
                       <p className="text-[10px] text-indigo-600 font-semibold mt-1 bg-indigo-50/80 border border-indigo-100 px-2 py-0.5 rounded-md inline-block">
-                        💡 Buy {unitsToWholesale} more to get Wholesale price (₹{wholesaleRaw.toFixed(0)}{effective.unitPieces > 1 ? "/pack" : "/pc"})
+                        💡 Buy {unitsToWholesale} more to get Wholesale price (₹{ws.unitPrice}/{ws.unitLabel})
                       </p>
                     )}
                   </div>

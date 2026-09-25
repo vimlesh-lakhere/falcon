@@ -55,11 +55,20 @@ export const customersRepository = {
   async getCustomerPrices(customerId: string) {
     const { data, error } = await supabase
       .from("customer_prices")
-      .select("*, product:products(*)")
+      .select("*, product:products(*, unit:units(*))")
       .eq("customer_id", customerId);
 
     if (error) throw error;
     return data || [];
+  },
+
+  async deleteCustomerPrice(customerId: string, productId: string) {
+    const { error } = await supabase
+      .from("customer_prices")
+      .delete()
+      .eq("customer_id", customerId)
+      .eq("product_id", productId);
+    if (error) throw error;
   },
 
   async setCustomerPrice(customerId: string, productId: string, price: number) {

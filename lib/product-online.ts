@@ -11,7 +11,7 @@ import { Product } from "@/types/database";
 // Only the category NAME is shown on the storefront, so embed just id+name instead of the whole
 // category row — trims JSON egress on every catalog load (the storefront reads this table most).
 export const STORE_PRODUCT_SELECT =
-  "id, shop_id, category_id, name, name_hindi, sku, barcode, brand, unit_id, selling_price, wholesale_price, wholesale_min_qty, mrp, price_basis, online_price, is_online, current_stock, image_url, back_image_url, description, is_active, created_at, category:categories(id,name)";
+  "id, shop_id, category_id, name, name_hindi, sku, barcode, brand, unit_id, selling_price, wholesale_price, wholesale_min_qty, mrp, price_basis, online_price, is_online, current_stock, image_url, back_image_url, description, is_active, created_at, category:categories(id,name), unit:units(id,name,conversion_factor)";
 
 export interface ProductOnlineConfig {
   isOnline: boolean;
@@ -81,10 +81,9 @@ export function isProductOnline(product: Product | any): boolean {
 export function getProductEffectiveOnlinePrice(product: Product | any): number {
   if (!product) return 0;
   const cfg = getProductOnlineConfig(product);
-  if (cfg.onlinePrice && cfg.onlinePrice > 0) {
-    return cfg.onlinePrice;
-  }
-  return Number(product.selling_price) || 0;
+  const raw = cfg.onlinePrice && cfg.onlinePrice > 0 ? cfg.onlinePrice : Number(product.selling_price) || 0;
+  // Per-piece prices derived from a box price can be 6.666…; the store shows and charges paise.
+  return Math.round(raw * 100) / 100;
 }
 
 /**

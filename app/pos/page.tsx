@@ -74,6 +74,7 @@ import {
   getBaseMultiplier,
   getCleanUnitBaseName,
   resolvePerPiecePrices,
+  resolveProductUnitDetails,
   DynamicProductUnit,
 } from "@/lib/units-pricing";
 import {
@@ -104,6 +105,10 @@ interface CartItem {
   unitName: string;
   unitMultiplier: number;
   isPermanentPriceUpdate?: boolean;
+  /** Priced from the selected customer's saved rate (not a manual override). */
+  isCustomerRate?: boolean;
+  /** Save this bill's rate as the selected customer's rate on checkout. */
+  saveAsCustomerRate?: boolean;
 }
 
 interface HeldBill {
@@ -598,10 +603,47 @@ export default function PosBillingPage() {
     }
   }, [SHOP_ID]);
 
+  /**
+   * The price of a cart line. A customer's saved rate is stored PER PIECE and applies to every unit
+   * (Pc, Ladi, Box...) as rate x pieces. If the wholesale rate for this quantity is even lower, the
+   * customer gets that instead - a regular customer is never charged more than a walk-in.
+   */
+  const linePrice = (
+    product: Product,
+    qty: number,
+    unitKey: UnitKey,
+    multiplier: number,
+    prices: Record<string, number> = customerPrices
+  ): { unitPrice: number; originalPrice: number; isCustomerRate: boolean } => {
+    const effective = getEffectiveItemPrice(product, qty, unitKey, multiplier, units);
+    const custom = prices[product.id];
+    if (custom !== undefined && custom > 0) {
+      const customUnit = Math.round(custom * multiplier * 100) / 100;
+      if (customUnit < effective.unitPrice) {
+        return {
+          unitPrice: customUnit,
+          originalPrice: Math.max(effective.originalPrice, effective.unitPrice),
+          isCustomerRate: true,
+        };
+      }
+    }
+    return { unitPrice: effective.unitPrice, originalPrice: effective.originalPrice, isCustomerRate: false };
+  };
+
+  /** Re-prices every line the cashier did not type a price for, using the given customer's rates. */
+  const repriceCartForCustomer = (prevCart: CartItem[], prices: Record<string, number>): CartItem[] =>
+    prevCart.map((item) => {
+      if (item.isPriceOverridden || !products.some((p) => p.id === item.product.id)) return item;
+      const lp = linePrice(item.product, item.quantity, item.unit, item.unitMultiplier, prices);
+      return { ...item, unitPrice: lp.unitPrice, originalPrice: lp.originalPrice, isCustomerRate: lp.isCustomerRate };
+    });
+
   // Load custom customer pricing when customer is selected
   useEffect(() => {
     if (!selectedCustomer) {
       setCustomerPrices({});
+      // Customer removed: lines that carried their special rate go back to the normal price.
+      setCart((prevCart) => repriceCartForCustomer(prevCart, {}));
       return;
     }
     const loadPrices = async () => {
@@ -613,16 +655,8 @@ export default function PosBillingPage() {
         });
         setCustomerPrices(map);
 
-        // Update existing cart prices if applicable
-        setCart((prevCart) =>
-          prevCart.map((item) => {
-            const custom = map[item.product.id];
-            if (custom !== undefined) {
-              return { ...item, unitPrice: custom, isPriceOverridden: true };
-            }
-            return item;
-          })
-        );
+        // Re-price the lines already in the cart for this customer.
+        setCart((prevCart) => repriceCartForCustomer(prevCart, map));
       } catch (err) {
         console.error(err);
       }
@@ -859,8 +893,6 @@ export default function PosBillingPage() {
       const existingIndex = prevCart.findIndex(
         (item) => item.product.id === product.id && (item.unit === unitKey || item.unitMultiplier === multiplier)
       );
-      const customPrice = customerPrices[product.id];
-
       if (existingIndex > -1) {
         const updated = [...prevCart];
         const existingItem = updated[existingIndex];
@@ -869,11 +901,14 @@ export default function PosBillingPage() {
         let newUnitPrice = existingItem.unitPrice;
         let newOriginalPrice = existingItem.originalPrice;
 
-        // Auto-recalculate wholesale price if not manually overridden by cashier and no custom customer price
-        if (!existingItem.isPriceOverridden && (customPrice === undefined || existingItem.unit !== "piece")) {
-          const effective = getEffectiveItemPrice(product, newQty, existingItem.unit, existingItem.unitMultiplier, units);
-          newUnitPrice = effective.unitPrice;
-          newOriginalPrice = effective.originalPrice;
+        let isCustomerRate = existingItem.isCustomerRate;
+
+        // Re-price for the new quantity (wholesale / customer rate) unless the cashier typed a price.
+        if (!existingItem.isPriceOverridden) {
+          const lp = linePrice(product, newQty, existingItem.unit, existingItem.unitMultiplier);
+          newUnitPrice = lp.unitPrice;
+          newOriginalPrice = lp.originalPrice;
+          isCustomerRate = lp.isCustomerRate;
         }
 
         updated[existingIndex] = {
@@ -881,29 +916,21 @@ export default function PosBillingPage() {
           quantity: newQty,
           unitPrice: newUnitPrice,
           originalPrice: newOriginalPrice,
+          isCustomerRate,
         };
         return updated;
       } else {
-        let unitPrice: number;
-        let originalPrice: number;
-
-        if (customPrice !== undefined && unitKey === "piece") {
-          unitPrice = customPrice;
-          originalPrice = customPrice;
-        } else {
-          const effective = getEffectiveItemPrice(product, initialQty, unitKey, multiplier, units);
-          unitPrice = effective.unitPrice;
-          originalPrice = effective.originalPrice;
-        }
+        const lp = linePrice(product, initialQty, unitKey, multiplier);
 
         return [
           ...prevCart,
           {
             product,
             quantity: initialQty,
-            unitPrice,
-            originalPrice,
-            isPriceOverridden: customPrice !== undefined && unitKey === "piece",
+            unitPrice: lp.unitPrice,
+            originalPrice: lp.originalPrice,
+            isPriceOverridden: false,
+            isCustomerRate: lp.isCustomerRate,
             unit: unitKey,
             unitName,
             unitMultiplier: multiplier,
@@ -924,34 +951,24 @@ export default function PosBillingPage() {
       if (index < 0 || index >= prevCart.length) return prevCart;
       const updated = [...prevCart];
       const item = updated[index];
-      const customPrice = customerPrices[item.product.id];
       const multiplier = newMultiplier !== undefined
         ? newMultiplier
         : getBaseMultiplier(newUnit, item.unitMultiplier, item.product, units);
       const unitName = newUnitName || (newUnit === "piece" ? "Pc" : formatItemQuantityAndUnit(1, newUnit).replace(/^1\s*/, ""));
 
-      let newPrice: number;
-      let originalPrice: number;
-      let isOverridden = false;
-
-      if (customPrice !== undefined && newUnit === "piece") {
-        newPrice = customPrice;
-        originalPrice = customPrice;
-        isOverridden = true;
-      } else {
-        const effective = getEffectiveItemPrice(item.product, item.quantity, newUnit, multiplier, units);
-        newPrice = effective.unitPrice;
-        originalPrice = effective.originalPrice;
-      }
+      const lp = linePrice(item.product, item.quantity, newUnit, multiplier);
 
       updated[index] = {
         ...item,
         unit: newUnit,
         unitName,
         unitMultiplier: multiplier,
-        unitPrice: newPrice,
-        originalPrice: originalPrice,
-        isPriceOverridden: isOverridden,
+        unitPrice: lp.unitPrice,
+        originalPrice: lp.originalPrice,
+        isPriceOverridden: false,
+        isPermanentPriceUpdate: false,
+        saveAsCustomerRate: false,
+        isCustomerRate: lp.isCustomerRate,
       };
       return updated;
     });
@@ -974,15 +991,16 @@ export default function PosBillingPage() {
       if (newQty <= 0) {
         updated.splice(index, 1);
       } else {
-        const customPrice = customerPrices[item.product.id];
         let newUnitPrice = item.unitPrice;
         let newOriginalPrice = item.originalPrice;
+        let isCustomerRate = item.isCustomerRate;
 
-        // Automatically apply wholesale price if threshold reached, or revert to retail if quantity drops below
-        if (!item.isPriceOverridden && (customPrice === undefined || item.unit !== "piece")) {
-          const effective = getEffectiveItemPrice(item.product, newQty, item.unit, item.unitMultiplier, units);
-          newUnitPrice = effective.unitPrice;
-          newOriginalPrice = effective.originalPrice;
+        // Automatically apply wholesale / customer rate for the new quantity, unless the cashier typed a price.
+        if (!item.isPriceOverridden) {
+          const lp = linePrice(item.product, newQty, item.unit, item.unitMultiplier);
+          newUnitPrice = lp.unitPrice;
+          newOriginalPrice = lp.originalPrice;
+          isCustomerRate = lp.isCustomerRate;
         }
 
         updated[index] = {
@@ -990,6 +1008,7 @@ export default function PosBillingPage() {
           quantity: newQty,
           unitPrice: newUnitPrice,
           originalPrice: newOriginalPrice,
+          isCustomerRate,
         };
       }
       return updated;
@@ -1007,7 +1026,18 @@ export default function PosBillingPage() {
         unitPrice: validPrice,
         isPriceOverridden: isChanged,
         isPermanentPriceUpdate: isChanged ? updated[index].isPermanentPriceUpdate : false,
+        saveAsCustomerRate: isChanged ? updated[index].saveAsCustomerRate : false,
+        isCustomerRate: isChanged ? false : updated[index].isCustomerRate,
       };
+      return updated;
+    });
+  };
+
+  const toggleSaveAsCustomerRate = (index: number, value: boolean) => {
+    setCart((prevCart) => {
+      if (index < 0 || index >= prevCart.length) return prevCart;
+      const updated = [...prevCart];
+      updated[index] = { ...updated[index], saveAsCustomerRate: value };
       return updated;
     });
   };
@@ -1029,18 +1059,33 @@ export default function PosBillingPage() {
       if (index < 0 || index >= prevCart.length) return prevCart;
       const updated = [...prevCart];
       const item = updated[index];
-      const unitDef = STANDARD_UNITS[item.unit] || STANDARD_UNITS.piece;
-      const effective = getEffectiveItemPrice(item.product, item.quantity, item.unit, unitDef.multiplier);
+      const lp = linePrice(item.product, item.quantity, item.unit, item.unitMultiplier);
 
       updated[index] = {
         ...item,
-        unitPrice: effective.unitPrice,
-        originalPrice: effective.originalPrice,
+        unitPrice: lp.unitPrice,
+        originalPrice: lp.originalPrice,
         isPriceOverridden: false,
         isPermanentPriceUpdate: false,
+        saveAsCustomerRate: false,
+        isCustomerRate: lp.isCustomerRate,
       };
       return updated;
     });
+  };
+
+  /**
+   * The product update for "permanently update base price". The billed line price is converted to
+   * per-piece and then stored in the product's own basis (per pack for pack-basis products), so a
+   * pack product is never overwritten with a per-piece number. Only the SHOP price (selling_price)
+   * changes; wholesale and a separately-set online price are left alone.
+   */
+  const masterPricePayload = (item: CartItem): Partial<Product> => {
+    const perPiece = Math.max(0, item.unitPrice) / (item.unitMultiplier > 0 ? item.unitMultiplier : 1);
+    const { conversionFactor } = resolveProductUnitDetails(item.product, units);
+    const isPack = (item.product as any).price_basis === "pack" && conversionFactor > 1;
+    const selling = isPack ? perPiece * conversionFactor : perPiece;
+    return { selling_price: Math.round(selling * 10000) / 10000 };
   };
 
   const persistProductMasterPrice = async (index: number) => {
@@ -1049,16 +1094,7 @@ export default function PosBillingPage() {
     if (!item || !item.product?.id) return;
 
     try {
-      let updatePayload: Partial<Product>;
-      if (item.unit === "piece") {
-        updatePayload = { selling_price: Math.max(0, item.unitPrice) };
-      } else if (item.unit === "dozen") {
-        const perPiece = Math.round((item.unitPrice / 12) * 100) / 100;
-        updatePayload = { selling_price: perPiece, wholesale_price: item.unitPrice };
-      } else {
-        const perPiece = Math.round((item.unitPrice / item.unitMultiplier) * 100) / 100;
-        updatePayload = { selling_price: perPiece };
-      }
+      const updatePayload = masterPricePayload(item);
 
       await productsRepository.update(item.product.id, updatePayload);
 
@@ -1435,21 +1471,34 @@ export default function PosBillingPage() {
       if (itemsToUpdatePermanently.length > 0) {
         for (const it of itemsToUpdatePermanently) {
           try {
-            let updatePayload: Partial<Product>;
-            if (it.unit === "piece") {
-              updatePayload = { selling_price: Math.max(0, it.unitPrice) };
-            } else if (it.unit === "dozen") {
-              const perPiece = Math.round((it.unitPrice / 12) * 100) / 100;
-              updatePayload = { selling_price: perPiece, wholesale_price: it.unitPrice };
-            } else {
-              const perPiece = Math.round((it.unitPrice / it.unitMultiplier) * 100) / 100;
-              updatePayload = { selling_price: perPiece };
-            }
-            await productsRepository.update(it.product.id, updatePayload);
+            await productsRepository.update(it.product.id, masterPricePayload(it));
           } catch (pErr) {
             console.warn("Permanent price save notice during checkout:", pErr);
           }
         }
+      }
+
+      // Save "rate for this customer" lines (stored per piece, applies to every unit next time).
+      const billCustomer = selectedCustomer;
+      const customerRateLines = billCustomer
+        ? cart.filter(
+            (it) => it.isPriceOverridden && it.saveAsCustomerRate && products.some((p) => p.id === it.product.id)
+          )
+        : [];
+      if (billCustomer && customerRateLines.length > 0) {
+        const saved: Record<string, number> = {};
+        for (const it of customerRateLines) {
+          const perPiece =
+            Math.round((Math.max(0, it.unitPrice) / (it.unitMultiplier > 0 ? it.unitMultiplier : 1)) * 10000) / 10000;
+          if (!(perPiece > 0)) continue;
+          try {
+            await customersRepository.setCustomerPrice(billCustomer.id, it.product.id, perPiece);
+            saved[it.product.id] = perPiece;
+          } catch (cErr) {
+            console.warn("Customer rate save notice during checkout:", cErr);
+          }
+        }
+        setCustomerPrices((prev) => ({ ...prev, ...saved }));
       }
 
       setCompletedSale(enrichedSale);
@@ -2336,8 +2385,11 @@ export default function PosBillingPage() {
                 const wholesaleMinQty =
                   Number(item.product.wholesale_min_qty) ||
                   (item.product.unit?.conversion_factor ? Number(item.product.unit.conversion_factor) : 12);
-                const wholesaleRaw = Number(item.product.wholesale_price) || 0;
-                const isWholesaleActive = wholesaleRaw > 0 && baseQtyNeeded >= wholesaleMinQty && !item.isPriceOverridden;
+                // Only a genuine wholesale rate (cheaper than the shop price) counts - same rule as billing.
+                const wholesalePerPc = resolvePerPiecePrices(item.product, units).wholesalePerPiece;
+                const wholesaleRaw = wholesalePerPc;
+                const isWholesaleActive =
+                  wholesaleRaw > 0 && baseQtyNeeded >= wholesaleMinQty && !item.isPriceOverridden && !item.isCustomerRate;
                 const mrp = Number(item.product.mrp) || 0;
                 const hasMrpSavings = mrp > 0 && mrp > item.unitPrice && item.unit === "piece";
 
@@ -2413,11 +2465,22 @@ export default function PosBillingPage() {
                       </div>
                     )}
 
-                    {!isWholesaleActive && wholesaleRaw > 0 && !item.isPriceOverridden && baseQtyNeeded < wholesaleMinQty && (
+                    {item.isCustomerRate && !item.isPriceOverridden && selectedCustomer && (
+                      <div className="text-[10px] text-emerald-800 font-bold flex items-center justify-between bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md">
+                        <span>👤 {selectedCustomer.name} ka rate</span>
+                        {item.originalPrice > item.unitPrice && (
+                          <span className="text-emerald-700 font-extrabold tabular-nums">
+                            Save ₹{((item.originalPrice - item.unitPrice) * item.quantity).toFixed(0)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {!isWholesaleActive && !item.isCustomerRate && wholesaleRaw > 0 && !item.isPriceOverridden && baseQtyNeeded < wholesaleMinQty && (
                       <div className="text-[9.5px] text-indigo-700 font-medium flex items-center justify-between bg-indigo-50/70 border border-indigo-100 px-2 py-0.5 rounded-md">
                         <span>💡 Add {wholesaleMinQty - baseQtyNeeded} more pcs to unlock Wholesale rate</span>
                         <span className="font-bold text-indigo-900">
-                          ₹{item.product.wholesale_price}{wholesaleRaw >= Number(item.product.selling_price) * 2 ? `/${getCleanUnitBaseName(item.product.unit?.name)}` : "/pc"}
+                          ₹{Math.round(wholesalePerPc * 100) / 100}/pc
                         </span>
                       </div>
                     )}
@@ -2535,6 +2598,20 @@ export default function PosBillingPage() {
                             </button>
                           </div>
                         </div>
+                        {selectedCustomer && (
+                          <label className="mt-1.5 flex items-center gap-1.5 cursor-pointer font-bold text-emerald-900 select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!item.saveAsCustomerRate}
+                              onChange={(e) => toggleSaveAsCustomerRate(index, e.target.checked)}
+                              className="w-3.5 h-3.5 rounded accent-emerald-600 cursor-pointer"
+                            />
+                            <span>
+                              Save as {selectedCustomer.name}&apos;s rate (₹
+                              {Math.round((item.unitPrice / (item.unitMultiplier || 1)) * 100) / 100}/pc)
+                            </span>
+                          </label>
+                        )}
                         <div className="text-[10px] text-purple-700/90 mt-1 flex items-center gap-1">
                           <span>
                             {item.isPermanentPriceUpdate

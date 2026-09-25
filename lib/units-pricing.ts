@@ -245,9 +245,9 @@ const round2 = (n: number): number => Math.round((Number(n) || 0) * 100) / 100;
 
 export interface PerPiecePrices {
   conversionFactor: number;
-  /** Effective selling price per single piece (online_price overrides selling_price when set). */
+  /** Shop (POS) selling price per single piece — products.selling_price. The online price never applies here. */
   sellingPerPiece: number;
-  /** selling_price per piece, ignoring any online discount — used for the struck-through "was" price. */
+  /** Same as sellingPerPiece (kept for callers that show a struck-through "was" price). */
   listSellingPerPiece: number;
   /** MRP per piece, 0 if none. */
   mrpPerPiece: number;
@@ -258,11 +258,14 @@ export interface PerPiecePrices {
 }
 
 /**
- * The single source of truth for pricing. Every stored money field
- * (selling_price / online_price / mrp / purchase_price / wholesale_price) is entered either
- * PER PIECE or PER PACK, as recorded in `product.price_basis` ('piece' by default). This resolves
- * them all to a per-single-piece value, so the rest of the app is just `perPiece × multiplier`.
- * No guessing from price ratios — the website and the APK apply the exact same rule.
+ * The single source of truth for SHOP (POS) pricing. Every stored money field
+ * (selling_price / mrp / purchase_price / wholesale_price) is entered either PER PIECE or PER PACK,
+ * as recorded in `product.price_basis` ('piece' by default). This resolves them all to a
+ * per-single-piece value, so the rest of the app is just `perPiece × multiplier`.
+ *
+ * Channels are separate: the counter bills `selling_price`; the online store bills
+ * `online_price` (falling back to `selling_price` when blank) via getStorefrontItemPrice. So a shop
+ * price and an online price can differ without one leaking into the other.
  */
 export function resolvePerPiecePrices(product: Product, unitCatalog?: Unit[]): PerPiecePrices {
   const { conversionFactor } = resolveProductUnitDetails(product, unitCatalog);
@@ -271,15 +274,8 @@ export function resolvePerPiecePrices(product: Product, unitCatalog?: Unit[]): P
   const isPack = (product as any).price_basis === "pack" && factor > 1;
   const toPerPiece = (v: number) => (isPack ? v / factor : v);
 
-  const onlineRaw =
-    (product as any).online_price !== undefined &&
-    (product as any).online_price !== null &&
-    Number((product as any).online_price) > 0
-      ? Number((product as any).online_price)
-      : null;
-
   const rawListSelling = Number(product.selling_price) || 0;
-  const rawSelling = onlineRaw !== null ? onlineRaw : rawListSelling;
+  const rawSelling = rawListSelling;
   const rawMrp = Number(product.mrp) || 0;
   const rawPurchase = Number(product.purchase_price) || 0;
   const rawWholesale = Number(product.wholesale_price) || 0;
@@ -308,7 +304,10 @@ export function resolvePerPiecePrices(product: Product, unitCatalog?: Unit[]): P
 
   const mrpPerPiece = pickPerPiece(rawMrp, "ceiling");
   const purchasePerPiece = pickPerPiece(rawPurchase, "floor");
-  const wholesalePerPiece = pickPerPiece(rawWholesale, "floor");
+  // A "wholesale" rate that is not actually cheaper than the price (e.g. the pack price auto-copied
+  // into the wholesale field by older app builds) is not a wholesale rate — ignore it.
+  const wsCandidate = pickPerPiece(rawWholesale, "floor");
+  const wholesalePerPiece = wsCandidate > 0 && wsCandidate < sellingPerPiece - 0.001 ? wsCandidate : 0;
 
   // Kept at FULL precision (not rounded to paise). Callers round only their final price, so a pack
   // price is exact — e.g. (100/12) × 12 rounds to ₹100, not ₹99.96 from a pre-rounded ₹8.33/pc.
@@ -416,7 +415,8 @@ export function getProductPricingSummary(product: Product, unitCatalog?: Unit[])
     conversionFactor,
     mrp: mrpPerPiece > 0 ? round2(mrpPerPiece) : round2(sellingPerPiece),
     packMrp: mrpPerPiece > 0 ? round2(mrpPerPiece * conversionFactor) : round2(sellingPerPiece * conversionFactor),
-    wholesalePerPiece: wholesalePerPiece > 0 ? round2(wholesalePerPiece) : round2(sellingPerPiece),
+    /** 0 when the product has no genuine wholesale rate. */
+    wholesalePerPiece: wholesalePerPiece > 0 ? round2(wholesalePerPiece) : 0,
     wholesaleMinQty,
   };
 }
@@ -486,6 +486,47 @@ export function getStorefrontUnitPieces(product: Product, unitCatalog?: Unit[]):
   return isPack ? conversionFactor : 1;
 }
 
+export interface StorefrontWholesaleInfo {
+  /** Wholesale price of ONE storefront unit (a pack for pack-basis products, else a piece). */
+  unitPrice: number;
+  /** Wholesale price per single piece. */
+  perPiece: number;
+  /** Order size (in pieces) that unlocks it. */
+  minPieces: number;
+  /** Same threshold in storefront units (packs or pieces), rounded up. */
+  minUnits: number;
+  /** Label for one storefront unit, e.g. "pc" or "Box". */
+  unitLabel: string;
+}
+
+/**
+ * The storefront's wholesale offer for a product, or null when there is no GENUINE one.
+ * Uses the same basis normalisation as the POS (resolvePerPiecePrices), so a wholesale rate typed
+ * per box on a per-piece product is read correctly, and a "wholesale" that is not cheaper than the
+ * online price (auto-copied pack price, same-as-selling) is never advertised. Every store screen —
+ * card, product page, cart, checkout API — reads this, so they can't disagree.
+ */
+export function getStorefrontWholesaleInfo(
+  product: Product,
+  unitCatalog?: Unit[]
+): StorefrontWholesaleInfo | null {
+  const { wholesalePerPiece } = resolvePerPiecePrices(product, unitCatalog);
+  const minPieces = Number(product.wholesale_min_qty) || 0;
+  if (!(wholesalePerPiece > 0) || !(minPieces > 0)) return null;
+  const unitPieces = getStorefrontUnitPieces(product, unitCatalog);
+  const unitPrice = round2(wholesalePerPiece * unitPieces);
+  const displayPrice = getProductEffectiveOnlinePrice(product);
+  if (!(unitPrice > 0) || unitPrice >= displayPrice) return null;
+  const { cleanBaseName } = resolveProductUnitDetails(product, unitCatalog);
+  return {
+    unitPrice,
+    perPiece: round2(wholesalePerPiece),
+    minPieces,
+    minUnits: Math.max(1, Math.ceil(minPieces / unitPieces)),
+    unitLabel: unitPieces > 1 ? cleanBaseName : "pc",
+  };
+}
+
 /**
  * Price of ONE storefront unit (a pack for pack-basis products, a piece otherwise) — exactly the
  * price the product card shows, so the drawer, the cart page, the totals and the recorded order all
@@ -515,13 +556,12 @@ export function getStorefrontItemPrice(
   const displayPrice = getProductEffectiveOnlinePrice(product);
   const listSelling = Number(product.selling_price) || displayPrice;
   const rawMrp = Number(product.mrp) || 0;
-  const rawWholesale = Number(product.wholesale_price) || 0;
-  const minQty = Number(product.wholesale_min_qty) || 0;
+  const wholesale = getStorefrontWholesaleInfo(product, unitCatalog);
 
   let unitPrice = displayPrice;
   let isWholesaleTriggered = false;
-  if (rawWholesale > 0 && minQty > 0 && totalPieces >= minQty && rawWholesale < displayPrice) {
-    unitPrice = rawWholesale;
+  if (wholesale && totalPieces >= wholesale.minPieces) {
+    unitPrice = wholesale.unitPrice;
     isWholesaleTriggered = true;
   }
 
