@@ -1408,6 +1408,22 @@ class AddProductViewModel extends ChangeNotifier {
       return false;
     }
 
+    // Guard against a Pack/Piece mix-up (e.g. online ₹2100 for a ₹180 pack): a separate online
+    // price more than 2x or under half the shop price is almost certainly a typo.
+    final onlineTyped = double.tryParse(onlinePriceController.text.trim());
+    if (!onlineLinked &&
+        onlineTyped != null &&
+        onlineTyped > 0 &&
+        (onlineTyped > sellingPrice * 2 || onlineTyped < sellingPrice * 0.5)) {
+      Fluttertoast.showToast(
+        msg: 'Online price ₹${fmtPrice(onlineTyped)} shop price ₹${fmtPrice(sellingPrice)} se bahut alag hai — '
+            'Pack/Piece check karo',
+        backgroundColor: Colors.red,
+        toastLength: Toast.LENGTH_LONG,
+      );
+      return false;
+    }
+
     isLoading = true;
     notifyListeners();
 

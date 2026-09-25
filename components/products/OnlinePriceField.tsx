@@ -63,6 +63,11 @@ export function OnlinePriceField({
           </button>
         ))}
       </div>
+      {!linked && shop > 0 && (Number(value) > shop * 2 || Number(value) < shop * 0.5) && (
+        <p className="text-[10px] font-bold text-rose-600">
+          ⚠️ Online price shop price (₹{shop}) se bahut alag hai — Pack/Piece check karo
+        </p>
+      )}
       <p className={`text-[10px] font-semibold ${linked ? "text-gray-500" : "text-emerald-800"}`}>
         {linked
           ? "🔗 POS price ke saath linked — POS badlega to online bhi badlega"

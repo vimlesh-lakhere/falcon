@@ -2386,7 +2386,9 @@ export default function PosBillingPage() {
                   Number(item.product.wholesale_min_qty) ||
                   (item.product.unit?.conversion_factor ? Number(item.product.unit.conversion_factor) : 12);
                 // Only a genuine wholesale rate (cheaper than the shop price) counts - same rule as billing.
-                const wholesalePerPc = resolvePerPiecePrices(item.product, units).wholesalePerPiece;
+                const piecePrices = resolvePerPiecePrices(item.product, units);
+                const wholesalePerPc = piecePrices.wholesalePerPiece;
+                const regularUnitPrice = Math.round(piecePrices.sellingPerPiece * item.unitMultiplier * 100) / 100;
                 const wholesaleRaw = wholesalePerPc;
                 const isWholesaleActive =
                   wholesaleRaw > 0 && baseQtyNeeded >= wholesaleMinQty && !item.isPriceOverridden && !item.isCustomerRate;
@@ -2457,9 +2459,10 @@ export default function PosBillingPage() {
                           <Zap className="w-3 h-3 text-emerald-600 fill-emerald-500 shrink-0" />
                           <span>⚡ Wholesale Applied ({wholesaleMinQty}+ pcs reached)</span>
                         </span>
-                        {item.originalPrice > item.unitPrice && (
+                        {/* Saving vs the normal shop price (not vs MRP). */}
+                        {regularUnitPrice > item.unitPrice && (
                           <span className="text-emerald-700 font-extrabold tabular-nums">
-                            Save ₹{((item.originalPrice - item.unitPrice) * item.quantity).toFixed(0)}
+                            Save ₹{Math.round((regularUnitPrice - item.unitPrice) * item.quantity * 100) / 100}
                           </span>
                         )}
                       </div>
