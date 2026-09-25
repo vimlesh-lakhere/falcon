@@ -38,9 +38,9 @@ export async function generateMetadata(): Promise<Metadata> {
       ...(profile.siteUrl ? { url: profile.siteUrl } : {}),
     },
     robots: { index: true, follow: true },
-    // Google Search Console ownership check (set GOOGLE_SITE_VERIFICATION in Vercel).
-    ...(process.env.GOOGLE_SITE_VERIFICATION
-      ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    // Google Search Console ownership check (profile code, or GOOGLE_SITE_VERIFICATION env override).
+    ...((process.env.GOOGLE_SITE_VERIFICATION || profile.googleVerification)
+      ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION || profile.googleVerification } }
       : {}),
   };
 }

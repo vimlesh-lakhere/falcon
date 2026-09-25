@@ -25,6 +25,8 @@ export interface StoreProfile {
   keywords: string[];
   /** Other ways people spell / call the shop (used in structured data). */
   alternateNames: string[];
+  /** Google Search Console HTML-tag verification code (public by design). */
+  googleVerification?: string;
 }
 
 const mapsSearch = (q: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
@@ -42,6 +44,7 @@ const AGS_PROFILE: StoreProfile = {
   phone: "+91 9340362381",
   mapsUrl: mapsSearch("Aarti General Store, Dudhnath Mandir Gali, Chhatarpur, Madhya Pradesh"),
   siteUrl: "https://ags.falcon360.in",
+  googleVerification: "2rFy-rGDBlAnWOpJPOJ6CM_fOVlEUEz9oF_deGjb_40",
   seoTitle: "Aarti General Store Chhatarpur | आरती जनरल स्टोर – Wholesale & Retail",
   seoDescription:
     "Aarti General Store (आरती जनरल स्टोर), Dudhnath Mandir Gali No. 2, Chhatarpur (M.P.) — wholesale & retail general store for cosmetics, beauty, hair care, daily needs and household items at wholesale rates. Order online for home delivery in Chhatarpur or call 9340362381.",
