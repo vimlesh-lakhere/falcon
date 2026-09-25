@@ -42,7 +42,9 @@ const AGS_PROFILE: StoreProfile = {
   postalCode: "471001",
   fullAddress: "Dudhnath Mandir Gali No. 2, Chhatarpur, Madhya Pradesh 471001",
   phone: "+91 9340362381",
-  mapsUrl: mapsSearch("Aarti General Store, Dudhnath Mandir Gali, Chhatarpur, Madhya Pradesh"),
+  // The shop's own Google Business listing (knowledge panel with Directions), from the owner.
+  mapsUrl:
+    "https://www.google.com/search?q=Aarti+general+Store&stick=H4sIAAAAAAAA_-NgU1I1qDC2tDBKSjE1sUxKNTRIskiyMqiwTEw0NbRMNEgzNEhLNbY0XMQq7JhYVJKpkJ6al1qUmKMQXJJflAoADmRrjj8AAAA&hl=en",
   siteUrl: "https://ags.falcon360.in",
   googleVerification: "2rFy-rGDBlAnWOpJPOJ6CM_fOVlEUEz9oF_deGjb_40",
   seoTitle: "Aarti General Store Chhatarpur | आरती जनरल स्टोर – Wholesale & Retail",
