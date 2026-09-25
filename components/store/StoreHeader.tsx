@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { phoneDigits } from "@/components/store/StoreProfileContext";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -35,7 +36,9 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   shopName = "Falcon Store",
   shopPhone = "",
 }) => {
-  const effectiveShopPhone = shopPhone?.trim() || process.env.NEXT_PUBLIC_SHOP_WHATSAPP || "919340362381";
+  // wa.me needs digits only ("+91 9340362381" broke the link).
+  const effectiveShopPhone =
+    phoneDigits(shopPhone || "") || process.env.NEXT_PUBLIC_SHOP_WHATSAPP || "919340362381";
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -105,7 +108,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
         </div>
         <div className="hidden sm:flex items-center gap-3 text-[10px]">
           <a
-            href={`https://wa.me/${effectiveShopPhone}?text=${encodeURIComponent("Hello AGS Store, I want to inquire about products.")}`}
+            href={`https://wa.me/${effectiveShopPhone}?text=${encodeURIComponent(`Hello ${shopName}, I want to inquire about products.`)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 hover:underline text-emerald-200"
@@ -122,19 +125,19 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
 
       {/* Main Header Bar */}
       <div className={`max-w-7xl mx-auto px-4 sm:px-6 transition-all duration-200 ${isScrolled ? "py-2 sm:py-3" : "py-2.5 sm:py-3"}`}>
-        <div className="flex items-center justify-between gap-4">
-          {/* Logo & Store Name */}
-          <Link href="/store" className="flex items-center gap-2.5 shrink-0 group">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
+        <div className="flex items-center justify-between gap-2 sm:gap-4">
+          {/* Logo & Store Name — may shrink/truncate on phones so the header never overflows */}
+          <Link href="/store" className="flex items-center gap-2 sm:gap-2.5 min-w-0 md:shrink-0 group">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
               <Store className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="font-black text-sm sm:text-lg tracking-tight text-gray-900 leading-none">
+                <span className="font-black text-sm sm:text-lg tracking-tight text-gray-900 leading-none truncate">
                   {shopName}
                 </span>
               </div>
-              <p className="text-[9px] sm:text-[10px] font-semibold text-purple-700 uppercase tracking-wider">
+              <p className="text-[9px] sm:text-[10px] font-semibold text-purple-700 uppercase tracking-wider truncate">
                 Beauty • Cosmetics • Daily Needs
               </p>
             </div>
@@ -164,10 +167,10 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
           </form>
 
           {/* Action Icons */}
-          <div className="flex items-center gap-1.5 sm:gap-3">
+          <div className="flex items-center gap-1 sm:gap-3 shrink-0">
             {/* WhatsApp Quick Order Button */}
             <a
-              href={`https://wa.me/${shopPhone}?text=${encodeURIComponent("Hello! I want to order from your shop.")}`}
+              href={`https://wa.me/${effectiveShopPhone}?text=${encodeURIComponent("Hello! I want to order from your shop.")}`}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition-all shadow-2xs"
@@ -179,7 +182,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
             {/* My Orders / Tracking */}
             <Link
               href="/store/orders"
-              className="p-2 text-gray-700 hover:text-purple-700 hover:bg-purple-50 rounded-xl transition-colors relative flex items-center gap-1 text-xs font-semibold"
+              className="hidden sm:flex p-2 text-gray-700 hover:text-purple-700 hover:bg-purple-50 rounded-xl transition-colors relative items-center gap-1 text-xs font-semibold"
               title="My Orders"
             >
               <Package className="w-5 h-5" />
@@ -189,7 +192,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
             {/* Wishlist */}
             <Link
               href="/store/wishlist"
-              className="p-2 text-gray-700 hover:text-purple-700 hover:bg-purple-50 rounded-xl transition-colors relative"
+              className="hidden sm:block p-2 text-gray-700 hover:text-purple-700 hover:bg-purple-50 rounded-xl transition-colors relative"
               title="Wishlist"
             >
               <Heart className="w-5 h-5" />
@@ -202,7 +205,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
 
             {/* Customer Account Button */}
             {mounted && customerUser ? (
-              <div className="flex items-center gap-1.5 bg-purple-50 hover:bg-purple-100/80 border border-purple-200 rounded-xl px-2.5 py-1.5 text-xs text-purple-900 font-bold shadow-2xs transition-colors">
+              <div className="hidden sm:flex items-center gap-1.5 bg-purple-50 hover:bg-purple-100/80 border border-purple-200 rounded-xl px-2.5 py-1.5 text-xs text-purple-900 font-bold shadow-2xs transition-colors">
                 <Link
                   href="/store/profile"
                   className="flex items-center gap-1.5 hover:text-purple-700 transition-colors"

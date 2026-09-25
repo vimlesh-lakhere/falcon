@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { phoneDigits, useStoreProfile } from "@/components/store/StoreProfileContext";
 import {
   Store,
   Phone,
@@ -25,6 +26,8 @@ export const StoreFooter: React.FC<StoreFooterProps> = ({
   shopPhone = "",
   shopAddress = "",
 }) => {
+  const profile = useStoreProfile();
+  const tel = phoneDigits(shopPhone);
   return (
     <footer className="bg-slate-900 text-white pt-12 pb-8 border-t border-slate-800">
       {/* 4 Feature Badges for Customer Trust */}
@@ -82,8 +85,15 @@ export const StoreFooter: React.FC<StoreFooterProps> = ({
             </div>
             <span className="font-black text-lg tracking-tight text-white">{shopName}</span>
           </div>
+          {profile?.brandNameHi && (
+            <div lang="hi" className="text-base font-black text-amber-300">
+              {profile.brandNameHi}
+            </div>
+          )}
           <p className="text-xs text-slate-400 leading-relaxed">
-            Your trusted local destination for authentic cosmetics, branded beauty products, hair care, personal grooming, and daily home essentials.
+            {profile?.city
+              ? `${shopName} is a wholesale & retail general store in ${profile.city} for authentic cosmetics, beauty products, hair care, personal grooming and daily home essentials — shop in person or order online for home delivery.`
+              : "Your trusted local destination for authentic cosmetics, branded beauty products, hair care, personal grooming, and daily home essentials."}
           </p>
           <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -134,18 +144,32 @@ export const StoreFooter: React.FC<StoreFooterProps> = ({
         <div className="space-y-3">
           <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400">Shop Location & Contact</h4>
           <div className="space-y-2 text-xs text-slate-300">
-            <div className="flex items-start gap-2">
-              <MapPin className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
-              <span>{shopAddress}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-purple-400 shrink-0" />
-              <span>+91 {shopPhone}</span>
-            </div>
+            {shopAddress && (
+              <a
+                href={profile?.mapsUrl || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-start gap-2 hover:text-white"
+              >
+                <MapPin className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                <span>
+                  {shopAddress}
+                  <span className="block text-[10px] font-bold text-purple-300 underline mt-0.5">
+                    Google Maps par dekhein →
+                  </span>
+                </span>
+              </a>
+            )}
+            {tel && (
+              <a href={`tel:+${tel}`} className="flex items-center gap-2 hover:text-white">
+                <Phone className="w-4 h-4 text-purple-400 shrink-0" />
+                <span>{shopPhone}</span>
+              </a>
+            )}
           </div>
 
           <a
-            href={`https://wa.me/${shopPhone}?text=${encodeURIComponent("Hello, I want to inquire about products.")}`}
+            href={`https://wa.me/${tel}?text=${encodeURIComponent("Hello, I want to inquire about products.")}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-md"

@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   "/trial-expired",
   "/pay",
   "/store-not-found",
+  "/sitemap.xml",
 ];
 
 const ERP_ROLES = new Set([

@@ -20,6 +20,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { HeroBannerCarousel } from "@/components/store/HeroBannerCarousel";
+import { StoreBrandBanner } from "@/components/store/StoreBrandBanner";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { CategoryGrid } from "@/components/store/CategoryGrid";
@@ -137,6 +138,9 @@ function StoreHomeContent() {
 
   return (
     <div className="space-y-10 sm:space-y-14 max-w-7xl mx-auto px-4 sm:px-6 pt-4 sm:pt-6">
+      {/* 0. Shop name (Hindi + English), address & directions */}
+      <StoreBrandBanner />
+
       {/* 1. Hero Promotional Banner Carousel */}
       <HeroBannerCarousel />
 
