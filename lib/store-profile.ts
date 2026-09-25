@@ -36,20 +36,21 @@ const AGS_PROFILE: StoreProfile = {
   brandNameHi: "आरती जनरल स्टोर",
   tagline: "Wholesale & Retail General Store in Chhatarpur",
   taglineHi: "छतरपुर का होलसेल एवं रिटेल जनरल स्टोर",
-  streetAddress: "Dudhnath Mandir Gali No. 2",
+  // Same wording as the Google Maps listing, so search engines see one consistent address.
+  streetAddress: "Dudhnath Mandir, Gali Number 2, near Gayatri Mandir Road, Naya Mohalla",
   city: "Chhatarpur",
   region: "Madhya Pradesh",
   postalCode: "471001",
-  fullAddress: "Dudhnath Mandir Gali No. 2, Chhatarpur, Madhya Pradesh 471001",
+  fullAddress:
+    "Dudhnath Mandir, Gali Number 2, near Gayatri Mandir Road, Naya Mohalla, Chhatarpur, Madhya Pradesh 471001",
   phone: "+91 9340362381",
-  // The shop's own Google Business listing (knowledge panel with Directions), from the owner.
-  mapsUrl:
-    "https://www.google.com/search?q=Aarti+general+Store&stick=H4sIAAAAAAAA_-NgU1I1qDC2tDBKSjE1sUxKNTRIskiyMqiwTEw0NbRMNEgzNEhLNbY0XMQq7JhYVJKpkJ6al1qUmKMQXJJflAoADmRrjj8AAAA&hl=en",
+  // The shop's own Google Maps listing (share link from the owner).
+  mapsUrl: "https://maps.app.goo.gl/KcfMjDr9RCdKFoiQ6",
   siteUrl: "https://ags.falcon360.in",
   googleVerification: "2rFy-rGDBlAnWOpJPOJ6CM_fOVlEUEz9oF_deGjb_40",
   seoTitle: "Aarti General Store Chhatarpur | आरती जनरल स्टोर – Wholesale & Retail",
   seoDescription:
-    "Aarti General Store (आरती जनरल स्टोर), Dudhnath Mandir Gali No. 2, Chhatarpur (M.P.) — wholesale & retail general store for cosmetics, beauty, hair care, daily needs and household items at wholesale rates. Order online for home delivery in Chhatarpur or call 9340362381.",
+    "Aarti General Store (आरती जनरल स्टोर), Dudhnath Mandir, Gali No. 2, Naya Mohalla, Chhatarpur (M.P.) — wholesale & retail general store for cosmetics, beauty, hair care, daily needs and household items at wholesale rates. Order online for home delivery in Chhatarpur or call 9340362381.",
   keywords: [
     "Aarti General Store",
     "Aarti General Store Chhatarpur",
